@@ -151,7 +151,7 @@ def _task_toml(dim, task_id: str) -> str:
         "[agent]\n"
         "timeout_sec = 600.0\n\n"
         "[environment]\n"
-        'network_mode = "none"\n'
+        'network_mode = "no-network"\n'
         "build_timeout_sec = 600.0\n"
         'os = "linux"\n'
         "mcp_servers = []\n\n"
