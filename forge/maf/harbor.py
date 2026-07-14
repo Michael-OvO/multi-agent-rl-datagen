@@ -70,10 +70,41 @@ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
 # --------------------------------------------------------------------------- #
 # Interactive dimensions — completed in Task 6 (needs runtime/cli.py)
 # --------------------------------------------------------------------------- #
-def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:  # pragma: no cover
-    raise NotImplementedError(
-        "interactive task rendering is implemented in Task 6 (CLI runtime)"
+def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:
+    # Full scenario (incl. ground-truth `_` fields) lives at /opt/maf, outside the
+    # agent's /app workdir. The CLI reads it; the agent uses only the CLI.
+    (task_dir / "environment" / "scenario.json").write_text(json.dumps(instance, indent=2))
+    cli = dim.CLI_NAME
+    (task_dir / "environment" / cli).write_text(
+        '#!/bin/bash\nexec python3 /app/lib/cli.py "$@"\n'
     )
+    (task_dir / "environment" / "Dockerfile").write_text(
+        "FROM python:3.11-slim\nWORKDIR /app\n"
+        "COPY lib /app/lib\n"
+        "RUN mkdir -p /opt/maf\n"
+        "COPY scenario.json /opt/maf/scenario.json\n"
+        f"COPY {cli} /usr/local/bin/{cli}\n"
+        f"RUN chmod +x /usr/local/bin/{cli}\n"
+    )
+    (task_dir / "solution" / "solve.sh").write_text(
+        "#!/bin/bash\nset -e\n"
+        "python3 - <<'PY'\n"
+        "import json, sys\n"
+        "sys.path.insert(0, '/app/lib')\n"
+        "import maf_dim\n"
+        "inst = json.load(open('/opt/maf/scenario.json'))\n"
+        "tr = maf_dim.run_policy(inst, maf_dim.ORACLE)\n"
+        "with open('/app/transcript.jsonl', 'w') as fh:\n"
+        "    for x in tr:\n"
+        "        fh.write(json.dumps(x) + '\\n')\n"
+        "PY\n"
+    )
+    return {
+        "interactive": True,
+        "scenario_path": "/opt/maf/scenario.json",
+        "ground_truth_path": None,
+        "submission_path": "/app/transcript.jsonl",
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -87,6 +118,8 @@ def _copy_runtime(dim, lib_dir: Path):
     src = Path(mod.__file__).read_text()
     src = src.replace("from forge.maf.core import", "from maf_core import")
     lib_dir.joinpath("maf_dim.py").write_text(src)
+    if getattr(dim, "INTERACTIVE", False):
+        lib_dir.joinpath("cli.py").write_text((_RUNTIME / "cli.py").read_text())
 
 
 def _instruction(dim, instance) -> str:
