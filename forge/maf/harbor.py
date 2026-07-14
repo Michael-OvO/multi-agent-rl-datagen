@@ -1,0 +1,130 @@
+"""Render a Dimension + instance into a runnable Harbor 0.18 task directory.
+
+Single source of truth: the dimension's Python module is *copied* into the task
+(with its one internal import rewritten), so the in-container verifier grades
+with exactly the code the selfcheck battery validated.
+"""
+
+from __future__ import annotations
+
+import importlib
+import json
+import os
+from pathlib import Path
+
+from forge.maf.core import public
+
+_RUNTIME = Path(__file__).parent / "runtime"
+
+
+def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
+    task_dir = Path(out_dir) / f"{dim.NAME}-{task_id}"
+    for sub in ("environment/lib", "tests", "solution"):
+        (task_dir / sub).mkdir(parents=True, exist_ok=True)
+
+    _copy_runtime(dim, task_dir / "environment" / "lib")
+    (task_dir / "task.toml").write_text(_task_toml(dim, task_id))
+    (task_dir / "instruction.md").write_text(_instruction(dim, instance))
+    (task_dir / "tests" / "verify.py").write_text(
+        (_RUNTIME / "verify_entry.py").read_text()
+    )
+    (task_dir / "tests" / "test.sh").write_text(_TEST_SH)
+
+    pub = public(instance)
+    gt = {k: v for k, v in instance.items() if k.startswith("_")}
+
+    if not dim.INTERACTIVE:
+        cfg = _write_static(dim, instance, pub, gt, task_dir)
+    else:
+        cfg = _write_interactive(dim, instance, pub, gt, task_dir)
+
+    (task_dir / "tests" / "verify_config.json").write_text(json.dumps(cfg, indent=2))
+    os.chmod(task_dir / "solution" / "solve.sh", 0o755)
+    os.chmod(task_dir / "tests" / "test.sh", 0o755)
+    return task_dir
+
+
+# --------------------------------------------------------------------------- #
+# Static dimensions (single-shot artifact, e.g. scheduling)
+# --------------------------------------------------------------------------- #
+def _write_static(dim, instance, pub, gt, task_dir) -> dict:
+    (task_dir / "environment" / "task.json").write_text(json.dumps(pub, indent=2))
+    (task_dir / "tests" / "ground_truth.json").write_text(json.dumps(gt))
+    (task_dir / "environment" / "Dockerfile").write_text(
+        "FROM python:3.11-slim\nWORKDIR /app\n"
+        "COPY task.json /app/task.json\nCOPY lib /app/lib\n"
+    )
+    planted = json.dumps(dim.run_policy(instance, dim.ORACLE))
+    (task_dir / "solution" / "solve.sh").write_text(
+        "#!/bin/bash\nset -e\n"
+        f"cat > /app/{dim.SUBMISSION_FILE} <<'MAF_EOF'\n{planted}\nMAF_EOF\n"
+    )
+    return {
+        "interactive": False,
+        "scenario_path": "/app/task.json",
+        "ground_truth_path": "/tests/ground_truth.json",
+        "submission_path": f"/app/{dim.SUBMISSION_FILE}",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Interactive dimensions — completed in Task 6 (needs runtime/cli.py)
+# --------------------------------------------------------------------------- #
+def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:  # pragma: no cover
+    raise NotImplementedError(
+        "interactive task rendering is implemented in Task 6 (CLI runtime)"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+def _copy_runtime(dim, lib_dir: Path):
+    import forge.maf.core as core_mod
+
+    lib_dir.joinpath("maf_core.py").write_text(Path(core_mod.__file__).read_text())
+    mod = importlib.import_module(type(dim).__module__)
+    src = Path(mod.__file__).read_text()
+    src = src.replace("from forge.maf.core import", "from maf_core import")
+    lib_dir.joinpath("maf_dim.py").write_text(src)
+
+
+def _instruction(dim, instance) -> str:
+    return (
+        f"# {dim.NAME}\n\n{dim.GOAL}\n\n"
+        f"{dim.render_instruction(instance)}\n\n"
+        f"## Output contract\n\n{dim.OUTPUT_CONTRACT}\n"
+    )
+
+
+def _task_toml(dim, task_id: str) -> str:
+    return (
+        'schema_version = "1.3"\n'
+        "artifacts = []\n\n"
+        "[task]\n"
+        f'name = "demo/{dim.NAME}-{task_id}"\n'
+        f'description = "Multi-agent {dim.NAME} RL task (forge-generated)."\n'
+        f'keywords = ["multi-agent", "rl", "{dim.NAME}"]\n'
+        "[[task.authors]]\n"
+        'name = "multi-agent-task-forge"\n\n'
+        "[metadata]\n"
+        'difficulty = "medium"\n'
+        'category = "agentic"\n'
+        'tags = ["multi-agent", "orchestration"]\n\n'
+        "[verifier]\n"
+        "timeout_sec = 300.0\n"
+        "collect = []\n\n"
+        "[verifier.env]\n\n"
+        "[agent]\n"
+        "timeout_sec = 600.0\n\n"
+        "[environment]\n"
+        'network_mode = "none"\n'
+        "build_timeout_sec = 600.0\n"
+        'os = "linux"\n'
+        "mcp_servers = []\n\n"
+        "[environment.env]\n\n"
+        "[solution.env]\n"
+    )
+
+
+_TEST_SH = "#!/bin/bash\nmkdir -p /logs/verifier\npython3 /tests/verify.py\n"

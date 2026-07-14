@@ -296,11 +296,32 @@ def render_instruction(instance: dict) -> str:
     return "\n".join(lines)
 
 
+GOAL = (
+    "You are the **Main agent** coordinating a team of specialist sub-agents. "
+    "Produce an execution schedule that assigns every subtask to a worker and a "
+    "start time, **minimizing the overall finish time (makespan)**."
+)
+
+OUTPUT_CONTRACT = (
+    "Write your schedule to `/app/schedule.json` — a JSON array of objects "
+    '`{"subtask": "<id>", "worker": "<id>", "start": <int>}`.\n\n'
+    "Rules (any violation scores 0):\n"
+    "- Schedule every subtask exactly once.\n"
+    "- A subtask may start only after all its dependencies have finished.\n"
+    "- A worker may only run a task whose skill it has.\n"
+    "- A worker runs one task at a time (no overlapping intervals).\n\n"
+    "Your score is `optimal_makespan / your_makespan` — so parallelize "
+    "independent work across the team."
+)
+
+
 class _Scheduling:
     NAME = NAME
     SUBMISSION_FILE = SUBMISSION_FILE
     INTERACTIVE = INTERACTIVE
     DIFFICULTY_PRESETS = DIFFICULTY_PRESETS
+    GOAL = GOAL
+    OUTPUT_CONTRACT = OUTPUT_CONTRACT
     ORACLE = staticmethod(ORACLE)
     CHEATERS = CHEATERS
     generate = staticmethod(generate)
