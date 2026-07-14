@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+cat > /app/schedule.json <<'MAF_EOF'
+[{"subtask": "t100", "worker": "w0", "start": 0}, {"subtask": "t101", "worker": "w0", "start": 2}, {"subtask": "t102", "worker": "w0", "start": 4}, {"subtask": "t103", "worker": "w0", "start": 7}, {"subtask": "t000", "worker": "w1", "start": 0}, {"subtask": "t200", "worker": "w2", "start": 0}, {"subtask": "t201", "worker": "w2", "start": 2}]
+MAF_EOF
