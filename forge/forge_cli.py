@@ -17,6 +17,21 @@ from pathlib import Path
 from forge.maf.harbor import write_task
 from forge.maf.selfcheck import selfcheck
 
+# Dimensions whose CLI must read the scenario at runtime inside the agent
+# container, so the scenario is necessarily in the agent's image. Relocating the
+# module (as static dimensions do) cannot fix them; only the Plan 2 sidecar can.
+# Rendering them would emit data whose reward is obtainable by reading the answer.
+QUARANTINED = {
+    "theory-of-mind": (
+        "ground truth ships in the agent image; needs the Plan 2 sidecar. "
+        "The construct is also degenerate: the instruction states the optimal "
+        "algorithm (asks == q_opt on 12/12 sweep runs)."
+    ),
+    "failure-recovery": (
+        "ground truth ships in the agent image; needs the Plan 2 sidecar."
+    ),
+}
+
 
 def registry() -> dict:
     reg = {}
@@ -34,6 +49,11 @@ def registry() -> dict:
 
 def gen(args) -> dict:
     reg = registry()
+    if args.dim in QUARANTINED:
+        raise SystemExit(
+            f"refusing to render quarantined dimension {args.dim!r}: "
+            f"{QUARANTINED[args.dim]}"
+        )
     if args.dim not in reg:
         raise SystemExit(f"unknown dimension {args.dim!r}; have {sorted(reg)}")
     dim = reg[args.dim]
