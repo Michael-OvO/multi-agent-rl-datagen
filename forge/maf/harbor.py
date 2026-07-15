@@ -16,6 +16,15 @@ from forge.maf.core import public
 
 _RUNTIME = Path(__file__).parent / "runtime"
 
+# Shared image base. tmux/git/curl are pre-installed at BUILD time (build always
+# has network) so terminal agents like terminus-2 work without runtime installs.
+_DOCKER_BASE = (
+    "FROM python:3.11-slim\n"
+    "RUN apt-get update && apt-get install -y --no-install-recommends "
+    "tmux git curl ca-certificates && rm -rf /var/lib/apt/lists/*\n"
+    "WORKDIR /app\n"
+)
+
 
 def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
     task_dir = Path(out_dir) / f"{dim.NAME}-{task_id}"
@@ -51,8 +60,7 @@ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
     (task_dir / "environment" / "task.json").write_text(json.dumps(pub, indent=2))
     (task_dir / "tests" / "ground_truth.json").write_text(json.dumps(gt))
     (task_dir / "environment" / "Dockerfile").write_text(
-        "FROM python:3.11-slim\nWORKDIR /app\n"
-        "COPY task.json /app/task.json\nCOPY lib /app/lib\n"
+        _DOCKER_BASE + "COPY task.json /app/task.json\nCOPY lib /app/lib\n"
     )
     planted = json.dumps(dim.run_policy(instance, dim.ORACLE))
     (task_dir / "solution" / "solve.sh").write_text(
@@ -79,8 +87,8 @@ def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:
         '#!/bin/bash\nexec python3 /app/lib/cli.py "$@"\n'
     )
     (task_dir / "environment" / "Dockerfile").write_text(
-        "FROM python:3.11-slim\nWORKDIR /app\n"
-        "COPY lib /app/lib\n"
+        _DOCKER_BASE
+        + "COPY lib /app/lib\n"
         "RUN mkdir -p /opt/maf\n"
         "COPY scenario.json /opt/maf/scenario.json\n"
         f"COPY {cli} /usr/local/bin/{cli}\n"
@@ -151,7 +159,10 @@ def _task_toml(dim, task_id: str) -> str:
         "[agent]\n"
         "timeout_sec = 600.0\n\n"
         "[environment]\n"
-        'network_mode = "no-network"\n'
+        # "public" lets terminal agents (terminus-2, etc.) reach their model API.
+        # These tasks are self-contained — nothing on the internet helps solve them —
+        # so egress does not enable cheating.
+        'network_mode = "public"\n'
         "build_timeout_sec = 600.0\n"
         'os = "linux"\n'
         "mcp_servers = []\n\n"

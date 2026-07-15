@@ -36,20 +36,32 @@ culprit* yet still score 0.50 — the query budget caps `quality = q_opt/used �
 for any policy that spends its whole budget. Info-dumping is punished even when
 lucky; only referral-following reaches 1.0.
 
-## 3. Live agent trajectories (Claude Code as the agent)
+## 3. Real agent run — `terminus-2` + OpenAI `gpt-5.6` (in-container, via Harbor)
 
-`ANTHROPIC_API_KEY` was not available for an in-container `claude-code` run, so
-the model played **fresh** instances (seeds it had not inspected) honestly through
-the public CLI — no ground-truth peeking. These are genuine non-oracle rollouts.
+A live LLM agent, driven by Harbor inside the Docker container, on the three
+shipped tasks. (Tasks use `network_mode = "public"` + tmux pre-installed so a
+terminal agent can reach its model API; the oracle result above is unchanged.)
 
-| Task (fresh seed) | Reward | What happened |
+Command: `harbor run --path <task> --agent terminus-2 --model openai/gpt-5.6 -n 1 --env-file .env`
+
+| Task | Reward | Read |
 |---|---|---|
-| `failure-recovery` (seed 88) | **0.00** | Speculatively dispatched t1/t2 before their dependency t0 completed (2 wasted ERROR dispatches), then failed to try the one good worker for t1 — ran out of budget with t1 incomplete. A real, instructive failure: the task punishes both dependency violations and inefficient recovery. |
-| `theory-of-mind` (seed 91) | **1.00** | Followed every referral chain (entry → mid → knower `a6`), gathered all 4 clues in exactly `q_opt`=12 questions, deduced the sole remaining suspect `s1`, submitted correctly. |
+| `parallel-scheduling` | **1.00** | Found an optimal-makespan parallel schedule. |
+| `theory-of-mind` | **1.00** | Followed the referral chains to the clue-holders and named the culprit within budget. |
+| `failure-recovery` | **0.75** | **Genuine partial reward** — completed every subtask but used all 8 dispatches (`quality = d_opt/used = 6/8`), wasting 2 attempts recovering from decoys. |
 
-The contrast (0.00 vs 1.00 on comparable difficulty) is the point: the reward is
-not trivially achievable — it tracks whether the agent actually exercised the
-target skill.
+The `0.75` is the headline: a frontier model lands **between** the shortcut
+baselines (0.0) and the optimum (1.0) — the reward is a real gradient that tracks
+*how well* the skill was exercised, not a pass/fail. 0 exceptions across all runs.
+
+### 3b. Cross-check — Claude Code played fresh instances by hand
+
+As an independent check (before the OpenAI run), Claude Code played **fresh**
+instances (unseen seeds) through the public CLI only, no ground-truth peeking:
+`theory-of-mind` (seed 91) → **1.00** (optimal referral-following); `failure-recovery`
+(seed 88) → **0.00** (dispatched before dependencies were ready and mis-inferred a
+worker, exhausting the budget). Same conclusion from a different model: the reward
+discriminates real skill.
 
 ## Takeaway
 

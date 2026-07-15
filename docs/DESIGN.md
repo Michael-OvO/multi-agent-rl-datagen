@@ -424,8 +424,12 @@ Kimi-RL-DataGen/
 ```
 
 **"Pass verification" means:** `harbor run --agent oracle` yields reward `1.0` for all three
-sample tasks (local Docker), **and** a real `claude-code` run is executed to demonstrate the
-partial-reward RL signal (needs `ANTHROPIC_API_KEY` + a running Docker daemon).
+sample tasks (local Docker) — **verified** — **and** a real LLM agent run demonstrates the
+partial-reward RL signal. Verified with `terminus-2` + `openai/gpt-5.6`: scheduling 1.00,
+theory-of-mind 1.00, failure-recovery **0.75** (a genuine partial reward). Any litellm
+provider works via `--model <provider>/<id>` + a key in a gitignored `.env`. Tasks use
+`network_mode = "public"` so terminal agents can reach their model API; nothing on the
+internet helps solve them, so egress does not enable cheating. See `docs/RESULTS.md`.
 
 ---
 

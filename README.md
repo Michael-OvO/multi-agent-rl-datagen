@@ -67,8 +67,17 @@ bash scripts/verify_all.sh              # confirm oracle=1.0 in real Harbor (Doc
 
 ```bash
 uv tool install harbor                  # Harbor 0.18+
-harbor run --path tasks/theory-of-mind-0002 --agent oracle -n 1   # -> reward 1.0
+
+# reference solution (no API key needed) -> reward 1.0
+harbor run --path tasks/theory-of-mind-0002 --agent oracle -n 1
+
+# a real LLM agent (any litellm provider; put the key in a gitignored .env)
+harbor run --path tasks/theory-of-mind-0002 \
+    --agent terminus-2 --model openai/gpt-5.6 -n 1 --env-file .env
 ```
+
+Measured with `gpt-5.6`: scheduling 1.00, theory-of-mind 1.00, failure-recovery
+**0.75** (a real partial reward) — see [`docs/RESULTS.md`](docs/RESULTS.md).
 
 ## Adding a new capability dimension
 
