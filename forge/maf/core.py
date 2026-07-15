@@ -1,6 +1,7 @@
 """Core primitives shared by every dimension and by both runtimes.
 
-This module is copied verbatim into each generated task's ``environment/lib`` so
+This module is copied verbatim into each generated task's ``tests/lib`` -- which
+Harbor uploads only at verification time, never into the agent's image -- so
 that the in-container verifier and the in-process selfcheck grade identically.
 It must stay standard-library-only.
 """

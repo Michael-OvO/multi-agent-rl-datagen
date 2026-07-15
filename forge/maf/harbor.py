@@ -1,8 +1,11 @@
 """Render a Dimension + instance into a runnable Harbor 0.18 task directory.
 
-Single source of truth: the dimension's Python module is *copied* into the task
-(with its one internal import rewritten), so the in-container verifier grades
-with exactly the code the selfcheck battery validated.
+Single source of truth: the dimension's Python module is *copied* (with its one
+internal import rewritten) into ``tests/lib/``, which Harbor uploads only at
+verification time -- after the agent phase completes. The in-container
+verifier therefore grades with exactly the code the selfcheck battery
+validated, without ever shipping that code (``generate``/``ORACLE``/``verify``/
+``CHEATERS``) to a place the agent can read it.
 """
 
 from __future__ import annotations
@@ -28,10 +31,13 @@ _DOCKER_BASE = (
 
 def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
     task_dir = Path(out_dir) / f"{dim.NAME}-{task_id}"
-    for sub in ("environment/lib", "tests", "solution"):
+    for sub in ("environment", "tests/lib", "solution"):
         (task_dir / sub).mkdir(parents=True, exist_ok=True)
 
-    _copy_runtime(dim, task_dir / "environment" / "lib")
+    # The dimension module holds generate()/ORACLE/verify()/CHEATERS. It ships to
+    # tests/, which Harbor uploads only at verification time -- never to the
+    # agent's image. See docs/DESIGN.md §5.
+    _copy_runtime(dim, task_dir / "tests" / "lib", include_cli=dim.INTERACTIVE)
     (task_dir / "task.toml").write_text(_task_toml(dim, task_id))
     (task_dir / "instruction.md").write_text(_instruction(dim, instance))
     (task_dir / "tests" / "verify.py").write_text(
@@ -60,7 +66,7 @@ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
     (task_dir / "environment" / "task.json").write_text(json.dumps(pub, indent=2))
     (task_dir / "tests" / "ground_truth.json").write_text(json.dumps(gt))
     (task_dir / "environment" / "Dockerfile").write_text(
-        _DOCKER_BASE + "COPY task.json /app/task.json\nCOPY lib /app/lib\n"
+        _DOCKER_BASE + "COPY task.json /app/task.json\n"
     )
     planted = json.dumps(dim.run_policy(instance, dim.ORACLE))
     (task_dir / "solution" / "solve.sh").write_text(
@@ -76,11 +82,29 @@ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Interactive dimensions — completed in Task 6 (needs runtime/cli.py)
+# Interactive dimensions — QUARANTINED, not shippable (see forge_cli.QUARANTINED)
+#
+# Task 6 quarantined these; it did not complete them. `forge gen` refuses to
+# render failure-recovery and theory-of-mind, and this function is what it
+# refuses to call. It is kept only so the Plan 2 sidecar has something to
+# replace -- nothing here currently produces a task that can be shipped.
 # --------------------------------------------------------------------------- #
 def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:
-    # Full scenario (incl. ground-truth `_` fields) lives at /opt/maf, outside the
-    # agent's /app workdir. The CLI reads it; the agent uses only the CLI.
+    # BROKEN, and this is why the dimension is quarantined. The line below
+    # writes the FULL instance -- ground-truth `_` fields included -- into
+    # environment/, and the Dockerfile below COPYs it to /opt/maf/scenario.json
+    # inside the agent's own image. `/opt/maf` is merely outside the agent's
+    # /app workdir; it is not outside the agent's filesystem. `cat
+    # /opt/maf/scenario.json` hands over the answer, and an audit executed
+    # exactly that exploit.
+    #
+    # This comment used to describe that layout as a mitigation ("The CLI reads
+    # it; the agent uses only the CLI"). Nothing enforced "uses only the CLI" --
+    # it was an assumption about agent behaviour, stated as a defense. Only the
+    # Plan 2 sidecar (scenario served from a process the agent cannot read,
+    # never present in its image) fixes this; relocating the file within the
+    # image cannot, because the CLI must read it at runtime from inside the
+    # container.
     (task_dir / "environment" / "scenario.json").write_text(json.dumps(instance, indent=2))
     cli = dim.CLI_NAME
     (task_dir / "environment" / cli).write_text(
@@ -118,15 +142,16 @@ def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-def _copy_runtime(dim, lib_dir: Path):
+def _copy_runtime(dim, lib_dir: Path, include_cli: bool = False):
     import forge.maf.core as core_mod
 
+    lib_dir.mkdir(parents=True, exist_ok=True)
     lib_dir.joinpath("maf_core.py").write_text(Path(core_mod.__file__).read_text())
     mod = importlib.import_module(type(dim).__module__)
     src = Path(mod.__file__).read_text()
     src = src.replace("from forge.maf.core import", "from maf_core import")
     lib_dir.joinpath("maf_dim.py").write_text(src)
-    if getattr(dim, "INTERACTIVE", False):
+    if include_cli:
         lib_dir.joinpath("cli.py").write_text((_RUNTIME / "cli.py").read_text())
 
 

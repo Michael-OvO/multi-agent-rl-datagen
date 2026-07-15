@@ -1,6 +1,6 @@
 # Multi-Agent Foundational-Capability RL Data Generation — Design
 
-**Status:** Draft for review
+**Status:** Current
 **Date:** 2026-07-14
 **Deliverable format:** Harbor tasks (`task.toml` / `instruction.md` / `environment` / `tests` / `solution`)
 
@@ -8,11 +8,11 @@
 
 ## 0. TL;DR
 
-We generate RL training tasks that target **multi-agent orchestration capabilities** by
-**inverting the multi-agent setup**: the model under test plays a single role — the
-**orchestrator (Main agent)** — while every other agent and the world are replaced by a
-**deterministic, scripted environment that holds ground truth**. The environment *is* the
-verifier.
+`forge` is a **deterministic orchestrator microbenchmark forge**: it generates RL training
+tasks that target **multi-agent orchestration capabilities** by **inverting the multi-agent
+setup**: the model under test plays a single role — the **orchestrator (Main agent)** — while
+every other agent and the world are replaced by a **deterministic, scripted environment that
+holds ground truth**. The environment *is* the verifier.
 
 This buys three things that a live multi-agent system cannot:
 
@@ -20,7 +20,7 @@ This buys three things that a live multi-agent system cannot:
 2. **Constructed ground truth** — we generate each instance from a *known* optimal solution,
    so grading (including "how optimal") is exact and cheap.
 3. **Unbounded procedural scale** — each capability is a *parametric environment family*;
-   `seed × difficulty × dimension × surface-template` yields thousands of tasks at ~zero
+   `seed × difficulty × dimension` yields thousands of tasks at ~zero
    marginal human cost, each auto-validated by an **oracle self-check** and an
    **anti-trivial baseline gate** before it ships.
 
@@ -39,14 +39,14 @@ verification.
 **In scope (chosen capability spine):**
 
 ```
-① Task decomposition ─→ ② Dependency ID & parallel scheduling ─→ ③ Role/capability assignment
-                                      │
-                                      ▼
-                        ④ Dynamic replanning & failure recovery
-                                      │
-                                      ▼
-                        ⑤ Theory of Mind & information-asymmetric communication
-   (foundational)                                                    (hardest)
+② Dependency ID & parallel scheduling ─→ ③ Role/capability assignment
+                    │
+                    ▼
+④ Dynamic replanning & failure recovery
+                    │
+                    ▼
+⑤ Theory of Mind & information-asymmetric communication
+   (foundational)                                        (hardest)
 ```
 
 **Explicitly deferred (phase 2, same pipeline):** collaboration-topology adaptation
@@ -54,11 +54,16 @@ verification.
 
 **Three sample tasks** span the widest curriculum arc and both verification paradigms:
 
-| Task | Capability | Paradigm | Tier |
+Only `parallel-scheduling` ships. The other two are **quarantined** (2026-07-14):
+they leaked ground truth into the agent image and their instructions stated their
+own optimal algorithm, so gate V4 rejects them. Their constructs are rebuilt on a
+sidecar in a later plan; the rows below are the target, not the current state.
+
+| Task | Capability | Paradigm | Status |
 |---|---|---|---|
-| `parallel-scheduling` | ② dependency ID + parallel scheduling (+①,③) | static, single-shot artifact | mid |
-| `failure-recovery`    | ④ dynamic replanning + failure recovery      | dynamic, multi-turn CLI     | mid-high |
-| `theory-of-mind`      | ⑤ ToM + info-asymmetric communication        | dynamic, multi-turn CLI     | highest |
+| `parallel-scheduling` | ② dependency ID + parallel scheduling (+③) | static, single-shot artifact | ships |
+| `failure-recovery`    | ④ dynamic replanning + failure recovery      | dynamic, multi-turn CLI     | quarantined |
+| `theory-of-mind`      | ⑤ ToM + info-asymmetric communication        | dynamic, multi-turn CLI     | quarantined |
 
 ---
 
@@ -87,18 +92,15 @@ the failure mode is *punished by the reward*, not merely discouraged by the prom
 
 | Capability | Typical failure mode | How our reward punishes it |
 |---|---|---|
-| ① Decomposition | Over/under-decompose; emit "steps" that aren't independently dispatchable; conflate decomposition with ordering. | Subtasks are given as a DAG; mis-reading structure → dependency-gate violation → reward 0. |
 | ② Dependency ID & scheduling | **Serialize everything** (miss parallelism); greedy schedule ignoring the critical path; assign two tasks to one worker at once (ignore resource contention). | Hard gate on dependency + no-overlap; **quality score = T_opt / T_achieved** so serialization and greed cost reward. |
 | ③ Role/capability assignment | Match by surface keyword rather than actual capability; ignore load balance. | Capability constraint is a hard gate; contention shows up in makespan. |
 | ④ Dynamic replanning / recovery | **Assume success** (never check); **retry the same failing worker**; cascade (don't redo downstream after a bad upstream result); over-redo everything. | Failures only surface at runtime → static plans fail the completion gate; wasted/blind retries cost the efficiency score; a dispatch budget punishes over-redo. |
-| ⑤ ToM / communication | **Assume shared knowledge** (don't model that a peer lacks info); ask the wrong agent; **info-dump** (ask everyone everything → no ToM); ignore referrals; trust a lying agent without cross-check. | A **query budget < exhaustive** makes info-dumping impossible; correct answer requires following referrals (2nd-order ToM); liar variants require cross-checking. |
+| ⑤ ToM / communication | **Assume shared knowledge** (don't model that a peer lacks info); ask the wrong agent; **info-dump** (ask everyone everything → no ToM); ignore referrals. | A **query budget < exhaustive** makes info-dumping impossible; correct answer requires following referrals (2nd-order ToM). |
 
 ### 2.3 Curriculum ordering — the argument
 
 The spine is a genuine *prerequisite chain*, not a difficulty ranking:
 
-- **You cannot schedule (②) what you cannot decompose (①).** Scheduling operates on a
-  subtask graph; a wrong graph makes scheduling ill-posed.
 - **Recovery (④) presupposes a plan (②/③).** "Detect a failed dispatch and re-route"
   is only meaningful once the model can produce and reason about an assignment.
 - **ToM (⑤) presupposes role-awareness (③) and communication.** Reasoning about *who knows
@@ -168,8 +170,7 @@ without any model in the loop.
   Python over the agent's artifact/log and the scenario file. Same input → same reward,
   bit-for-bit.
 - Harbor consumes a **float reward** (`float(reward.txt)`, confirmed in
-  `harbor/verifier/verifier.py:73`), so we emit **continuous** `reward ∈ [0,1]` (and a
-  richer `reward.json` with sub-scores for RL credit assignment). Oracle → `1.0`.
+  `harbor/verifier/verifier.py:73`), so we emit **continuous** `reward ∈ [0,1]`. Oracle → `1.0`.
 
 ### 4.2 Construct validity via **shortcut-closure** (does passing *require* the capability?)
 
@@ -189,8 +190,7 @@ shortcut** to a high reward. We argue closure per task:
 - **`theory-of-mind`.** Shortcut = *ask every agent about every topic, then deduce* → closed
   by a **query budget strictly below exhaustive**; the only way inside budget is to **follow
   referrals** (use agent A's knowledge of what agent B knows — 2nd-order ToM) to route
-  queries. Liar variants further require cross-checking. Therefore a high reward *requires*
-  epistemic modeling of peers.
+  queries. Therefore a high reward *requires* epistemic modeling of peers.
 
 **Shortcut-closure is a design invariant, not a hope.** For every generator we enumerate the
 known shortcuts and encode a mechanism that defeats each; the anti-trivial gate (§4.3)
@@ -210,7 +210,7 @@ gap is *caused by* the target skill.
 |---|---|---|
 | **C1 Determinism** | same actions → same reward | run oracle twice; assert identical reward + transcript hash (env responses are pure functions of `scenario.json`). |
 | **C2 Solvable & fair** | reachable through the *public interface only* | oracle is **forbidden to read the ground-truth file**; must reach `1.0` via `schedule.json` / `coord` / `interview`. |
-| **C3 Unique ground truth** | grading isn't arbitrary | ToM: a CSP solver (z3) asserts **exactly one** model; scheduling: `T_opt` = planted length; recovery: "all SUCCESS" is unambiguous. |
+| **C3 Unique ground truth** | grading isn't arbitrary | scheduling: `T_opt` = planted length; recovery: "all SUCCESS" is unambiguous; ToM: elimination over suspects leaves exactly one candidate. |
 | **C4 Verifier robustness** | malformed output → reward 0, never a crash | fuzz the verifier with garbage artifacts / random CLI calls; assert it always returns `[0,1]`, never throws. |
 | **C5 Well-posed contract** | the agent knows what to produce | `instruction.md` names the exact output schema/commands; a "format-only" baseline parses to reward 0 cleanly. |
 
@@ -226,7 +226,7 @@ Per-skill instantiation of V1/V3:
 
 | Skill | Cheater panel (each must lose) | Ablation twin (removes the skill-forcing mechanism) |
 |---|---|---|
-| ② scheduling | serial, greedy-earliest, random-valid | delete greedy traps → **serial becomes optimal → scores 1.0** |
+| ② scheduling | serial, greedy-earliest | delete greedy traps → **serial becomes optimal → scores 1.0** |
 | ④ failure-recovery | static-plan, retry-same-worker, brute-force-all | disable failure injection → **static plan scores 1.0** |
 | ⑤ theory-of-mind | info-dump-in-budget, random-target, never-follow-referral | make all clues public → **direct-read scores 1.0** |
 
@@ -247,19 +247,15 @@ curricula and lets us target a model's frontier.
 ### 4.5 Diversity / anti-overfitting
 
 Procedural tasks risk **surface-form overfitting** (the model learns the generator's
-boilerplate, not the capability). Mitigations, in increasing strength:
+boilerplate, not the capability). Mitigation:
 
 - **Structural randomization** — the *reasoning* changes with graph topology / information
   partition, not just labels. Memorizing surface strings does not transfer across seeds.
-- **Multiple cover-story templates** per dimension (e.g. scheduling as a build pipeline, a
-  film production, a kitchen brigade) + a **paraphrase layer** on `instruction.md`.
-- **Held-out generator configs** for evaluation (train on seed range A / difficulty grid A,
-  eval on B) so we can *measure* overfitting rather than hope it's absent.
 
 ### 4.6 Scale economics (the argument that this is worth doing)
 
 - **Marginal human cost per task ≈ 0.** After a generator is written, tasks come from
-  `seed × difficulty × template`. The only per-task cost is the **oracle self-check**, which
+  `seed × difficulty`. The only per-task cost is the **oracle self-check**, which
   is deterministic Python + a container run — **no LLM tokens**.
 - Contrast: human-authored tasks are O(hours) each; LLM-judged tasks carry per-eval token
   cost *and* reward noise. Our scheme's cost curve is flat in the number of tasks.
@@ -275,20 +271,39 @@ task-dir/
 ├── task.toml            # [environment] our image; [verifier] continuous reward; timeouts
 ├── instruction.md       # "You are the Main agent; goal = X." Describe the goal, not steps.
 ├── environment/
-│   ├── Dockerfile       # python:3.11-slim + copy env server + scenario
-│   ├── scenario.json    # this instance (seed-generated): DAG / roster / private info / GT
-│   └── coord|interview  # (dynamic tasks) CLI exposing a RESTRICTED view of scenario state
+│   ├── Dockerfile       # python:3.11-slim + COPY task.json (nothing else)
+│   └── task.json        # the PUBLIC view only: DAG / roster. No `_` ground-truth keys.
+│                        # Gated by forge/maf/leak_audit.py (G1), which statically
+│                        # resolves this Dockerfile's COPYs and scans what they ship.
 ├── tests/
 │   ├── test.sh          # runs verify.py, writes reward ∈ [0,1] to /logs/verifier/reward.txt
-│   └── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
+│   ├── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
+│   ├── ground_truth.json  # the `_` keys stripped from task.json -- the answer
+│   ├── verify_config.json # paths the in-container verifier reads
+│   └── lib/             # the dimension module (generate/ORACLE/verify/CHEATERS) --
+│                        # uploaded by Harbor only at verification time, after the
+│                        # agent phase; never present in environment/, never in the image
 └── solution/
     └── solve.sh         # oracle: solves via the PUBLIC interface → reward 1.0 (self-check)
 ```
 
-**Reward shape (uniform):** `reward = hard_gate ∈ {0,1} × quality ∈ (0,1]`. `reward.json`
-additionally carries sub-scores (`gate`, `quality`, `budget_used`, …) for RL credit
-assignment. Ground truth lives in the container but is **never exposed** through the agent's
-protocol (the CLI returns only what a peer would legitimately reveal).
+**Isolation invariant.** The dimension module (`generate`, `ORACLE`, `verify`,
+`CHEATERS`) and the ground truth never enter the agent's image. Static
+dimensions ship both to `tests/`, which Harbor uploads only at verification
+time. Identical grading between selfcheck and the in-container verifier is
+achieved by shipping the *same file to a place the agent cannot read* -- not
+by shipping it to the agent. G1 (`forge/maf/leak_audit.py`) enforces this
+statically over the emitted Dockerfile.
+
+**Interactive dimensions do not satisfy this invariant and are quarantined**
+(`forge/forge_cli.py:QUARANTINED`). Their CLI must read the scenario at
+runtime from inside the container, so the full instance -- ground-truth `_`
+fields included -- necessarily ships in the agent's image; an audit read it
+straight out with `cat /opt/maf/scenario.json`. The Plan 2 sidecar (scenario
+served from a process outside the agent's filesystem) is the fix, and it is
+not built yet. Until then `forge gen` refuses to render them.
+
+**Reward shape (uniform):** `reward = hard_gate ∈ {0,1} × quality ∈ (0,1]`.
 
 ---
 
@@ -306,13 +321,13 @@ protocol (the CLI returns only what a peer would legitimately reveal).
 - **Verifier.** Hard gate: every subtask scheduled once; `start ≥ max(dep finishes)`;
   capability match; no worker overlap. Quality: `T / makespan(schedule)`.
 - **Oracle.** Emit the planted optimal schedule → reward 1.0.
-- **Trains:** ② dependency ID + parallel scheduling; ① reading structure; ③ assignment.
+- **Trains:** ② dependency ID + parallel scheduling; ③ capability assignment.
 
 ### 6.2 `failure-recovery` (dynamic · multi-turn)
 
 - **Scenario.** Dispatch subtasks to sub-agents via `coord`. The env deterministically
-  **injects failures** (some `(task,worker)` pairs fail; some are decoys; some failures are
-  *silent* and only surface as a downstream failure). Drive all subtasks to SUCCESS.
+  **injects failures** (some `(task,worker)` pairs fail; some are decoys). Drive all subtasks
+  to SUCCESS.
 - **Protocol.** `coord roster | dag | dispatch <task> <worker> | status | submit`. Env holds
   the `(task,worker) → success?` truth table; at least one feasible assignment always exists.
 - **Verifier.** Hard gate: all subtasks SUCCESS at submit + protocol compliance (no dispatch
@@ -333,11 +348,10 @@ protocol (the CLI returns only what a peer would legitimately reveal).
   partition clues; build a referral graph so a minimal query strategy exists; set
   `budget < exhaustive` to close the info-dump shortcut.
 - **Verifier.** Hard gate: correct answer. Quality: query efficiency (fewer, targeted
-  queries → higher). Liar variants add a cross-check requirement.
+  queries → higher).
 - **Oracle.** Scripted optimal interviewer that follows referrals and solves the grid within
   budget → reward 1.0.
-- **Trains:** ⑤ ToM (incl. higher-order); info-asymmetric directed communication;
-  role-awareness.
+- **Trains:** ⑤ ToM; info-asymmetric directed communication; role-awareness.
 
 ---
 
@@ -349,8 +363,8 @@ Orthogonal knobs, shared across dimensions where meaningful:
 |---|---|
 | Scale | # subtasks / # workers / # agents / # clues |
 | Structure | DAG depth vs width; dependency density; capability scarcity |
-| Adversarial | greedy traps; decoy workers; red-herring clues; silent failures; lying agents |
-| ToM order | 1st (ask directly) → 2nd (referral) → 3rd (referral-of-referral / detect lies) |
+| Adversarial | greedy traps; decoy workers; red-herring clues |
+| ToM order | 1st (ask directly) → 2nd (referral) → 3rd (referral-of-referral) |
 | Budget | dispatch budget / query budget tightened toward the oracle minimum |
 
 **Calibration:** difficulty is validated by the **oracle-minus-baseline reward gap** (§4.4),
@@ -363,22 +377,20 @@ not asserted. Knobs that don't widen the gap don't add real difficulty.
 ### 8.1 The scale multiplier
 
 ```
-#tasks  =  |seeds|  ×  |difficulty cells|  ×  |dimensions|  ×  |surface templates|
+#tasks  =  |seeds|  ×  |difficulty cells|  ×  |dimensions|
 ```
 
 - **seeds** — unbounded structural variety per config (new graph / partition each seed).
 - **difficulty cells** — the knob grid (§7); tens to hundreds of meaningful cells.
 - **dimensions** — 3 now; each new generator is a multiplicative breadth lever.
-- **surface templates** — cover stories × paraphrase.
 
 Thousands of *validated* tasks are immediate; millions are a matter of compute for the
 self-check gate. **No human is in the per-task loop.**
 
 ### 8.2 Honest bottlenecks (and mitigations)
 
-1. **Surface-form homogeneity → overfitting.** *Mitigate:* template diversity + paraphrase +
-   held-out-config eval to *measure* it (§4.5). *Residual risk:* real; this is the main thing
-   to watch as volume grows.
+1. **Surface-form homogeneity → overfitting.** *Mitigate:* structural randomization (§4.5).
+   *Residual risk:* real; this is the main thing to watch as volume grows.
 2. **Structural-diversity ceiling per dimension.** A scheduling generator can only express so
    many *kinds* of reasoning. *Mitigate:* breadth comes from **adding dimensions/topologies**,
    not from more seeds of one dimension. This is why the pipeline (not the task) is the asset.
@@ -394,22 +406,22 @@ self-check gate. **No human is in the per-task loop.**
 
 ```
 forge/
-├── common/
-│   ├── harbor_writer.py   # writes task.toml / instruction.md / environment / tests / solution
-│   ├── reward.py          # shared reward helpers (gate × quality, reward.json)
-│   └── selfcheck.py       # runs oracle + baseline in-container, enforces the §4.3 gates
-├── generators/
-│   ├── parallel_scheduling.py   # generate(seed, difficulty) -> task dir
-│   ├── failure_recovery.py
-│   └── theory_of_mind.py
+├── maf/
+│   ├── core.py            # reward shape (gate × quality) + the Dimension contract
+│   ├── selfcheck.py       # the §4.3 CLEAN/VALID gates — pure in-process Python, no Docker
+│   ├── harbor.py          # write_task(dim, instance, out, id) -> a Harbor task directory
+│   ├── leak_audit.py      # G1: static audit that the agent's image leaks no ground truth
+│   ├── dimensions/        # scheduling.py, failure_recovery.py, theory_of_mind.py
+│   └── runtime/           # cli.py + verify_entry.py — copied into generated tasks
 └── forge_cli.py           # `forge gen --dim X --seed S --difficulty D --n 100 --out tasks/`
 ```
 
-- Each `generate(seed, difficulty)` is **pure** (seed-deterministic) and emits a complete
-  Harbor task directory.
+- Each `generate(seed, difficulty)` is **pure** (seed-deterministic) and returns an
+  **instance dict**. Rendering it to a Harbor task directory is `harbor.write_task`'s
+  job — the two are separate so an instance can be gated *before* anything is written.
 - `forge_cli gen` fans out over seeds/difficulty, and — **critically** — runs `selfcheck` on
-  each output, shipping only instances that pass both gates (§4.3). Failures are logged, not
-  shipped.
+  each instance, writing only those that pass both gates (§4.3). Failures are logged, not
+  shipped. It also refuses to render a quarantined dimension (see §5).
 - A companion **skill `multi-agent-task-forge`** documents the design invariants
   (shortcut-closure, the two gates, difficulty knobs) so future authors (human or Claude) can
   add new dimensions without re-deriving the methodology.
@@ -422,21 +434,21 @@ forge/
 Kimi-RL-DataGen/
 ├── README.md                      # overview + how to run/verify
 ├── docs/DESIGN.md                 # this document  (deliverable #1)
-├── tasks/                         # ≥3 generated, verified Harbor tasks  (deliverable #2)
-│   ├── parallel-scheduling-<id>/
-│   ├── failure-recovery-<id>/
-│   └── theory-of-mind-<id>/
+├── tasks/                         # generated, oracle-verified Harbor task(s)  (deliverable #2)
+│   └── parallel-scheduling-<id>/  # failure-recovery / theory-of-mind are quarantined, see §5
 ├── forge/                         # generation pipeline  (deliverable #3)
 └── skills/multi-agent-task-forge/ # the reusable task-forging skill  (deliverable #3)
 ```
 
-**"Pass verification" means:** `harbor run --agent oracle` yields reward `1.0` for all three
-sample tasks (local Docker) — **verified** — **and** a real LLM agent run demonstrates the
-partial-reward RL signal. Verified with `terminus-2` + `openai/gpt-5.6`: scheduling 1.00,
-theory-of-mind 1.00, failure-recovery **0.75** (a genuine partial reward). Any litellm
-provider works via `--model <provider>/<id>` + a key in a gitignored `.env`. Tasks use
-`network_mode = "public"` so terminal agents can reach their model API; nothing on the
-internet helps solve them, so egress does not enable cheating. See `docs/RESULTS.md`.
+**"Pass verification" means:** `harbor run --agent oracle` yields reward `1.0` for the
+shipped sample task (`parallel-scheduling`, local Docker) — **verified** — **and** a real
+LLM agent run demonstrates the partial-reward RL signal. Verified with `terminus-2` +
+`openai/gpt-5.6`: scheduling **1.00**. `theory-of-mind` and `failure-recovery` are
+quarantined (2026-07-14, see §5) and no longer render or ship a task dir, so they have
+no verification numbers to report. Any litellm provider works via `--model <provider>/<id>`
++ a key in a gitignored `.env`. Tasks use `network_mode = "public"` so terminal agents can
+reach their model API; nothing on the internet helps solve them, so egress does not
+enable cheating. See `docs/RESULTS.md`.
 
 ---
 
@@ -444,7 +456,7 @@ internet helps solve them, so egress does not enable cheating. See `docs/RESULTS
 
 - **Docker dependency.** Harbor runs tasks in containers; the daemon must be up to verify.
 - **Overfitting to generators** — the #1 quality risk at scale (§8.2); mitigated but not
-  eliminated; must be *measured* via held-out configs.
+  eliminated.
 - **Coverage boundary** — only ground-truth-decidable capabilities; live-dynamics skills
   (debate, Sub↔Sub) need future harness work.
 - **Oracle correctness is load-bearing** — a buggy oracle would pass bad instances. Mitigated
@@ -453,4 +465,5 @@ internet helps solve them, so egress does not enable cheating. See `docs/RESULTS
   "search for a solution at grade time." This keeps the oracle correct-by-construction and
   the §4.3 self-check cheap at any difficulty. The V1/V2 gates catch residual oracle bugs (a
   broken oracle that can't beat the cheater panel is rejected).
+```
 ```

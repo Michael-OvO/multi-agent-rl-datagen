@@ -158,6 +158,25 @@ def _greedy_earliest(instance: dict) -> list[dict]:
 ORACLE = _oracle
 CHEATERS = {"serial": _serial, "greedy_earliest": _greedy_earliest}
 
+# V4: what does mechanically obeying our instruction produce? OUTPUT_CONTRACT
+# states constraints (schedule once, dependency order, skill match, no worker
+# overlap) and then one procedural sentence: "...so parallelize independent
+# work across the team." Executing that literally, with no lookahead, is a
+# list-schedule -- take the lowest-id ready task, give it to the capable
+# worker that is free earliest -- which is exactly _greedy_earliest. It
+# scores 0.5: obeying the instruction is not enough to win, because the
+# capability trap (a big bait task w0 can also do) needs the agent to see
+# that parallelizing the WRONG work blocks the critical chain.
+#
+# Not _serial: that policy is documented "never parallelize", making it the
+# one policy in the panel that *disobeys* the instruction's only procedural
+# sentence. It was declared here anyway, justified by the claim that the
+# instruction states "no procedure" -- which the contract's own last line
+# contradicts. Measured across 3 difficulties x 4 seeds, greedy_earliest
+# (0.5) >= serial (0.375-0.5) everywhere, so the old declaration named the
+# weaker policy as well as the wrong one.
+DICTATION_CHEATER = "greedy_earliest"
+
 
 def run_policy(instance: dict, policy) -> list[dict]:
     return policy(instance)
@@ -324,6 +343,7 @@ class _Scheduling:
     OUTPUT_CONTRACT = OUTPUT_CONTRACT
     ORACLE = staticmethod(ORACLE)
     CHEATERS = CHEATERS
+    DICTATION_CHEATER = DICTATION_CHEATER
     generate = staticmethod(generate)
     run_policy = staticmethod(run_policy)
     verify = staticmethod(verify)

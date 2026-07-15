@@ -2,8 +2,13 @@
 
 Executes exactly what the container would (oracle produces a submission, the
 copied dimension module verifies it), but with local paths and importing ONLY
-each task's ``environment/lib`` — no access to the ``forge`` package. Proves the
+each task's ``tests/lib`` — no access to the ``forge`` package. Proves the
 shipped artifacts are self-contained and score the oracle at 1.0, without Docker.
+
+``tests/lib`` (not ``environment/lib``) is what the verifier actually imports:
+the dimension module ships to ``tests/``, which Harbor uploads only at
+verification time -- see ``forge/maf/harbor.py`` and
+``forge/maf/runtime/verify_entry.py``.
 """
 
 import importlib.util
@@ -49,7 +54,7 @@ def main():
             if name in ("maf_core", "maf_dim"):
                 del sys.modules[name]
         cfg = json.load(open(task / "tests" / "verify_config.json"))
-        maf_dim = _import_maf_dim(task / "environment" / "lib")
+        maf_dim = _import_maf_dim(task / "tests" / "lib")
         submission = _oracle_submission(task, cfg, maf_dim)
         rb = maf_dim.verify(_full_instance(task, cfg), submission)
         status = "OK " if rb.reward == 1.0 else "FAIL"
