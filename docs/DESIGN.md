@@ -64,6 +64,13 @@ verification.
 
 ## 2. Research: capabilities, failure modes, curriculum
 
+> **Evidence:** the claims below are grounded in verified literature citations and our
+> own two-model empirical sweep — see [`RESEARCH.md`](RESEARCH.md). In brief: unaided
+> LLM planning succeeds ~12% (PlanBench) and drops 47%→11% sync→async (Robotouille);
+> intrinsic self-correction *degrades* accuracy (Huang et al.) and recovery scales
+> 3.66× slower than execution (ToolMaze); ToM accuracy decays ~95%→5% by recursion
+> order (Hi-ToM) yet fine-tuning on *generated* ToM data adds +27 pts (ExploreToM).
+
 ### 2.1 Why these capabilities (and not the others)
 
 The brief lists ~9 capabilities. We select the subset that is simultaneously **(a) most
