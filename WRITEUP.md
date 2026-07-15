@@ -209,11 +209,11 @@ hard"* from *"gpt-4.1 cannot drive venmo"*. The ground truth for these tasks use
 The clean experiment — `star` with **gpt-5.6-sol specialists**, isolating (a) from
 (b):
 
-| config | specialists | partial |
-|---|---|---|
-| `open` (control) | — (Main does the work) | **0.833** |
-| `star-docs` | gpt-4.1 | **0.167** |
-| `star-docs` | **gpt-5.6-sol** | **0.167** |
+| config | specialists | partial | n |
+|---|---|---|---|
+| `open` (control) | — (Main does the work) | **0.833** | 3 |
+| `star-docs` | gpt-4.1 | **0.167** | 3 |
+| `star-docs` | **gpt-5.6-sol** | **0.167** | 2 |
 
 Upgrading the specialists to the control's own model **changes nothing**. The
 0.66 drop is the partition, not the weaker model.
@@ -223,16 +223,20 @@ Main gave up:
 
     "Unable to complete: Venmo cannot access the social feed"
 
-With gpt-5.6-sol specialists it confidently concluded the opposite of the truth:
+With gpt-5.6-sol specialists it confidently concluded the opposite of the truth,
+on both tasks:
 
     "No Venmo social-feed transactions from today involving my roommates"
+    "No Venmo social-feed transactions from yesterday involving my roommates"
 
 The control scores 0.83, so the transactions exist. **A stronger specialist did
 not rescue the task — it converted a refusal into a confident wrong answer**,
-which is the same failure the venmo hallucination showed at the very start.
+which is the same failure the venmo hallucination showed at the very start, and
+it is the one that matters: an orchestrator that is told "there is nothing there"
+by a competent-sounding specialist has no way to know it was asked wrong.
 
-(n=1 at the time of writing; the second task is still running. The claim rests on
-one clean comparison, not three.)
+(n=2 for the strong-specialist arm. Enough to refute the confound; not enough to
+put an interval on the drop.)
 
 I nearly shipped the confounded number. Zero variance across 12 rows should have
 made me suspicious immediately — instead it read as a triumph.

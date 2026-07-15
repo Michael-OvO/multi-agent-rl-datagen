@@ -183,9 +183,9 @@ Difficulty is the constraint layer's knobs. Each targets one listed capability.
 
 | knob | targets | status |
 |---|---|---|
-| **access partition** (OPEN control / STAR) | decomposition, role assignment, role-awareness | **measured, large effect** |
-| **visibility** (DOCS / NAMES) | role-awareness, capability discovery as a communication act | behavioural effect measured; score effect **unmeasured** (§4) |
-| **topology** (STAR / CHAIN) | Sub↔Sub communication | **unmeasured** |
+| **access partition** (OPEN control / STAR) | decomposition, role assignment, role-awareness | **ships** — measured, 0.83 → 0.17, and the confound is refuted (§4.1) |
+| **visibility** (DOCS / NAMES) | role-awareness, capability discovery as a communication act | **ships flagged** — behavioural effect measured; score effect unmeasurable at this tier (§4.1) |
+| **topology** (STAR / CHAIN) | Sub↔Sub communication | **NOT shipped** — chain is unimplemented and its difficulty signal is fake (§4.2) |
 | **delegation budget** | planning over trial-and-error | **not shipped** — unmeasured |
 
 A budget is a constraint on the world, never a term in the reward. The reward
@@ -261,12 +261,44 @@ would be delete candidates. The honest reading is narrower: they are
 model on the floor. Telling "no effect" apart from "no headroom" needs an easier
 task or a stronger Main. They ship flagged, not validated.
 
-### 4.2 One task, one seed
+### 4.2 `chain` is unimplemented, and its score was a fake signal
 
-The knob table above is a single task and a single seed. It is enough to show the
-partition dominates; it is not enough to rank configurations.
+`chain-names` scored 0.167 on all three tasks with `deleg=12` — exactly
+`max_steps` — and `answer='(out of steps)'` every time.
 
-### 4.3 The measurement instrument nearly lied, twice
+In CHAIN the Main can reach only `roster[0]`. The specialist→specialist handoff
+the topology exists for is defined in `Constraints.allowed_targets` and **called
+by nothing**. So the task is unsolvable and the score reports the step cap.
+
+Its 0.167 does not mean "chain is harder". It means "chain is impossible". **A
+knob that moves the score by breaking the task is worse than decoration** — it
+manufactures a difficulty signal out of a bug. It is unshipped
+(`cli.SHIPPED_CONFIGS`), the reason is recorded at the decision point, and a test
+pins it until the handoff exists *and* is measured.
+
+### 4.3 The headline was confounded, and the confound was refuted
+
+`star`'s failures were not orchestration failures — they were refusals *by the
+specialists* ("Venmo cannot access the social feed"). The specialists were
+gpt-4.1; the control's work was gpt-5.6-sol. So `0.83 → 0.17` moved two variables
+at once: the Main's access, **and** the model doing the API work.
+
+Re-run with gpt-5.6-sol specialists: still **0.167** (n=2). Upgrading the
+specialists to the control's own model changes nothing, so the drop belongs to
+the partition. The upgrade changed only the failure mode — from a refusal to a
+confident wrong answer ("no transactions from today involving my roommates", when
+the control's 0.83 proves they exist).
+
+The relevant discipline: zero variance across 12 rows read as a triumph and was a
+smell. The aggregate hid both bugs; the per-row `answer` and `delegations` fields
+exposed them.
+
+### 4.4 Three tasks, one seed each
+
+The knob table is three tasks at one seed. Enough to show the partition
+dominates; not enough to rank configurations or put an interval on the drop.
+
+### 4.5 The measurement instrument nearly lied, twice
 
 Both worth stating, because both are the kind of error this project keeps making:
 
@@ -284,7 +316,7 @@ Outcome-only logging cannot tell "the agent tried and failed" from "the agent
 never ran". Rows now carry `ran`, and caught errors print instead of being
 buried.
 
-### 4.4 What this dimension does not cover
+### 4.6 What this dimension does not cover
 
 Theory of mind, topologies and Sub↔Sub communication are *pressured* by the
 constraints — §1.3 shows the Main failing at exactly the ToM step — but nothing
