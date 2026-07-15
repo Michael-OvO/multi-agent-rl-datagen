@@ -3,7 +3,7 @@
 Reads sweep/runs/<model>/<timestamp>/<task>__<hash>/result.json for each model,
 joins with sweep/baselines.json (oracle + cheater panel), and emits:
   - sweep/results.json  (per-task + per-cell aggregates)
-  - a markdown summary on stdout (paste-ready for docs/RESEARCH.md)
+  - a markdown summary on stdout
 
 No forge import needed — pure JSON.
 """

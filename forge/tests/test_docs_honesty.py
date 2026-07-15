@@ -41,20 +41,20 @@ def test_design_code_fences_are_balanced():
     assert len(fences) % 2 == 0, f"unclosed code fence: {len(fences)} fence markers"
 
 
-def test_superseded_design_does_not_claim_to_be_the_current_method():
-    """docs/DESIGN.md describes a method this repo retired.
+def test_design_carries_the_v1_retrospective_rather_than_hiding_it():
+    """docs/DESIGN.md must keep the failure that justifies its own method.
 
-    It built the world AND the judge, which is how theory-of-mind came to score
-    asks == q_opt on 12/12 runs with zero gradient. It stayed marked
-    "Status: Current" for a day after being superseded -- the same
-    docs-claim-more-than-the-code defect this file exists to prevent, just
-    aimed at a method rather than a feature.
+    v1 built the world AND the judge, which is how theory-of-mind came to score
+    asks == q_opt on 12/12 runs with zero gradient. The current design refuses
+    to design an oracle *because of that*, so the retrospective is the argument,
+    not an appendix. A design doc that presents the method without the failure
+    it was forced by is a doc that will drift back to writing generators.
 
-    It is kept because parallel-scheduling still uses it. It must say so.
+    (Two design docs briefly coexisted -- one superseded, one current. They are
+    merged; this pins that the merged one kept the load-bearing half.)
     """
     text = (_ROOT / "docs" / "DESIGN.md").read_text()
-    head = text[:1200]
-    assert "Superseded" in head, "DESIGN.md must declare it is superseded"
-    assert "APPWORLD_DESIGN.md" in head, "it must point at what replaced it"
-    assert not re.search(r"^\*\*Status:\*\*\s*Current\s*$", head, re.M), \
-        "DESIGN.md is not the current method"
+    assert "12 of 12" in text, "the ToM degeneracy result must survive"
+    assert "seed brute-force" in text, "the exploit that broke every dimension must survive"
+    assert "manufacture constraints" in text.lower() or \
+           "Manufacture constraints" in text, "the principle must be stated"

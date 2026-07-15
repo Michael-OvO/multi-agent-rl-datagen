@@ -155,19 +155,29 @@ free: `OPEN` is the same task, the same oracle, the partition off.
 
 ## 5. What the measurements say
 
-Three tasks (`2a163ab_1..3`, *"Like all the venmo transactions from today
-involving any of my roommates"* and variants), Main = gpt-5.6-sol, specialists =
-gpt-4.1, 12 rows:
+Task `2a163ab_1..2` — *"Like all the venmo transactions from today involving any
+of my roommates"* and variant. Main = gpt-5.6-sol, specialists = gpt-4.1.
+**These postdate the answer-type fix in §5.3; everything measured before it was
+capped at 0.833.**
 
-| config | n | partial (min–max) | delegations |
+| config | success | partial | delegations |
 |---|---|---|---|
-| `open` (control, no partition) | 3 | **0.833** (0.83–0.83) | 0 |
-| `star-docs` | 3 | **0.167** (0.17–0.17) | 5.0 |
-| `star-names` | 3 | **0.167** (0.17–0.17) | 4.3 |
-| `chain-names` | 3 | **0.167** (0.17–0.17) | 12.0 |
+| **`open`** — the control: one agent, every API, no partition | **True** | **1.000** | 0 |
+| `star-docs` — Main has no APIs, specialists have docs | False | **0.333** | 7–12 |
+| `star-names` — Main has no APIs and does not know what they do | False | **0.333** | 2 |
+| `chain-names` — unshipped, see §6 | False | 0.333 | 12 |
+
+**The control is not a deliverable.** It is the ruler: the same task, the same
+oracle, the knob turned off. Every shipped task is a partitioned one. The control
+exists only to answer the question that makes 0.333 mean anything — *is this task
+hard, or is it impossible?*
+
+Its **1.000** answers it: gpt-5.6-sol solves this task completely when it holds
+the APIs itself. Take the APIs away and make it coordinate, and it gets a third of
+the way.
 
 **The task has gradient** — the thing `theory-of-mind` never had. On the same
-control, gpt-4.1 scores **0.17** and gpt-5.6-sol scores **0.83**.
+control: gpt-4.1 **0.17**, gpt-5.6-sol **1.000**.
 
 ### What 0.167 and 0.833 actually are — and the bug hiding behind them
 
@@ -246,6 +256,9 @@ hard"* from *"gpt-4.1 cannot drive venmo"*. The ground truth for these tasks use
 Two experiments. First, `star` with **gpt-5.6-sol specialists**, isolating (a)
 from (b):
 
+All figures in this subsection are **pre-fix** (capped at 0.833 — §5.3), which is
+fine: the comparison is internally consistent, and it is what I had at the time.
+
 | config | specialists | partial | n |
 |---|---|---|---|
 | `open` (control) | — (Main does the work) | **0.833** | 3 |
@@ -254,10 +267,18 @@ from (b):
 
 Upgrading the specialists to the control's own model **changes nothing**.
 
-But that alone does not prove the task is sound — 0.167 is *exactly* the
-do-nothing score (the `oracle` agent, which does nothing at all, scores
-`passes=1, failures=5` = 0.167). Every partitioned run landing precisely on
-do-nothing looks far more like a broken harness than like a hard task.
+But that alone did not prove the task sound — 0.167 was *exactly* the do-nothing
+score (the `oracle` agent, which acts not at all, scores `passes=1, failures=5` =
+0.167). Every partitioned run landing precisely on do-nothing looks far more like
+a broken harness than like a hard task.
+
+That suspicion was half right, and it is worth being precise about which half.
+The harness *was* broken — but in the ceiling (§5.3), not the floor. Once the
+answer-type bug was fixed the partitioned score moved to **0.333**: the Main does
+accomplish something, it just cannot finish. **So the "partitioning reduces the
+Main to doing literally nothing" reading was an artefact of my own cap**, and an
+earlier draft of this write-up asserted it. The drop is real and larger than I
+first reported (1.000 → 0.333), but it is not a wall.
 
 So: **hand the venmo specialist a perfect brief** — the one the Main should have
 produced, with the roommate names already in it:
@@ -413,8 +434,8 @@ ones.
 
 ## 8. Deliverables
 
-- **Design doc:** [`docs/APPWORLD_DESIGN.md`](docs/APPWORLD_DESIGN.md) — structured
-  to the brief's five questions.
+- **Design doc:** [`docs/DESIGN.md`](docs/DESIGN.md) — structured to the brief's
+  five questions, with the v1 retrospective that forced the method.
 - **Forging pipeline:** `forge/appworld/` — `select` (roster from the task),
   `partition` (constraints), `runtime` (Main + specialists), `harbor` (packaging),
   `cli` (`measure` / `render`).

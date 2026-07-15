@@ -5,7 +5,7 @@ orchestration, packaged in [Harbor](https://www.harborframework.com) format.
 
 **Start here:** [`WRITEUP.md`](WRITEUP.md) — what was built, what was measured,
 and what was wrong.
-Design detail: [`docs/APPWORLD_DESIGN.md`](docs/APPWORLD_DESIGN.md).
+Design detail: [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## The idea in one paragraph
 
@@ -63,15 +63,20 @@ All produced in this repo. Main = gpt-5.6-sol, specialists = gpt-4.1.
 | | |
 |---|---|
 | Tasks that can carry a partition | **51 / 147** — counting the submit channel as a collaborator would claim 147/147 |
-| Partition effect | **0.833 → 0.167** (n=3) |
-| Confound check (specialists upgraded to gpt-5.6-sol) | **still 0.167** (n=2) — the drop is the partition, not the weaker model |
-| Model gradient on the control | gpt-4.1 **0.17** vs gpt-5.6-sol **0.83** |
+| **Partition effect** | **1.000 → 0.333** — the control solves the task completely; the partitioned Main gets a third of the way |
+| Confound check (specialists upgraded to the control's model) | **unchanged** — the drop is the partition, not the weaker specialist |
+| Model gradient on the control | gpt-4.1 **0.17** vs gpt-5.6-sol **1.000** |
 | Agent image contents | exactly one file (`team`); leak audit: 0 violations |
 | Cost | one partitioned rollout ≈ **4.2h**, almost all of it 429 backoff |
 
-Not established, and stated as such in the write-up: the partition saturates, so
-the finer knobs are unmeasured; `chain` is unimplemented and unshipped; three
-tasks at one seed.
+`open` is the **control**, not a deliverable: the same task and the same oracle
+with the partition turned off, so that 0.333 can be read as *"hard"* rather than
+*"impossible"*. Every shipped task is partitioned.
+
+Not established, and stated as such in the write-up: the partition dominates, so
+the finer knobs are unmeasured; `chain` is unimplemented and unshipped; two tasks
+at one seed post-fix. For two days a harness bug capped every action task at
+0.833 — that story is in [`WRITEUP.md`](WRITEUP.md) §5.3.
 
 ## Two dimensions are quarantined, on purpose
 
