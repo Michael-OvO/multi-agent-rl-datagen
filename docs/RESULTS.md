@@ -1,5 +1,29 @@
 # Verification Results
 
+> **2026-07-14 — `theory-of-mind` and `failure-recovery` are quarantined.**
+> `forge/forge_cli.py:QUARANTINED` now refuses to render either dimension: their
+> CLI reads the ground-truth scenario at runtime *inside the agent container*,
+> so (unlike `parallel-scheduling`) relocating the dimension module to
+> `tests/lib` cannot remove it from the agent's image. Fixing this needs the
+> Plan 2 sidecar; see `docs/superpowers/plans/2026-07-14-isolation-and-gates.md`.
+>
+> Separately, both constructs turned out to be degenerate as reward signals.
+> `theory-of-mind`'s instruction states its own optimal algorithm, so both
+> models tested scored `asks == q_opt` (reward 1.0) on 12/12 sweep runs — the
+> task measures instruction-following, not theory-of-mind skill.
+> `failure-recovery`'s worker roster is dispatched in pre-sorted order (see
+> `forge/maf/dimensions/failure_recovery.py`), which similarly collapses the
+> intended skill signal.
+>
+> The rows and figures below for these two dimensions **are not fabricated** —
+> they are real measurements from real Harbor runs at the time this file was
+> written. But given the above, they must **not** be read as evidence of model
+> capability at theory-of-mind or failure-recovery: a reward of 1.0 here
+> reflects a degenerate construct, not the skill the task nominally targets.
+> They are kept for historical record, not as a capability claim.
+> `parallel-scheduling` is unaffected by either issue and is the only
+> dimension `forge_cli` currently renders.
+
 All three sample tasks were verified end-to-end. Two things are demonstrated:
 
 1. **The tasks run in real Harbor/Docker and the oracle scores 1.0** (correctness
@@ -18,7 +42,9 @@ Command: `harbor run --path <task> --agent oracle -n 1` (Harbor 0.18, Docker 28.
 | `theory-of-mind-0002` | 1 | 0 | **1.000** | 17s |
 
 Reproduce: `bash scripts/verify_all.sh` (needs Docker). Logic-only (no Docker):
-`python3 scripts/dryrun_local.py`.
+`python3 scripts/dryrun_local.py`. As of the 2026-07-14 quarantine note above,
+both scripts only exercise `parallel-scheduling` — `failure-recovery` and
+`theory-of-mind` no longer have task dirs to reproduce against.
 
 ## 2. Reward spread — the RL signal
 

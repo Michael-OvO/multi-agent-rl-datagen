@@ -31,7 +31,7 @@ def _load_submission(cfg):
 def _grade():
     here = os.path.dirname(os.path.abspath(__file__))
     cfg = json.load(open(os.path.join(here, "verify_config.json")))
-    sys.path.insert(0, "/app/lib")
+    sys.path.insert(0, "/tests/lib")
     import maf_dim  # noqa: E402
 
     instance = json.load(open(cfg["scenario_path"]))

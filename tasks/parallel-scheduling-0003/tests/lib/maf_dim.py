@@ -158,6 +158,11 @@ def _greedy_earliest(instance: dict) -> list[dict]:
 ORACLE = _oracle
 CHEATERS = {"serial": _serial, "greedy_earliest": _greedy_earliest}
 
+# V4: what does mechanically obeying our instruction produce? The instruction
+# states constraints (dependency order, skill match) and no procedure, so
+# obeying it literally *is* _serial -- valid, unoptimised, and 0.5 at best.
+DICTATION_CHEATER = "serial"
+
 
 def run_policy(instance: dict, policy) -> list[dict]:
     return policy(instance)
@@ -324,6 +329,7 @@ class _Scheduling:
     OUTPUT_CONTRACT = OUTPUT_CONTRACT
     ORACLE = staticmethod(ORACLE)
     CHEATERS = CHEATERS
+    DICTATION_CHEATER = DICTATION_CHEATER
     generate = staticmethod(generate)
     run_policy = staticmethod(run_policy)
     verify = staticmethod(verify)
