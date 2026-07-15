@@ -186,3 +186,69 @@ def test_add_url_source_is_unresolved_not_silently_skipped(tmp_path):
     )
     assert image_files(d) == []
     assert len(unparsed_copies(d)) == 1
+
+
+# --- Third-round review findings ------------------------------------------
+#
+# The previous fix (0119e3d) introduced _logical_lines() to join backslash
+# continuations, but joined ANY physical line ending in `\`, including
+# comment lines -- reintroducing the exact silent-drop bug class it was
+# meant to close, just via a `#` line instead of a plain COPY line.
+
+
+def test_comment_ending_in_backslash_does_not_swallow_next_line(tmp_path):
+    # Finding 1 (CRITICAL): a `#` line is a full-line comment. Docker does
+    # not continue comments -- a trailing `\` inside one is a literal
+    # backslash, not a continuation marker. The previous fix's
+    # _logical_lines() joined it anyway, splicing the comment together with
+    # the COPY line that follows into one unmatched logical line, so the
+    # COPY (and its source) vanished from both image_files() and
+    # unparsed_copies(). This is the exact Dockerfile from the finding.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\n"
+        "# note: path uses backslash \\\n"
+        "COPY leak_secret.py /app/dest/\n",
+        {"leak_secret.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
+    )
+    assert image_files(d) != []
+    assert unparsed_copies(d) == []
+    violations = audit(d)
+    assert violations != []
+    assert any("leak_secret.py" in v for v in violations)
+
+
+def test_plain_comment_does_not_swallow_following_copy(tmp_path):
+    # Regression, pinning the other direction: an ordinary comment with no
+    # trailing backslash must keep behaving exactly like before -- it must
+    # not swallow (or otherwise disturb) the COPY line after it.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\n"
+        "# just a plain comment, no continuation\n"
+        "COPY task.json /app/task.json\n",
+        {"task.json": "{}"},
+    )
+    names = {p.name for p in image_files(d)}
+    assert names == {"task.json"}
+    assert unparsed_copies(d) == []
+    assert audit(d) == []
+
+
+def test_add_local_archive_is_unresolved_not_scanned_as_opaque_file(tmp_path):
+    # Finding 2 (IMPORTANT): ADD auto-extracts a local archive at the
+    # destination -- its contents are not one opaque file, they're whatever
+    # the archive contains, none of which the audit can see (the marker
+    # scan is blind on compressed bytes, and _ground_truth_keys only looks
+    # at `.json` files). The audit must say it could not inspect this
+    # rather than silently scan the compressed blob and call it clean.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nADD leak.tar.gz /app/\n",
+        {"leak.tar.gz": "not real gzip bytes, just needs to exist on disk"},
+    )
+    assert not any(f.name == "leak.tar.gz" for f in image_files(d))
+    unresolved = unparsed_copies(d)
+    assert len(unresolved) == 1
+    assert "leak.tar.gz" in unresolved[0]
+    assert audit(d) != []

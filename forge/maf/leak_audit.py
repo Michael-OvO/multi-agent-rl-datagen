@@ -1,15 +1,34 @@
-"""G1: assert the agent's image contains nothing that derives ground truth.
+"""G1: static audit that the agent's image contains nothing that derives
+ground truth.
 
-The audit reads the agent service's Dockerfile COPY/ADD directives to decide
-what actually lands in the image. Scanning the rendered directory instead
-would produce false positives on build-context files (compose files, sidecar
-Dockerfiles) that the agent never sees.
+What this does: statically approximates Docker's COPY/ADD build semantics
+over the Dockerfile templates this repo generates (see
+`forge/maf/harbor.py`) -- stripping comments, joining backslash line
+continuations, resolving `--chown=`/multi-source/glob forms, and expanding
+directories -- to decide which host files actually land in the agent's
+image. It then scans those files for ground-truth JSON keys and grading-
+machinery markers (see FORBIDDEN_MARKERS below).
 
-Rationale for each marker: shipping generate() lets the agent brute-force the
-seed until the public fields match and then read the private ones out of its own
-regenerated instance -- which defeats /tests isolation entirely. Shipping ORACLE
-lets it execute the reference solution. Shipping verify() lets it read the
-grader. All three were executed against the shipped tasks on 2026-07-14.
+Fail-closed, and why: the only way to know for certain what ends up in a
+built image is to build it and list its contents, and this module
+deliberately does not do that (that would put a Docker build in the
+unit-test path). A static approximation can therefore never fully replicate
+Docker's own parser -- it can only approximate. Anything this module cannot
+resolve with confidence (an unrecognized flag, a `--from=` multi-stage
+copy, a heredoc/JSON-array COPY, a source resolving outside the build
+context, an archive an `ADD` would auto-extract, ...) is surfaced via
+`unparsed_copies()` and turned into an `audit()` violation rather than
+silently skipped or silently assumed safe. A silent under-report is false
+assurance -- worse than no audit at all, because it says "clean" about an
+image nobody actually inspected.
+
+Guarantee, precisely stated: for the Dockerfile forms `forge/maf/harbor.py`
+actually emits today (plain `COPY <source> <dest>` lines, no continuations,
+no comments, no ADD, no archives, no multi-stage builds), `audit() == []`
+means the image is clean with respect to the marker/ground-truth-key scan
+below. Any Dockerfile construct this module does not specifically recognize
+does not get the benefit of the doubt -- it fails closed into a reported
+violation instead of a clean result.
 """
 
 from __future__ import annotations
@@ -30,6 +49,17 @@ FORBIDDEN_MARKERS = (
 _SKIP_SUFFIXES = (".pyc",)
 _GLOB_CHARS = "*?["
 _DIRECTIVES = ("COPY", "ADD")
+
+# `ADD` (unlike `COPY`) auto-extracts a local archive at the destination --
+# the image ends up with whatever the archive contains, not the archive
+# itself. This module does not implement archive extraction (that would mean
+# re-deriving Docker's own tar/gzip/zip handling); a marker scan over the
+# still-compressed bytes is blind, and _ground_truth_keys() only looks at
+# `.json` files, so an ADD-with-archive source would otherwise land content
+# in the image the audit never actually inspects. Fail closed instead: any
+# `ADD` source with one of these suffixes is treated as unresolvable, the
+# same as a `--from=` multi-stage copy.
+_ARCHIVE_SUFFIXES = (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip")
 
 
 def image_files(task_dir: Path) -> list[Path]:
@@ -57,11 +87,23 @@ def _logical_lines(text: str) -> list[str]:
     normal multi-line COPY/ADD that silently vanishes from the scan. This is
     an explicit pre-pass so every later stage (directive matching, source
     resolution) only ever sees one complete directive per logical line.
+
+    Comment lines are stripped BEFORE continuation-joining, matching Docker's
+    own semantics: a `#` line is a full-line comment, not a statement that
+    can span multiple lines, so a trailing `\\` inside one is a literal
+    backslash rather than a continuation marker. Joining first (as an
+    earlier version of this function did) would let a comment ending in `\\`
+    splice itself onto the next physical line -- silently swallowing
+    whatever real directive followed, which is the same silent-drop failure
+    this function exists to prevent, just reached through a `#` line instead
+    of a plain one.
     """
+    physical = [
+        raw.rstrip() for raw in text.splitlines() if not raw.lstrip().startswith("#")
+    ]
     logical: list[str] = []
     buf: list[str] = []
-    for raw in text.splitlines():
-        line = raw.rstrip()
+    for line in physical:
         if line.endswith("\\"):
             buf.append(line[:-1])
             continue
@@ -93,7 +135,8 @@ def _scan(task_dir: Path) -> tuple[list[Path], list[str]]:
         parts = line.split()
         if not parts or parts[0].upper() not in _DIRECTIVES:
             continue
-        resolved = _resolve_copy(parts[1:], env)
+        directive = parts[0].upper()
+        resolved = _resolve_copy(directive, parts[1:], env)
         if resolved is None:
             unparsed.append(line.strip())
         else:
@@ -101,12 +144,12 @@ def _scan(task_dir: Path) -> tuple[list[Path], list[str]]:
     return files, unparsed
 
 
-def _resolve_copy(args: list[str], env: Path) -> list[Path] | None:
+def _resolve_copy(directive: str, args: list[str], env: Path) -> list[Path] | None:
     """Resolve one COPY/ADD directive's arguments (everything after the
     `COPY`/`ADD` token) to concrete host files, or None if any part of it
     can't be confidently resolved (an unrecognized flag, a multi-stage
-    `--from=` source, a heredoc/JSON-array form, or a source matching
-    nothing on disk).
+    `--from=` source, a heredoc/JSON-array form, an `ADD` source with an
+    archive suffix, or a source matching nothing on disk).
     """
     i = 0
     while i < len(args) and args[i].startswith("--"):
@@ -119,6 +162,8 @@ def _resolve_copy(args: list[str], env: Path) -> list[Path] | None:
 
     out: list[Path] = []
     for token in rest[:-1]:  # every token but the last is a source
+        if directive == "ADD" and token.endswith(_ARCHIVE_SUFFIXES):
+            return None  # auto-extracted archive -- see _ARCHIVE_SUFFIXES
         matches = _resolve_source(token, env)
         if matches is None:
             return None
