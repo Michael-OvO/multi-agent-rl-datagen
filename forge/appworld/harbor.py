@@ -152,6 +152,17 @@ def write_task(
     (env / "team").write_text((_RUNTIME / "team").read_text())
     (env / "server.py").write_text((_RUNTIME / "server.py").read_text())
 
+    # The sidecar needs the specialist loop and the constraint definitions. They
+    # go into the build context under their own directory, which only
+    # Dockerfile.sidecar copies -- the agent's Dockerfile does not, so they never
+    # reach the image the Main runs in. Plan 1's leak audit reads COPY
+    # directives precisely so it can tell these two cases apart.
+    pkg = env / "maf_appworld"
+    pkg.mkdir(exist_ok=True)
+    _pkg_src = Path(__file__).parent
+    for mod in ("__init__.py", "partition.py", "runtime.py", "select.py"):
+        (pkg / mod).write_text((_pkg_src / mod).read_text())
+
     # The token lives in tests/, which Harbor uploads only at verification time,
     # so the agent phase never sees it. Without it the sidecar refuses /state.
     (task_dir / "tests" / "verifier_token.txt").write_text(token)

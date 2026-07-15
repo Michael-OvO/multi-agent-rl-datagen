@@ -239,21 +239,27 @@ Task `2a163ab_1`, Main = gpt-5.6-sol, specialists = gpt-4.1:
 | `open-docs` (control) | **0.83** | 0 | 12 |
 | `star-docs` | **0.17** | 3 | 39 |
 | `star-names` | **0.17** | 6 | 66 |
+| `chain-names` | **0.17** | 12 | 55 |
 
 The partition works: 0.83 → 0.17 is a 0.66 drop from one knob. The sub-agents are
 the dominant factor in the task's difficulty, which is what the anti-toy rule
 demanded evidence of.
 
-But **both partitioned configs land on the floor**, so `visibility` shows no
-score difference — only a behavioural one: names-only doubled the Main's
-delegations (3 → 6) and its specialists' turns (39 → 66). It worked twice as hard
-for the same result.
+But **every partitioned config lands on the same floor**, so the finer knobs show
+no score difference. What they do show is a clean monotone effect on *effort*:
 
-By the stated rule — a knob that does not move the score is decoration — the
-visibility knob is a delete candidate. The honest reading is narrower: it is
-**unmeasurable at this difficulty**, because the partition already put the model
-on the floor. Telling "no effect" apart from "no headroom" needs an easier task
-or a stronger Main. It ships flagged, not validated.
+    open -> star-docs -> star-names -> chain-names
+    0        3            6             12          delegations
+
+Each additional constraint **doubles** the Main's delegations while the outcome
+stays flat. So the knobs are biting — this is not decoration — but at this model
+tier the difficulty ladder is expressed as work, not as score.
+
+By the stated rule — a knob that does not move the score is decoration — these
+would be delete candidates. The honest reading is narrower: they are
+**unmeasurable at this difficulty**, because the partition alone already put the
+model on the floor. Telling "no effect" apart from "no headroom" needs an easier
+task or a stronger Main. They ship flagged, not validated.
 
 ### 4.2 One task, one seed
 

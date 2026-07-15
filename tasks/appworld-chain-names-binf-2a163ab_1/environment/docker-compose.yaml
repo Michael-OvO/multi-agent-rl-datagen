@@ -1,0 +1,20 @@
+services:
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sleep infinity
+    depends_on:
+      - maf-env
+
+  maf-env:
+    build:
+      context: .
+      dockerfile: Dockerfile.sidecar
+    environment:
+      MAF_TASK_ID: "2a163ab_1"
+      MAF_CONFIG: '{"task_id": "2a163ab_1", "roster": ["phone", "venmo"], "topology": "chain", "visibility": "names", "delegation_budget": null}'
+      MAF_VERIFIER_TOKEN: "20886f812642572f7654c096144cd8df"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    expose:
+      - "8079"
