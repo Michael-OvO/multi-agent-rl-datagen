@@ -167,8 +167,45 @@ gpt-4.1, 12 rows:
 | `chain-names` | 3 | **0.167** (0.17–0.17) | 12.0 |
 
 **The task has gradient** — the thing `theory-of-mind` never had. On the same
-control, gpt-4.1 scores **0.17** and gpt-5.6-sol scores **0.83**. And 0.83 is not
-1.0: the ceiling is not pinned either.
+control, gpt-4.1 scores **0.17** and gpt-5.6-sol scores **0.83**.
+
+### What 0.167 and 0.833 actually are — and the bug hiding behind them
+
+I reported these as scores for two days before printing the six requirements
+individually rather than the aggregate `5 pass / 1 fail`:
+
+```
+PASS  assert no new venmo.Transaction was added        <- free when you do nothing
+FAIL  assert answers match
+FAIL  assert model changes match venmo.Transaction, venmo.TransactionLike
+FAIL  assert set of all new transaction likes is identical to ...
+FAIL  assert all newly liked transaction_ids are in recent_transaction_ids
+FAIL  assert all newly liked transaction_ids are in relative_transaction_ids
+```
+
+**0.167 = 1/6 = do nothing.** One requirement passes for free.
+
+**0.833 = 5/6 = do all the work, then fail `assert answers match`.** The ground
+truth for this task ends `return None` — it is an *action* task, and its answer is
+`None`. My harness always submitted a prose summary. Measured directly:
+
+| same work, submitted as | result |
+|---|---|
+| prose (`"Liked 4 transactions"`) | success=**False**, **0.833** — still failing `assert answers match` |
+| `None` (what the GT does) | success=**True**, **1.000** |
+
+**0.833 was my harness's ceiling, not the task's.** Every action task in every
+sweep was silently capped at 5/6, and `success=True` was never reachable through
+my pipeline. An earlier draft of this write-up said *"0.83 is not 1.0: the ceiling
+is not pinned either"* — that was false. I had welded it shut myself.
+
+Fixed: the harness now submits `None` when the Main reports an action. The
+instruction had told the Main to say `completed` for action tasks all along; the
+harness ignored it.
+
+The scale is therefore closer to binary than the numbers suggest: **0.167 = did
+nothing, 0.833 = did everything (capped), 1.0 = did everything and submitted the
+right answer type.**
 
 **But zero variance is a smell, not a triumph**, and reading the rows rather than
 the aggregate found two real bugs — one of them in the headline.

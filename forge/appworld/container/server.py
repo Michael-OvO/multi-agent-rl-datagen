@@ -100,7 +100,8 @@ class Episode:
         self.answer = answer
         self.done = True
         self.world.execute(
-            f"apis.supervisor.complete_task(answer={answer!r}, status='success')")
+            f"apis.supervisor.complete_task(answer={_as_answer(answer)!r}, "
+            "status='success')".replace("'None'", "None"))
         return {"ok": True}
 
     def state(self) -> dict:
@@ -118,6 +119,22 @@ class Episode:
             "answer": self.answer,
             "ledger": self.ledger,
         }
+
+
+def _as_answer(answer: str):
+    """AppWorld expects the task's own answer type, not prose.
+
+    Action tasks ("like all the transactions...") return None in their ground
+    truth; question tasks return a value. Submitting a prose summary makes the
+    `assert answers match` requirement fail, which silently caps EVERY action
+    task at 5/6 = 0.833 -- measured 2026-07-15: same work, prose answer -> 0.833,
+    answer=None -> 1.000, success=True.
+
+    The instruction tells the Main to say `completed` for action tasks. Honour it.
+    """
+    if answer.strip().lower() in ("completed", "complete", "done", ""):
+        return None
+    return answer
 
 
 EPISODE: Episode | None = None
