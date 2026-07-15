@@ -204,10 +204,10 @@ The gate I was pleased to have passed does not cleanly separate *"partitioning i
 hard"* from *"gpt-4.1 cannot drive venmo"*. The ground truth for these tasks uses
 `venmo.show_social_feed`, so the API is there; the specialist failed to find it.
 
-### Resolving it: the confound does not explain the drop
+### Resolving it: the drop is the Main's, and here is the proof
 
-The clean experiment — `star` with **gpt-5.6-sol specialists**, isolating (a) from
-(b):
+Two experiments. First, `star` with **gpt-5.6-sol specialists**, isolating (a)
+from (b):
 
 | config | specialists | partial | n |
 |---|---|---|---|
@@ -215,8 +215,38 @@ The clean experiment — `star` with **gpt-5.6-sol specialists**, isolating (a) 
 | `star-docs` | gpt-4.1 | **0.167** | 3 |
 | `star-docs` | **gpt-5.6-sol** | **0.167** | 2 |
 
-Upgrading the specialists to the control's own model **changes nothing**. The
-0.66 drop is the partition, not the weaker model.
+Upgrading the specialists to the control's own model **changes nothing**.
+
+But that alone does not prove the task is sound — 0.167 is *exactly* the
+do-nothing score (the `oracle` agent, which does nothing at all, scores
+`passes=1, failures=5` = 0.167). Every partitioned run landing precisely on
+do-nothing looks far more like a broken harness than like a hard task.
+
+So: **hand the venmo specialist a perfect brief** — the one the Main should have
+produced, with the roommate names already in it:
+
+    brief:  "On my Venmo social feed, find every transaction from today involving
+             Anthony Harrison, Anita Burch, or Nicholas Weber. Like every one."
+    report: "Liked all 4 transactions from today involving Anthony Harrison,
+             Anita Burch, or Nicholas Weber."
+    oracle: partial = 0.833  (5 pass / 1 fail)
+
+**The specialist scores exactly what the unpartitioned control scores.** The
+harness works. The specialist is capable. Nothing is broken.
+
+| condition | partial |
+|---|---|
+| one agent holding every API | **0.833** |
+| specialist + a perfect brief | **0.833** |
+| **Main orchestrating for itself** | **0.167** |
+
+The entire gap belongs to the Main: it never works out that it must ask `phone`
+for the names before `venmo` can act on them. **That is the capability under
+test, and it is the only thing the drop measures.**
+
+This also explains why swapping the specialist model changed nothing: the
+specialist was never the bottleneck. Swapping the *Main* does move the score —
+0.17 for gpt-4.1 versus 0.83 for gpt-5.6-sol on the control.
 
 What the upgrade *did* change is the failure mode. With gpt-4.1 specialists the
 Main gave up:
