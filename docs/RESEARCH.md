@@ -1,5 +1,10 @@
 # Research: Evidence for the Chosen Capabilities
 
+> **Status:** the literature grounding below stands. The capability *selection*
+> it backs was superseded — see [`APPWORLD_DESIGN.md`](APPWORLD_DESIGN.md) §1,
+> which re-derives it from a sharper split: capabilities divide by whether a free
+> oracle exists, not by importance.
+
 This document backs the capability selection in [`DESIGN.md`](DESIGN.md) §2 with two
 independent evidence streams:
 

@@ -39,3 +39,22 @@ def test_design_is_not_marked_draft():
 def test_design_code_fences_are_balanced():
     fences = [ln for ln in _DESIGN.read_text().splitlines() if ln.startswith("```")]
     assert len(fences) % 2 == 0, f"unclosed code fence: {len(fences)} fence markers"
+
+
+def test_superseded_design_does_not_claim_to_be_the_current_method():
+    """docs/DESIGN.md describes a method this repo retired.
+
+    It built the world AND the judge, which is how theory-of-mind came to score
+    asks == q_opt on 12/12 runs with zero gradient. It stayed marked
+    "Status: Current" for a day after being superseded -- the same
+    docs-claim-more-than-the-code defect this file exists to prevent, just
+    aimed at a method rather than a feature.
+
+    It is kept because parallel-scheduling still uses it. It must say so.
+    """
+    text = (_ROOT / "docs" / "DESIGN.md").read_text()
+    head = text[:1200]
+    assert "Superseded" in head, "DESIGN.md must declare it is superseded"
+    assert "APPWORLD_DESIGN.md" in head, "it must point at what replaced it"
+    assert not re.search(r"^\*\*Status:\*\*\s*Current\s*$", head, re.M), \
+        "DESIGN.md is not the current method"

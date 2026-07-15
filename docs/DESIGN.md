@@ -1,7 +1,28 @@
-# Multi-Agent Foundational-Capability RL Data Generation — Design
+# Multi-Agent Foundational-Capability RL Data Generation — Design (v1)
 
-**Status:** Current
+**Status:** Superseded as a method. Still accurate for the `parallel-scheduling`
+dimension, which ships.
 **Date:** 2026-07-14
+**Superseded by:** [`APPWORLD_DESIGN.md`](APPWORLD_DESIGN.md) — read that first.
+
+> **Why this was superseded, in one paragraph.** The method below builds the
+> world *and* the judge: a procedural generator plants an instance and its
+> optimum, and a reference oracle grades against it. That works only if the
+> optimum is right. In `theory-of-mind` it was not — the instruction stated the
+> optimal algorithm, so obeying it literally *was* optimal play, and two frontier
+> models scored `asks == q_opt` on 12 of 12 runs with zero gradient while every
+> gate below stayed green. A separate audit then executed four exploits scoring
+> 1.0, the worst being seed brute-force against the very generator this design
+> ships into the agent's image.
+>
+> The replacement never designs an oracle. It mines an environment that already
+> has one and manufactures only *constraints*, which cannot reach the judge.
+> See [`../WRITEUP.md`](../WRITEUP.md).
+>
+> What is still true here: the reward shape (`gate × quality`), the CLEAN/VALID
+> gate battery, the ablation twin, and the `parallel-scheduling` construct — all
+> of which the current forge still uses.
+
 **Deliverable format:** Harbor tasks (`task.toml` / `instruction.md` / `environment` / `tests` / `solution`)
 
 ---
