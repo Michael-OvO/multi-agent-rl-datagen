@@ -60,19 +60,23 @@ def test_exploit4_generator_absent_from_agent_image(tmp_path):
 
 
 def test_incomplete_schedule_scores_zero(tmp_path):
-    # Not exploit 2 -- see module docstring. This pins the gate: a submission
-    # that does not schedule every subtask is invalid regardless of makespan.
+    # Not exploit 2 -- see module docstring. This pins the completeness gate:
+    # a submission that does not schedule every subtask is invalid regardless
+    # of makespan (_check_schedule's `set(seen) != set(subs)`).
     #
-    # "t0" is not a subtask id this fixture ever produces (real ids are
-    # "t100".."t103" and "t000"), so a submission built from it would be
-    # rejected by the *unknown-subtask-id* check in _check_schedule before
-    # ever reaching the completeness check (`set(seen) != set(subs)`) this
-    # test is meant to pin -- verified by disabling that completeness check
-    # and confirming a "t0"-keyed submission still scored 0. Use a real,
-    # valid, but partial subtask id instead so the test actually exercises
-    # the completeness gate.
+    # The id and worker are derived from the instance, never hardcoded. An
+    # earlier draft used a literal "t0", which generate() never emits, so
+    # _check_schedule rejected it on the *unknown-subtask-id* branch and the
+    # test passed without ever reaching the completeness check it names.
+    # Hardcoding any id re-arms that trap the moment the id scheme changes.
     inst, _ = _task(tmp_path)
-    partial = [{"subtask": "t100", "worker": "w0", "start": 0}]
+    assert len(inst["subtasks"]) > 1, "fixture must be partial-schedulable"
+    tid = sorted(inst["subtasks"])[0]
+    worker = next(
+        w for w, skills in inst["workers"].items()
+        if inst["subtasks"][tid]["skill"] in skills
+    )
+    partial = [{"subtask": tid, "worker": worker, "start": 0}]
     assert DIM.verify(inst, partial).reward == 0.0
 
 
