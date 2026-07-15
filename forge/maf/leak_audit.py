@@ -14,13 +14,23 @@ built image is to build it and list its contents, and this module
 deliberately does not do that (that would put a Docker build in the
 unit-test path). A static approximation can therefore never fully replicate
 Docker's own parser -- it can only approximate. Anything this module cannot
-resolve with confidence (an unrecognized flag, a `--from=` multi-stage
-copy, a heredoc/JSON-array COPY, a source resolving outside the build
-context, an archive an `ADD` would auto-extract, ...) is surfaced via
+resolve with confidence (a `--from=` multi-stage copy, a heredoc/JSON-array
+COPY, a source resolving outside the build context, an archive an `ADD`
+would auto-extract, a source matching nothing on disk, ...) is surfaced via
 `unparsed_copies()` and turned into an `audit()` violation rather than
 silently skipped or silently assumed safe. A silent under-report is false
 assurance -- worse than no audit at all, because it says "clean" about an
 image nobody actually inspected.
+
+What is NOT in that list, stated plainly rather than overclaimed: a `--`
+flag other than `--from=` is *skipped*, not failed closed. `COPY
+--exclude=maf_dim.py lib /app/lib` resolves and scans every file under
+`lib/` including the excluded one -- verified. The error direction is the
+safe one (the audit inspects a superset of what Docker would copy, so it
+can only over-report), which is why the parser is left as-is. But it is a
+skip, and this docstring used to enumerate it as a fail-closed case; a
+docstring that claims a defense the code does not implement is the same
+false assurance in prose form.
 
 Guarantee, precisely stated: for the Dockerfile forms `forge/maf/harbor.py`
 actually emits today (plain `COPY <source> <dest>` lines, no continuations,
@@ -67,8 +77,8 @@ _DIRECTIVES = ("COPY", "ADD")
 # itself. This module does not implement archive extraction (that would mean
 # re-deriving Docker's own tar/gzip/zip handling); a marker scan over the
 # still-compressed bytes is blind, and _ground_truth_keys() only looks at
-# `.json` files, so an ADD-with-archive source would otherwise land content
-# in the image the audit never actually inspects. Fail closed instead: any
+# `.json`/`.jsonl` files, so an ADD-with-archive source would otherwise land
+# content in the image the audit never actually inspects. Fail closed: any
 # `ADD` source with one of these suffixes is treated as unresolvable, the
 # same as a `--from=` multi-stage copy.
 _ARCHIVE_SUFFIXES = (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip")
@@ -166,15 +176,24 @@ def _scan(task_dir: Path) -> tuple[list[Path], list[str]]:
 def _resolve_copy(directive: str, args: list[str], env: Path) -> list[Path] | None:
     """Resolve one COPY/ADD directive's arguments (everything after the
     `COPY`/`ADD` token) to concrete host files, or None if any part of it
-    can't be confidently resolved (an unrecognized flag, a multi-stage
-    `--from=` source, a heredoc/JSON-array form, an `ADD` source with an
-    archive suffix, or a source matching nothing on disk).
+    can't be confidently resolved (a multi-stage `--from=` source, a
+    heredoc/JSON-array form, an `ADD` source with an archive suffix, or a
+    source matching nothing on disk).
+
+    Flags other than `--from=` are skipped, NOT failed closed -- including
+    ones this parser has never heard of. `COPY --exclude=maf_dim.py lib
+    /app/lib` therefore resolves, and every file under `lib/` gets scanned
+    including the excluded one (verified). That direction is safe: flags
+    narrow or relocate what Docker copies, so ignoring them means scanning a
+    superset of the image's real contents -- over-reporting, never a silent
+    miss. Only `--from=` changes where the bytes come from, which is why it
+    alone is unresolvable.
     """
     i = 0
     while i < len(args) and args[i].startswith("--"):
         if args[i].startswith("--from="):
             return None  # copies from another build stage, not the host disk
-        i += 1
+        i += 1  # any other flag: ignored on purpose -- see docstring
     rest = args[i:]
     if len(rest) < 2:
         return None  # not a recognizable "source(s)... dest" shape
@@ -265,27 +284,91 @@ def _decode_text(path: Path) -> str | None:
         return None
 
 
-def _ground_truth_keys(path: Path) -> list[str]:
-    if path.suffix != ".json":
-        return []
+_JSON_SUFFIXES = (".json", ".jsonl")
+
+
+def _json_documents(path: Path) -> list | None:
+    """Every JSON document in `path`, or None if it cannot be parsed.
+
+    `.jsonl` holds one document per line (the shape a ground-truth transcript
+    ships in); `.json` holds exactly one. None means "I could not read this
+    file as JSON" -- callers must turn that into a violation, never a skip.
+    """
+    text = _decode_text(path)
+    if text is None:
+        return None
     try:
-        data = json.loads(path.read_text())
-    except Exception:
+        if path.suffix == ".jsonl":
+            return [json.loads(ln) for ln in text.splitlines() if ln.strip()]
+        return [json.loads(text)]
+    except ValueError:  # includes json.JSONDecodeError
+        return None
+
+
+def _walk_ground_truth_keys(node) -> list[str]:
+    """Every `_`-prefixed key anywhere in a decoded JSON document.
+
+    Recurses through dicts AND lists: a `_` key one level down is exactly as
+    readable to an agent as a top-level one (`json.load(f)["nested"]["_x"]`),
+    so a scanner that only looked at the top level was reporting "clean" on
+    ground truth sitting in the image.
+    """
+    found: list[str] = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if isinstance(k, str) and k.startswith("_"):
+                found.append(k)
+            found.extend(_walk_ground_truth_keys(v))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_walk_ground_truth_keys(item))
+    return found
+
+
+def _ground_truth_keys(path: Path) -> list[str]:
+    """Ground-truth (`_`-prefixed) keys anywhere in a JSON/JSONL file.
+
+    Scope, stated exactly: every `_` key at any depth, in either a `.json` or
+    a `.jsonl` file, whatever the root type (a document whose root is a list
+    is scanned like any other). An unparseable file yields no keys here --
+    `audit()` reports it separately as a file it could not inspect, per the
+    module docstring's fail-closed rule.
+
+    Shared blind spot, deliberately not shared: the producer
+    (`forge.maf.core.public()`, which builds the agent-visible view) strips
+    only TOP-LEVEL `_` keys, so a nested `_` key would survive into a
+    "public" instance. This scanner recurses further than the producer
+    strips precisely so it can catch that regression instead of being blind
+    to it in the same way. Every shipping instance is flat today, which is
+    the only reason the producer's narrower rule is harmless -- if that ever
+    stops being true, this scanner is what notices. Do not narrow it to
+    match `public()`.
+    """
+    if path.suffix not in _JSON_SUFFIXES:
         return []
-    if not isinstance(data, dict):
-        return []
-    return [k for k in data if k.startswith("_")]
+    docs = _json_documents(path)
+    if docs is None:
+        return []  # unparseable -- audit() surfaces it as its own violation
+    found: list[str] = []
+    for doc in docs:
+        found.extend(_walk_ground_truth_keys(doc))
+    return list(dict.fromkeys(found))  # dedupe, first-seen order
 
 
 def audit(task_dir: Path) -> list[str]:
     """Return violations found in the files this module can resolve.
 
-    An empty list means: no ground-truth key and no grading-machinery marker was
-    found in any file reachable from a COPY/ADD directive this module could parse,
-    and no directive was left uninspected. It is *not* an unconditional guarantee
-    that the image is clean -- this is a static approximation that never builds
-    the image. See the module docstring for the exact scope. Unrecognized forms
-    fail closed and appear here as violations rather than being assumed safe.
+    An empty list means, precisely: in every file reachable from a COPY/ADD
+    directive this module could parse, no `_`-prefixed ground-truth key was
+    found at any depth of any `.json`/`.jsonl` document, no grading-machinery
+    marker was found in any decodable file, and nothing was left uninspected
+    -- no unresolved directive, no unparseable JSON, no undecodable file, no
+    compiled bytecode. It is *not* an unconditional guarantee that the image
+    is clean: this is a static approximation that never builds the image, and
+    ground-truth detection is keyed on the `_` naming convention, so ground
+    truth under a public-looking name in a non-JSON format is out of scope.
+    See the module docstring. Unrecognized forms fail closed and appear here
+    as violations rather than being assumed safe.
     """
     task_dir = Path(task_dir)
     violations: list[str] = []
@@ -296,6 +379,12 @@ def audit(task_dir: Path) -> list[str]:
         )
     for f in image_files(task_dir):
         rel = f.relative_to(task_dir)
+        if f.suffix in _JSON_SUFFIXES and _json_documents(f) is None:
+            violations.append(
+                f"{rel}: JSON in agent image could not be parsed -- its "
+                f"ground-truth keys are therefore uninspected (unparseable "
+                f"is a violation, not a skip)"
+            )
         for key in _ground_truth_keys(f):
             violations.append(f"{rel}: ground-truth key {key!r} in agent image")
         if _is_compiled_python(f):

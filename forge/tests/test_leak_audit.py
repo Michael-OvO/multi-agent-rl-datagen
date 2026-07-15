@@ -1,3 +1,4 @@
+import json
 import py_compile
 
 from forge.maf.dimensions.scheduling import DIM as SCHED
@@ -339,3 +340,188 @@ def test_image_files_includes_compiled_bytecode(tmp_path):
     (lib / "module.pyc").write_bytes(b"\x00\x01\x02\xf3\xfe\xff\x00")
     names = {p.name for p in image_files(d)}
     assert "module.pyc" in names
+
+
+# --- Final-review finding 1: ground-truth detection was unfalsifiable -----
+#
+# Verified during the final review: replacing _ground_truth_keys()'s body
+# with `return []` -- disabling ground-truth detection outright -- left the
+# suite byte-identical at 70 passed, 2 xfailed. Sabotaging the marker scan
+# by contrast turned 3 tests red. NO test anywhere asserted that audit()
+# can report a `_`-key violation at all, and the one test that used to
+# assert `_planted`/`_opt_makespan` explicitly had been rewritten to
+# delegate to this unpinned detector -- the original sin reborn inside its
+# own replacement.
+#
+# Every test in this section must go red when _ground_truth_keys() stops
+# detecting. That is the check that exposed the gap; it is now the check
+# that keeps it closed.
+
+
+def test_toplevel_ground_truth_key_is_a_violation(tmp_path):
+    # The floor: a `_`-key in a JSON the Dockerfile COPYs into the agent
+    # image must produce a violation that names the key.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
+        {
+            "task.json": json.dumps(
+                {"workers": {"w0": ["test"]}, "_opt_makespan": 7}
+            )
+        },
+    )
+    violations = audit(d)
+    assert violations != []
+    assert any("_opt_makespan" in v for v in violations), violations
+
+
+def test_every_ground_truth_key_is_named_not_just_the_first(tmp_path):
+    # Scheduling's real ground truth is two keys. Reporting only one would
+    # leave the other invisible to a reader triaging the violation list.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
+        {
+            "task.json": json.dumps(
+                {"subtasks": {}, "_planted": [], "_opt_makespan": 7}
+            )
+        },
+    )
+    violations = audit(d)
+    assert any("_planted" in v for v in violations), violations
+    assert any("_opt_makespan" in v for v in violations), violations
+
+
+def test_ground_truth_violation_names_the_file(tmp_path):
+    # A violation that does not say which file it came from cannot be acted
+    # on when a task ships several JSONs.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY data /app/data\n",
+        {
+            "data/clean.json": json.dumps({"workers": {}}),
+            "data/leaky.json": json.dumps({"_planted": [1]}),
+        },
+    )
+    gt = [v for v in audit(d) if "_planted" in v]
+    assert len(gt) == 1, audit(d)
+    assert "leaky.json" in gt[0], gt
+
+
+def test_public_only_json_has_no_ground_truth_violation(tmp_path):
+    # The other direction: the scanner must not cry wolf on nested *public*
+    # data, or the signal it produces is worthless.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
+        {
+            "task.json": json.dumps(
+                {
+                    "workers": {"w0": ["test", "code"], "w1": ["code"]},
+                    "subtasks": {"t000": {"skill": "code", "dur": 3, "deps": []}},
+                }
+            )
+        },
+    )
+    assert audit(d) == []
+
+
+# --- Final-review finding 2: the scanner disobeyed its own doctrine -------
+#
+# The module docstring promises that any file it cannot decode is surfaced
+# as a violation, and audit()'s docstring promised "no ground-truth key ...
+# in any file". The scanner's actual scope was far narrower: no TOP-LEVEL
+# `_`-key in a parseable `.json` dict. Each shape below returned
+# `audit() == []` -- a clean bill of health on ground truth sitting in the
+# agent's image.
+#
+# `forge.maf.core.public()` strips only top-level `_` keys too, so producer
+# and checker shared the identical blind spot: the checker structurally
+# could not catch the producer's most likely regression. These tests pin
+# the checker's half of that (core.public() is deliberately untouched).
+
+
+def test_nested_ground_truth_key_is_a_violation(tmp_path):
+    # A `_`-key one level down is exactly as readable to the agent as a
+    # top-level one -- `json.load(...)["nested"]["_culprit"]`.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
+        {"task.json": json.dumps({"pub": 1, "nested": {"_culprit": "w3"}})},
+    )
+    violations = audit(d)
+    assert violations != []
+    assert any("_culprit" in v for v in violations), violations
+
+
+def test_deeply_nested_ground_truth_key_inside_a_list_is_a_violation(tmp_path):
+    # Recursion must cross list boundaries too, not just dict values.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
+        {"task.json": json.dumps({"steps": [{"ok": 1}, {"_answer": [{"_x": 2}]}]})},
+    )
+    violations = audit(d)
+    assert any("_answer" in v for v in violations), violations
+    assert any("_x" in v for v in violations), violations
+
+
+def test_toplevel_json_list_ground_truth_key_is_a_violation(tmp_path):
+    # `isinstance(data, dict)` was the gate: a JSON document whose root is a
+    # list audited clean no matter what it held.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
+        {"task.json": json.dumps([{"_culprit": "w3"}])},
+    )
+    violations = audit(d)
+    assert violations != []
+    assert any("_culprit" in v for v in violations), violations
+
+
+def test_jsonl_ground_truth_key_is_a_violation(tmp_path):
+    # The `.json` suffix gate: ground truth shipped as a `.jsonl` transcript
+    # (one document per line -- the shape the interactive dimensions use)
+    # was never looked at.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY truth.jsonl /app/truth.jsonl\n",
+        {
+            "truth.jsonl": '{"turn": 1, "public": "hi"}\n'
+            '{"turn": 2, "_culprit": "w3"}\n'
+        },
+    )
+    violations = audit(d)
+    assert violations != []
+    assert any("_culprit" in v for v in violations), violations
+
+
+def test_clean_jsonl_is_not_a_false_positive(tmp_path):
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY log.jsonl /app/log.jsonl\n",
+        {"log.jsonl": '{"turn": 1}\n\n{"turn": 2}\n'},
+    )
+    assert audit(d) == []
+
+
+def test_unparseable_json_is_a_violation_not_a_silent_skip(tmp_path):
+    # `except Exception: return []` was a literal silent skip, in a module
+    # whose docstring says "I cannot scan this" must never be treated as
+    # "therefore harmless". A `.json` the scanner cannot parse is a file it
+    # did not inspect.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
+        {"task.json": '{"_planted": [1, 2,'},  # truncated: not valid JSON
+    )
+    assert audit(d) != []
+
+
+def test_unparseable_jsonl_line_is_a_violation_not_a_silent_skip(tmp_path):
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY truth.jsonl /app/truth.jsonl\n",
+        {"truth.jsonl": '{"turn": 1}\nnot json at all\n'},
+    )
+    assert audit(d) != []

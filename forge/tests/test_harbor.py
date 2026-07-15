@@ -22,8 +22,25 @@ def test_write_task_produces_valid_tree(tmp_path):
 
 
 def test_agent_image_hides_ground_truth_and_grader(tmp_path):
+    # `assert audit(d) == []` alone is not enough, and this test is why the
+    # rule exists: it once WAS only that line, delegating the whole claim in
+    # its name to a detector no test could prove would ever fire (verified in
+    # the final review -- disabling _ground_truth_keys() left this test
+    # green). audit() is now pinned by its own red-verified tests in
+    # test_leak_audit.py, but this test states its claim directly too: a
+    # detector and a spot-check of the actual bytes fail independently.
     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
     d = write_task(DIM, inst, tmp_path, "0001")
+
+    shipped = (d / "environment" / "task.json").read_text()
+    assert "_planted" not in shipped
+    assert "_opt_makespan" not in shipped
+    # The ground truth exists -- it just lives in tests/, which Harbor uploads
+    # only at verification time. Without this, the assertions above would also
+    # pass if generate() had simply stopped planting anything.
+    gt = json.loads((d / "tests" / "ground_truth.json").read_text())
+    assert "_planted" in gt and "_opt_makespan" in gt
+
     assert audit(d) == []
 
 
