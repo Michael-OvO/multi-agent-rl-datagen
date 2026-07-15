@@ -113,3 +113,76 @@ def test_audit_clean_when_all_copies_resolve(tmp_path):
         {"task.json": "{}"},
     )
     assert audit(d) == []
+
+
+# --- Review findings ------------------------------------------------------
+#
+# Each test below reproduces a way the physical-line COPY parser let a file
+# into the agent image without the audit ever seeing it. Reverting the
+# corresponding fix must turn the test red again.
+
+
+def test_backslash_continuation_source_is_scanned(tmp_path):
+    # Finding 1 (CRITICAL): a source on a continuation line is invisible to a
+    # parser that walks physical lines -- it never reaches image_files() or
+    # unparsed_copies(), so audit() reports clean on an image it never
+    # actually inspected. This is the exact Dockerfile from the finding.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\n"
+        "COPY a.py \\\n"
+        "     leak_secret.py \\\n"
+        "     /app/dest/\n",
+        {
+            "a.py": "print('a')\n",
+            "leak_secret.py": "ORACLE = 1\ndef verify(x):\n    pass\n",
+        },
+    )
+    names = {p.name for p in image_files(d)}
+    assert "leak_secret.py" in names
+    violations = audit(d)
+    assert violations != []
+    assert any("leak_secret.py" in v for v in violations)
+
+
+def test_traversal_source_is_a_violation_not_silently_included(tmp_path):
+    # Finding 2 (IMPORTANT): `../../secret_outside.txt` is lexically inside
+    # task_dir's prefix (so `f.relative_to(task_dir)` never raises) but
+    # physically outside `environment/`. The audit must neither read this
+    # file into the image nor silently drop the COPY line -- it must report
+    # the line as unresolved.
+    (tmp_path / "secret_outside.txt").write_text("ORACLE outside the task dir\n")
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY ../../secret_outside.txt /app/secret.txt\n",
+    )
+    assert not any(f.name == "secret_outside.txt" for f in image_files(d))
+    unresolved = unparsed_copies(d)
+    assert len(unresolved) == 1
+    assert audit(d) != []
+
+
+def test_add_directive_is_recognized_like_copy(tmp_path):
+    # Finding 3 (IMPORTANT): the parser only matched COPY. ADD also copies
+    # files into the image -- an ADD directive was silently skipped, the
+    # same silent-drop bug as Finding 1.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nADD lib /app/lib\n",
+        {"lib/leak.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
+    )
+    names = {p.name for p in image_files(d)}
+    assert "leak.py" in names
+    assert audit(d) != []
+
+
+def test_add_url_source_is_unresolved_not_silently_skipped(tmp_path):
+    # Companion to Finding 3: ADD also accepts a URL, which is not a local
+    # path at all. That must fail closed into unparsed_copies(), not vanish
+    # the way an unrecognized directive would.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nADD https://example.com/archive.tar.gz /app/archive.tar.gz\n",
+    )
+    assert image_files(d) == []
+    assert len(unparsed_copies(d)) == 1
