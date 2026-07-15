@@ -29,6 +29,19 @@ means the image is clean with respect to the marker/ground-truth-key scan
 below. Any Dockerfile construct this module does not specifically recognize
 does not get the benefit of the doubt -- it fails closed into a reported
 violation instead of a clean result.
+
+The same fail-closed rule applies to file *content*, not just to Dockerfile
+syntax. Compiled Python (`.pyc`/`.pyo`, and anything under a `__pycache__`
+directory) is never a legitimate part of an agent image for this repo's
+task templates: every marker in FORBIDDEN_MARKERS survives verbatim into
+compiled bytecode as a literal string constant, and a module imports and
+runs from a `.pyc` alone with no `.py` source present anywhere on disk. A
+substring scan over marshalled bytecode is not "coverage" -- a scan that
+happens to miss a marker is indistinguishable from a clean result -- so
+such files are a flat violation rather than a best-effort scan. More
+generally, any file this module cannot decode as text is surfaced as a
+violation rather than silently skipped: "I cannot scan this" must never be
+treated as "therefore harmless".
 """
 
 from __future__ import annotations
@@ -46,7 +59,6 @@ FORBIDDEN_MARKERS = (
     "DIFFICULTY_PRESETS",
 )
 
-_SKIP_SUFFIXES = (".pyc",)
 _GLOB_CHARS = "*?["
 _DIRECTIVES = ("COPY", "ADD")
 
@@ -63,9 +75,16 @@ _ARCHIVE_SUFFIXES = (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip")
 
 
 def image_files(task_dir: Path) -> list[Path]:
-    """Host paths of files copied into the agent image by its Dockerfile."""
+    """Host paths of files copied into the agent image by its Dockerfile.
+
+    Includes everything a resolved COPY/ADD directive puts in the image --
+    compiled bytecode included. A file silently dropped here would be
+    invisible to every downstream consumer of this list (audit() below, and
+    the callers in Tasks 3/5/7), which is the exact failure mode this
+    function must not reintroduce.
+    """
     files, _ = _scan(Path(task_dir))
-    return [p for p in files if p.suffix not in _SKIP_SUFFIXES]
+    return files
 
 
 def unparsed_copies(task_dir: Path) -> list[str]:
@@ -217,6 +236,35 @@ def _resolve_source(token: str, env: Path) -> list[Path] | None:
     return None
 
 
+_COMPILED_SUFFIXES = (".pyc", ".pyo")
+
+
+def _is_compiled_python(path: Path) -> bool:
+    """True for a compiled-bytecode file, or any file under a __pycache__ dir.
+
+    See the module docstring: these are never legitimate in an agent image
+    for this repo's task templates, and are treated as a flat violation
+    rather than substring-scanned, because a scan over marshalled bytecode
+    that happens to miss a marker is indistinguishable from a clean result.
+    """
+    return path.suffix in _COMPILED_SUFFIXES or "__pycache__" in path.parts
+
+
+def _decode_text(path: Path) -> str | None:
+    """Return `path`'s contents as text, or None if it cannot be decoded.
+
+    A file that isn't valid UTF-8 text -- an image, an archive, a compiled
+    artifact -- cannot be substring-scanned with any confidence: bytes that
+    happen to decode do not mean the scan covered the file's real content,
+    and there is no way to tell "scanned and clean" apart from "silently
+    missed". Callers must turn a None here into a violation, never a skip.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
+
+
 def _ground_truth_keys(path: Path) -> list[str]:
     if path.suffix != ".json":
         return []
@@ -250,9 +298,19 @@ def audit(task_dir: Path) -> list[str]:
         rel = f.relative_to(task_dir)
         for key in _ground_truth_keys(f):
             violations.append(f"{rel}: ground-truth key {key!r} in agent image")
-        try:
-            text = f.read_text(errors="ignore")
-        except Exception:
+        if _is_compiled_python(f):
+            violations.append(
+                f"{rel}: compiled Python bytecode in agent image -- unauditable "
+                f"(grading markers survive compilation and a module can be "
+                f"imported from bytecode alone, with no .py source present)"
+            )
+            continue
+        text = _decode_text(f)
+        if text is None:
+            violations.append(
+                f"{rel}: file in agent image could not be scanned as text "
+                f"(unscannable content is a violation, not a skip)"
+            )
             continue
         for marker in FORBIDDEN_MARKERS:
             if marker in text:

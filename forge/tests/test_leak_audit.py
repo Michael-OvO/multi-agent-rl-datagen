@@ -1,3 +1,5 @@
+import py_compile
+
 from forge.maf.dimensions.scheduling import DIM as SCHED
 from forge.maf.harbor import write_task
 from forge.maf.leak_audit import audit, image_files, unparsed_copies
@@ -263,3 +265,77 @@ def test_add_local_archive_is_unresolved_not_scanned_as_opaque_file(tmp_path):
     assert len(unresolved) == 1
     assert "leak.tar.gz" in unresolved[0]
     assert audit(d) != []
+
+
+# --- G1 fail-open: compiled bytecode is invisible to the audit ------------
+#
+# `_SKIP_SUFFIXES = (".pyc",)` filtered compiled bytecode out of
+# image_files() before the marker/ground-truth scan ever ran. Verified
+# facts (see task report): every FORBIDDEN_MARKERS substring survives into
+# compiled bytecode; a module imports and runs from a .pyc alone with no
+# .py source anywhere on disk (copy maf_core.pyc + maf_dim.pyc onto
+# sys.path -- ORACLE is present, generate() is callable); and the checked-in
+# tasks/parallel-scheduling-0003/environment/ actually ships lib/__pycache__
+# *.pyc via a `COPY lib /app/lib` Dockerfile line, so this is a real path,
+# not a theoretical one. "I cannot scan this" must fail closed into a
+# violation, not a silent skip.
+
+
+def test_pyc_only_lib_dir_is_a_violation(tmp_path):
+    # (a) A lib/ dir COPYed into the image that holds ONLY compiled
+    # bytecode -- no .py source at all -- must not audit clean. This is the
+    # exact shape of the exploit: an agent needs no .py anywhere to import
+    # and run the module.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
+    )
+    lib = d / "environment" / "lib"
+    pycache = lib / "__pycache__"
+    pycache.mkdir(parents=True)
+    src = tmp_path / "maf_dim_src.py"
+    src.write_text("ORACLE = 1\ndef verify(x):\n    pass\n")
+    py_compile.compile(
+        str(src), cfile=str(pycache / "maf_dim.cpython-313.pyc"), doraise=True
+    )
+    # Confirm the fixture matches the claim: bytecode only, no .py under lib/.
+    assert not any(p.suffix == ".py" for p in lib.rglob("*"))
+    assert audit(d) != []
+
+
+def test_pyc_alongside_py_violation_names_pyc_not_only_py(tmp_path):
+    # (b) A .pyc sitting next to its already-flagged .py must be named in
+    # its own violation. Flagging only the .py would still miss the exploit
+    # path this module exists to close: an agent can import from the .pyc
+    # even when the .py is also visible to the scan.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
+        {"lib/maf_dim.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
+    )
+    lib = d / "environment" / "lib"
+    pycache = lib / "__pycache__"
+    pycache.mkdir(parents=True)
+    py_compile.compile(
+        str(lib / "maf_dim.py"),
+        cfile=str(pycache / "maf_dim.cpython-313.pyc"),
+        doraise=True,
+    )
+    violations = audit(d)
+    assert violations != []
+    assert any("maf_dim.cpython-313.pyc" in v for v in violations), violations
+
+
+def test_image_files_includes_compiled_bytecode(tmp_path):
+    # image_files() itself must stop hiding .pyc -- it is a file genuinely
+    # copied into the agent image, and downstream consumers (Tasks 3, 5, 7)
+    # rely on image_files() to see everything that lands there.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
+    )
+    lib = d / "environment" / "lib"
+    lib.mkdir(parents=True, exist_ok=True)
+    (lib / "module.pyc").write_bytes(b"\x00\x01\x02\xf3\xfe\xff\x00")
+    names = {p.name for p in image_files(d)}
+    assert "module.pyc" in names
