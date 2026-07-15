@@ -18,12 +18,14 @@ services:
     environment:
       MAF_TASK_ID: "2a163ab_2"
       MAF_CONFIG: '{"task_id": "2a163ab_2", "roster": ["phone", "venmo"], "topology": "star", "visibility": "names", "delegation_budget": null}'
-      MAF_VERIFIER_TOKEN: "b29e81352f8b8c457e79869b19ccee4b"
+      MAF_VERIFIER_TOKEN: "bd719cf6d0ef1acf226e0505cf86b5e7"
       OPENAI_API_KEY: "${OPENAI_API_KEY}"
     expose:
       - "8079"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8079/roster', timeout=3)"]
+      # /health, not /roster: /roster executes the API catalog against the live
+      # world, and this fires every 3s for the life of the episode.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8079/health', timeout=3)"]
       interval: 3s
       timeout: 5s
       retries: 30

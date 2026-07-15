@@ -50,9 +50,18 @@ def _run_open_control(client, world, task: str, roster, log: RunLog, model: str)
     Implemented as a single 'specialist' whose app set is the whole roster, so
     the control differs from the partitioned runs in exactly one thing -- the
     constraint -- and nothing else.
+
+    The roster is passed as a *tuple*, not as a pre-joined display string. It
+    used to be `"`, `apis.".join(roster)`, which made the prompt's prose read
+    correctly and its workflow emit
+    `show_api_descriptions(app_name='phone`, `apis.venmo')` -- a call that cannot
+    run. The control therefore never saw a catalog and reached 1.000 by guessing
+    API names. Formatting for display and naming what an agent may touch are two
+    different jobs; conflating them also meant the sandbox read the whole joined
+    string as one app name and refused the control every API it had.
     """
-    app_list = "`, `apis.".join(roster)
-    return run_specialist(client, world, f"{app_list}", task, log, model=model, max_turns=20)
+    return run_specialist(client, world, tuple(roster), task, log, model=model,
+                          max_turns=20)
 
 
 def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,

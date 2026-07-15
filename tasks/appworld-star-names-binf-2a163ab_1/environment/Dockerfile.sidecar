@@ -7,7 +7,13 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir appworld openai
+# Pinned. Unpinned, a task rendered today and the same task rebuilt in six
+# months are different experiments sharing a task id, and every measurement in
+# WRITEUP.md would be attributed to whatever happened to be on PyPI that
+# morning. The sandbox in particular is written against appworld 0.1.3's
+# SafetyGuard: it assumes `world.execute()` runs in-process and that AppWorld's
+# own guard does not contain an adversary. A silent upgrade could change both.
+RUN pip install --no-cache-dir appworld==0.1.3.post1 openai==2.16.0
 
 WORKDIR /opt/maf
 ENV APPWORLD_ROOT=/opt/maf
@@ -17,6 +23,13 @@ ENV APPWORLD_ROOT=/opt/maf
 # un-reviewable; this way the layer is cached across every task built from this
 # image, which is the same shared-base-image trick SWE-smith uses to get 50k
 # tasks out of 295GB.
+#
+# NOT REPRODUCIBLE, and not fixable from here: `appworld download data` takes no
+# version (see appworld/download.py:14 -- `download_data()` has no arguments), so
+# this pulls whatever the current dataset is. The packages above are pinned; the
+# data is not. Pinning it needs either a base image published at a known digest
+# or a vendored dataset snapshot. Task ids are stable across releases so far,
+# which is luck, not a guarantee.
 RUN appworld install && appworld download data
 
 COPY server.py /opt/maf/server.py

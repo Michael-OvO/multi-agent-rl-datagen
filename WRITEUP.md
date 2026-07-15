@@ -1,9 +1,9 @@
 # Multi-Agent Foundational-Capability RL Data Generation
 
-**A write-up of what was built, what was measured, and what was wrong.**
+**What I built, what I measured, and what it turned out to measure.**
 
-Every number here was produced in this repository. Where something is unmeasured
-or failed, it says so.
+Every number here was produced in this repository, and the file that produced it
+is named next to it. Where something is unmeasured or wrong, it says so.
 
 ---
 
@@ -13,8 +13,40 @@ I built a forge that turns AppWorld's single-agent tasks into multi-agent
 orchestration tasks by **constraining the agent's access to the world, and never
 touching the judge**.
 
-The reason that is the design — rather than a design — is that I built the
-obvious thing first, and it was silently worthless.
+The reason that is *the* design rather than *a* design is that I built the obvious
+thing first, and it was silently worthless (§1).
+
+**Then I measured it, and the headline was a harness bug.** This repo previously
+reported the partition dropping the score `1.000 → 0.333`. That 0.333 is exactly
+the do-nothing floor, and the reason was that the specialists were being shown an
+API catalog truncated past the verb the task needed (§7.1). Removing the bug
+removed the result.
+
+What is actually there, re-measured (§5), is smaller and more interesting:
+
+| | mean | |
+|---|---|---|
+| `open` — one agent, every API | **1.000** | the control |
+| `star-docs` — no APIs, may read its specialists' docs | **0.944** | the partition costs ~nothing |
+| `star-names` — no APIs, does not know what they can do | **0.778** | *this* is what costs |
+
+**Taking a frontier model's tools away and making it delegate did not make the
+task hard — it made it longer.** Four of six partitioned rollouts still scored the
+ceiling. The knob that bites is not *having* to delegate, it is **not knowing who
+to delegate to** — and that knob had previously been measured as dead, while the
+command it depends on did not exist (§7).
+
+That is the whole write-up in one shape: **every number this repo has been proud
+of was a bug until it was checked.** §1 is that happening to a dimension I
+designed; §7 is it happening again to the one I built to avoid it.
+
+> A badly chosen constraint makes a task too easy or too hard — **measurable**.
+> A badly designed oracle makes the reward measure the wrong thing — **invisible**.
+> Trade the invisible failure mode for the visible one.
+
+That trade is still right, and it was not sufficient. Borrowing the oracle buys
+you a correct *judge*; it buys nothing about the *world* around it. A harness bug
+is as invisible as a bad oracle and answers to none of these gates (§7).
 
 ---
 
@@ -63,34 +95,33 @@ instruction-following while reporting theory of mind.
 So the question stopped being *"what capabilities should I generate?"* and became
 **"what can I build that I am incapable of getting wrong?"**
 
+§7 is that question being answered badly a second time, in a place I had not
+thought to look.
+
 ---
 
 ## 2. Research: the capabilities do not split by importance
 
-The brief lists ten capabilities. They divide cleanly, but not along the axis the
-list suggests:
+The brief lists ten capabilities. They divide cleanly, but not along the axis of
+which matter most — along **which have a free oracle**.
 
-| | capabilities | who judges "done"? |
+| | capabilities | oracle |
 |---|---|---|
-| **Coordination over a world** | dependency identification, parallel scheduling, replanning, failure recovery, long-horizon planning | the world executes → **the oracle is free** |
-| **Coordination over other minds** | theory of mind, topologies, Main↔Sub / Sub↔Sub communication, role-awareness | the minds must be simulated → **I design the oracle** |
+| **state-checkable** | task decomposition, orchestration, role assignment, dependency identification, parallel scheduling | the world's own final state — free |
+| **transcript-judged** | theory of mind, communication quality, replanning, long-horizon coherence | somebody has to grade the *reasoning* — and that somebody would be me |
 
-`parallel-scheduling` survived my audit. `theory-of-mind` died. That is not luck —
-it is this split. Scheduling's oracle re-executes the submitted artifact;
-theory-of-mind's oracle was a number I computed and computed wrong.
+v1 tried to build oracles for the second column. That is where every failure in
+§1 came from.
 
-**Curriculum order follows**: world-coordination before mind-coordination. Not
-because it is conceptually prior, but because its oracle can be trusted. Building
-a mind-coordination task before you can trust your own oracle is how you get
-12/12 at 1.0 and never notice.
+So this forge targets the first column, and **pressures** the second without
+claiming to isolate it: a specialist that is briefed badly does the wrong work,
+and the state check catches the wrong work for free. That is communication
+quality graded without an LLM judge — but only as a *contribution* to a
+state-checkable outcome, never attributed on its own (§8).
 
-I checked whether the field has solved this. It has not: the
-[orchestration-traces survey](https://arxiv.org/html/2605.02801v1) states that
-causal credit "is not identifiable from realized on-policy traces alone" and
-ships a JSON schema rather than a dataset. MultiAgentBench has topologies but
-scores with milestone KPIs. **There is no multi-agent trace + environment +
-free-oracle corpus.** Anyone doing this must manufacture the structure. The only
-question is *which layer* you manufacture.
+**Curriculum order falls out of the same split**: decomposition before
+orchestration before scheduling, because each needs the previous one's output to
+be checkable at all.
 
 ---
 
@@ -104,12 +135,6 @@ I take the principle and change the perturbation axis:
 
 > **SWE-smith breaks the world. I blind the agent.**
 
-Same free-oracle trick, different knob. And the safety property is precise:
-
-> A badly chosen constraint makes a task too easy or too hard — **measurable**.
-> A badly designed oracle makes the reward measure the wrong thing — **invisible**.
-> This trades an invisible failure mode for a visible one.
-
 **Substrate:** AppWorld — 9 apps, 457 APIs, 732 tasks, `pip install appworld`,
 and a **programmatic state-based oracle with no LLM in it** that also catches side
 effects. I verified it end-to-end before building anything: a hand-written
@@ -117,24 +142,67 @@ solution to `82e2fac_1` reached `success=True`, 2 passes, 0 failures.
 
 **What I add:** the Main gets **zero API access**. It can only
 `team ask <specialist> "<request>"`. Each specialist is a real LLM bound to one
-app, which does not know the task.
+app, and does not know the task.
 
 | | source | designed by me? |
 |---|---|---|
 | task, ground truth, oracle, environment | AppWorld | **no** |
 | access / information / topology / budget constraints | this repo | yes — and none of them can reach the judge |
 
----
+### 3.1 The specialists are real LLMs, deliberately
 
-## 4. The anti-toy rule, and the 65% it rejected
+If a specialist were a scripted executor of structured requests, the Main would be
+calling APIs with extra steps and the multi-agent structure would be theatre. A
+specialist has to interpret a natural-language brief for "did the Main brief it
+well" to mean anything.
 
-The failure mode I was most worried about is a pile of sub-agents that look
-impressive and measure nothing. Two rules guard against it.
+What that produced, unprompted: asked "who are my roommates", a venmo specialist
+with no address book substituted its **friends list** and answered confidently.
+The Main never asked `phone` — the only app that knows. Real theory-of-mind
+pressure, from a constraint, caught by an oracle nobody wrote.
+
+It also has a cost, and §7 is that cost: an environment containing models is an
+environment that can be quietly broken in ways a state check cannot see.
+
+### 3.2 Isolation is a property of the container, not a promise
+
+The Main's image contains exactly one file: a ~60-line HTTP client (`team`).
+AppWorld, the specialists, the ground truth and `evaluate()` live in a **sidecar**
+the Main reaches over three verbs. "The Main has no API access" is therefore a
+fact about what is on disk.
+
+This is a direct consequence of §1: v1 shipped its generator into the agent's
+image and got seed-brute-forced.
+
+The verifier token gates `/state` and lives only in `tests/`, which Harbor uploads
+*after* the agent phase — so the score cannot be read mid-episode. **That boundary
+had a hole in it**, and closing it properly took two attempts (§7.3).
+
+### 3.3 Verification: we do not design it
+
+Reward is `passes / (passes + failures)` — a count of **AppWorld's own
+per-requirement unit tests**. No `q_opt`, no planted optimum, **nothing we can get
+wrong**.
+
+The six requirements for `2a163ab_1`:
+
+```
+assert no new venmo.Transaction was added          <- passes for free
+assert answers match                               <- passes for free once the answer type is right
+assert model changes match venmo.Transaction, venmo.TransactionLike
+assert set of all new transaction likes is identical to ...
+assert all newly liked transaction_ids are in recent_transaction_ids
+assert all newly liked transaction_ids are in relative_transaction_ids
+```
+
+Two pass for free, so the **do-nothing floor is 2/6 = 0.333** — measured, no LLM:
+`scripts/appworld_donothing_probe.py` → `sweep/appworld_donothing.json`, 0.333 on
+all three shipped tasks. **Keep that number.** It is the whole of §7.
+
+### 3.4 The anti-toy rule, and the 65% it rejected
 
 **Rule 1: the task decides the partition. I never do.** A task's specialists are
 the apps its ground truth actually touches. No padding.
-
-It immediately rejected two thirds of the corpus:
 
 | filter | usable |
 |---|---|
@@ -144,275 +212,289 @@ It immediately rejected two thirds of the corpus:
 `supervisor` is called in all 147 tasks and **every call is `complete_task`** —
 the submit channel. It carries no information between apps. Counting it turns 96
 single-app puzzles into "multi-agent" tasks with a decorative second specialist
-that would pass every check.
+that would pass every check. The naive number is the one that would have looked
+better in this write-up.
 
-The naive number is the one that would have looked better in this write-up.
-
-**Rule 2: every knob must move the score, or it is decoration.** The ablation is
-free: `OPEN` is the same task, the same oracle, the partition off.
+**Rule 2: every knob must move the score against the OPEN control, or it is
+decoration.** The ablation is free: `OPEN` is the same task, the same oracle, the
+partition off. §6 is that rule being applied to my own headline knob, and the
+knob losing.
 
 ---
 
-## 5. What the measurements say
+## 4. What is built
 
-Task `2a163ab_1..2` — *"Like all the venmo transactions from today involving any
-of my roommates"* and variant. Main = gpt-5.6-sol, specialists = gpt-4.1.
-**These postdate the answer-type fix in §5.3; everything measured before it was
-capped at 0.833.**
+- **Pipeline:** `forge/appworld/` — `select` · `partition` · `runtime` ·
+  `sandbox` · `reference` · `harbor` · `cli` (`measure` / `render`) ·
+  `container/`.
+- **Harbor tasks:** `python -m forge.appworld.cli render --n 3` → 6 tasks
+  (3 AppWorld tasks × 2 shipped configurations).
+- **Reference solutions:** `forge/appworld/reference.py` records the
+  decomposition a competent Main would find; `solve.sh` replays it through
+  `team`. **3/3 reach `success=True`, 6/6**, verified in-container against Harbor
+  0.18 — `sweep/appworld_oracle.json`. The specialists are LLMs, so this oracle
+  is **probabilistic**: it needs `OPENAI_API_KEY` at verification time and costs
+  tokens.
+- **Skill:** `skills/constraint-forged-multi-agent-tasks/SKILL.md` — the
+  method, and the failure modes it was built from.
+- **Gates and probes**, each backing a claim in this document:
 
-| config | success | partial | delegations |
+  | script | question it answers |
+  |---|---|
+  | `appworld_knob_sweep.py` | does each knob move the score against the control? |
+  | `appworld_donothing_probe.py` | where is the floor? |
+  | `appworld_catalog_probe.py` | what does truncating the API catalog destroy? |
+  | `appworld_injection_probe.py` | can a brief make a specialist leak the reward token? |
+  | `appworld_oracle_report.py` | do the shipped solutions actually pass? |
+
+---
+
+## 5. The measurement that matters
+
+**Three tasks** (`2a163ab_1`, `2a163ab_2`, `2a163ab_3`), one seed each. Main =
+gpt-5.6-sol, specialists = gpt-4.1, harness fixed (§7).
+`scripts/appworld_knob_sweep.py` → `sweep/appworld_knobs_v3.json`.
+
+| config | mean | per task | delegations |
 |---|---|---|---|
-| **`open`** — the control: one agent, every API, no partition | **True** | **1.000** | 0 |
-| `star-docs` — Main has no APIs, specialists have docs | False | **0.333** | 7–12 |
-| `star-names` — Main has no APIs and does not know what they do | False | **0.333** | 2 |
-| `chain-names` — unshipped, see §6 | False | 0.333 | 12 |
+| `open` — the control: one agent, every API | **1.000** | 1.0 · 1.0 · 1.0 | 0 |
+| `star-docs` — Main has no APIs, may read its specialists' docs | **0.944** | 1.0 · 0.833 · 1.0 | 2–3 |
+| `star-names` — Main has no APIs and does not know what they can do | **0.778** | 1.0 · 1.0 · 0.333 | 2–4 |
+| `chain-names` — unshipped, a fake signal (§6) | 0.333 | 0.333 · 0.333 · 0.333 | 12 |
 
-**The control is not a deliverable.** It is the ruler: the same task, the same
-oracle, the knob turned off. Every shipped task is a partitioned one. The control
-exists only to answer the question that makes 0.333 mean anything — *is this task
-hard, or is it impossible?*
+Read against the two fixed points: **do-nothing floor = 0.333** (§3.3), **control
+= 1.000**.
 
-Its **1.000** answers it: gpt-5.6-sol solves this task completely when it holds
-the APIs itself. Take the APIs away and make it coordinate, and it gets a third of
-the way.
+### The knobs order correctly, and the effect is small
 
-**The task has gradient** — the thing `theory-of-mind` never had. On the same
-control: gpt-4.1 **0.17**, gpt-5.6-sol **1.000**.
+`1.000 > 0.944 > 0.778` is the first monotone ladder this repo has produced that
+is not a harness artefact — and there is **variance**, which is precisely what v1
+never had (§1): `star-docs` came back `[1.0, 0.833, 1.0]`, `star-names`
+`[1.0, 1.0, 0.333]`. Non-degenerate cells, in the right order.
 
-### What 0.167 and 0.833 actually are — and the bug hiding behind them
+That is the good news, and it is thin. **Four of the six partitioned rollouts
+scored the ceiling.** A frontier Main, stripped of every API and made to
+coordinate two specialists through a text channel, solves most of these tasks in
+two delegations. The access partition on its own moves the mean by **0.056** —
+one task losing one requirement out of six — which three tasks at one seed cannot
+separate from noise.
 
-I reported these as scores for two days before printing the six requirements
-individually rather than the aggregate `5 pass / 1 fail`:
+**Blinding a strong agent did not reliably make the task hard. It made it
+longer.** If the decomposition is shallow — ask A, tell B — a good Main just does
+it. That is the honest headline, and it is the thing I would want to know before
+building this again.
 
-```
-PASS  assert no new venmo.Transaction was added        <- free when you do nothing
-FAIL  assert answers match
-FAIL  assert model changes match venmo.Transaction, venmo.TransactionLike
-FAIL  assert set of all new transaction likes is identical to ...
-FAIL  assert all newly liked transaction_ids are in recent_transaction_ids
-FAIL  assert all newly liked transaction_ids are in relative_transaction_ids
-```
+### The knob that bites is the one previously measured as dead
 
-**0.167 = 1/6 = do nothing.** One requirement passes for free.
+`visibility` costs **0.167** (0.944 → 0.778), more than the partition itself, and
+it is the only knob that drove a task to the floor.
 
-**0.833 = 5/6 = do all the work, then fail `assert answers match`.** The ground
-truth for this task ends `return None` — it is an *action* task, and its answer is
-`None`. My harness always submitted a prose summary. Measured directly:
+It was previously written up as having **no score effect at all** — while the
+`team docs <name>` command its entire premise depends on **did not exist**. The
+instruction told the Main to run it; the client answered `unknown command`. So the
+knob was being measured with one of its two sides unimplemented, and the reading
+"no effect" was an artefact of that (§7). With the command implemented, taking
+away the Main's knowledge of *what its specialists can do* is what actually
+costs it.
 
-| same work, submitted as | result |
-|---|---|
-| prose (`"Liked 4 transactions"`) | success=**False**, **0.833** — still failing `assert answers match` |
-| `None` (what the GT does) | success=**True**, **1.000** |
+That is the shape of a real result: the difficulty is not in *having* to delegate,
+it is in **not knowing who to delegate to**. Which is theory-of-mind pressure —
+the capability §2 says has no free oracle — arriving through a constraint and
+getting graded by a state check anyway.
 
-**0.833 was my harness's ceiling, not the task's.** Every action task in every
-sweep was silently capped at 5/6, and `success=True` was never reachable through
-my pipeline. An earlier draft of this write-up said *"0.83 is not 1.0: the ceiling
-is not pinned either"* — that was false. I had welded it shut myself.
+### What I would do next, and it is not scale
 
-Fixed: the harness now submits `None` when the Main reports an action. The
-instruction had told the Main to say `completed` for action tasks all along; the
-harness ignored it.
+Three tasks at one seed, one task family. The ladder is suggestive and unpriced.
+Before rendering another 99 variants (§8), the next run is **seeds, not scale**:
+5 seeds × these 3 tasks × `open`/`star-docs`/`star-names`, which is enough to put
+an interval on 0.056 and on 0.167 and find out whether the first one survives.
 
-The scale is therefore closer to binary than the numbers suggest: **0.167 = did
-nothing, 0.833 = did everything (capped), 1.0 = did everything and submitted the
-right answer type.**
-
-**But zero variance is a smell, not a triumph**, and reading the rows rather than
-the aggregate found two real bugs — one of them in the headline.
-
-### Bug 1: `chain` was never implemented
-
-`deleg=12.0` is exactly `max_steps=12`, in all three tasks, and every answer is
-`(out of steps)`. In CHAIN the Main can reach only `roster[0]`; the
-specialist→specialist handoff the topology exists for is defined in
-`Constraints.allowed_targets` and **called by nothing**. The task is unsolvable
-and the Main loops to the cap.
-
-Its 0.167 does not mean "chain is harder". It means "chain is impossible". A knob
-that moves the score by breaking the task is worse than decoration — it is a fake
-difficulty signal. **It is unshipped**, with the reason recorded at the decision
-point and a test pinning it.
-
-### Bug 2: the headline comparison is confounded
-
-The `star` answers are not orchestration failures. They are refusals *by the
-specialists*:
-
-    "Unable to complete: Venmo cannot access the social feed"
-    "Unable to complete: phone contact search and Venmo social-feed unavailable"
-
-The specialists are **gpt-4.1**. The OPEN control's work is done by
-**gpt-5.6-sol**. So `0.83 → 0.17` changes two things at once:
-
-- **(a)** the Main loses direct access — what I claim to measure
-- **(b)** the API work is now done by a weaker model — a confound
-
-The gate I was pleased to have passed does not cleanly separate *"partitioning is
-hard"* from *"gpt-4.1 cannot drive venmo"*. The ground truth for these tasks uses
-`venmo.show_social_feed`, so the API is there; the specialist failed to find it.
-
-### Resolving it: the drop is the Main's, and here is the proof
-
-Two experiments. First, `star` with **gpt-5.6-sol specialists**, isolating (a)
-from (b):
-
-All figures in this subsection are **pre-fix** (capped at 0.833 — §5.3), which is
-fine: the comparison is internally consistent, and it is what I had at the time.
-
-| config | specialists | partial | n |
-|---|---|---|---|
-| `open` (control) | — (Main does the work) | **0.833** | 3 |
-| `star-docs` | gpt-4.1 | **0.167** | 3 |
-| `star-docs` | **gpt-5.6-sol** | **0.167** | 2 |
-
-Upgrading the specialists to the control's own model **changes nothing**.
-
-But that alone did not prove the task sound — 0.167 was *exactly* the do-nothing
-score (the `oracle` agent, which acts not at all, scores `passes=1, failures=5` =
-0.167). Every partitioned run landing precisely on do-nothing looks far more like
-a broken harness than like a hard task.
-
-That suspicion was half right, and it is worth being precise about which half.
-The harness *was* broken — but in the ceiling (§5.3), not the floor. Once the
-answer-type bug was fixed the partitioned score moved to **0.333**: the Main does
-accomplish something, it just cannot finish. **So the "partitioning reduces the
-Main to doing literally nothing" reading was an artefact of my own cap**, and an
-earlier draft of this write-up asserted it. The drop is real and larger than I
-first reported (1.000 → 0.333), but it is not a wall.
-
-So: **hand the venmo specialist a perfect brief** — the one the Main should have
-produced, with the roommate names already in it:
-
-    brief:  "On my Venmo social feed, find every transaction from today involving
-             Anthony Harrison, Anita Burch, or Nicholas Weber. Like every one."
-    report: "Liked all 4 transactions from today involving Anthony Harrison,
-             Anita Burch, or Nicholas Weber."
-    oracle: partial = 0.833  (5 pass / 1 fail)
-
-**The specialist scores exactly what the unpartitioned control scores.** The
-harness works. The specialist is capable. Nothing is broken.
-
-| condition | partial |
-|---|---|
-| one agent holding every API | **0.833** |
-| specialist + a perfect brief | **0.833** |
-| **Main orchestrating for itself** | **0.167** |
-
-The entire gap belongs to the Main: it never works out that it must ask `phone`
-for the names before `venmo` can act on them. **That is the capability under
-test, and it is the only thing the drop measures.**
-
-This also explains why swapping the specialist model changed nothing: the
-specialist was never the bottleneck. Swapping the *Main* does move the score —
-0.17 for gpt-4.1 versus 0.83 for gpt-5.6-sol on the control.
-
-What the upgrade *did* change is the failure mode. With gpt-4.1 specialists the
-Main gave up:
-
-    "Unable to complete: Venmo cannot access the social feed"
-
-With gpt-5.6-sol specialists it confidently concluded the opposite of the truth,
-on both tasks:
-
-    "No Venmo social-feed transactions from today involving my roommates"
-    "No Venmo social-feed transactions from yesterday involving my roommates"
-
-The control scores 0.83, so the transactions exist. **A stronger specialist did
-not rescue the task — it converted a refusal into a confident wrong answer**,
-which is the same failure the venmo hallucination showed at the very start, and
-it is the one that matters: an orchestrator that is told "there is nothing there"
-by a competent-sounding specialist has no way to know it was asked wrong.
-
-(n=2 for the strong-specialist arm. Enough to refute the confound; not enough to
-put an interval on the drop.)
-
-I nearly shipped the confounded number. Zero variance across 12 rows should have
-made me suspicious immediately — instead it read as a triumph.
-
-### The failure mode the constraint exposes, unprompted
-
-    [MAIN -> venmo] "List the usernames of my roommates on Venmo."
-    [venmo -> MAIN] "ed_wilson, kri-powe, les_ball, tr_solo, ..."
-
-Venmo has no address book. It substituted its **friends list** for "roommates"
-and answered confidently. The real roommates — which the `phone` specialist
-retrieves without difficulty — are Anthony Harrison, Anita Burch, Nicholas Weber.
-A completely different set.
-
-**The Main never queried `phone` at all.**
-
-Two real failures, on the first runs:
-1. The Main does not model *what each specialist can possibly know*. It asks
-   whoever performs the action, not whoever holds the fact.
-2. A specialist asked outside its competence guesses instead of declining.
-
-That is theory of mind, produced by a constraint, graded by an oracle I did not
-write. Compare the ToM dimension I built on purpose, which measured nothing.
-
-### And the capability is real, because a better model does it right
-
-Running the same task in Harbor with `terminus-2` / gpt-5.6-sol as the Main — a
-real agent in the container, reaching the world only through `team` — its second
-step reads:
-
-    "Analysis: The phone specialist request has been sent, but no reply is
-     visible yet, so the command is still processing."
-
-It delegated to **`phone` first** — the specialist that actually knows — where the
-in-process gpt-4.1 Main went straight to venmo and was taken in by the invented
-roommate list.
-
-Same constraint, same oracle: the weaker model asks the wrong specialist, the
-stronger one asks the right specialist. That difference is the capability, and
-nothing I wrote judges it.
+My expectation, stated before the run so it is falsifiable: **`star-docs` will not
+separate from the control, and `star-names` will.**
 
 ---
 
 ## 6. What is not established
 
-**The partition saturates, so the finer knobs are unmeasured.** All three
-partitioned configs land on 0.17. What they do show is a clean monotone effect on
-*effort*:
+**The evidence is thin.** Three tasks, one seed each, one task family
+(`2a163ab_*` — like the transactions on your feed involving a group only `phone`
+can name). Everything in §5 is a direction, not an interval. What would change my
+mind: more seeds per cell, a second task family, and a Main weak enough that the
+control has somewhere to fall.
 
-    open -> star-docs -> star-names -> chain-names
-    0        3            6             12          delegations
+**No per-capability attribution, and this is a real gap against the brief.** The
+brief asks for failure modes and verification logic *per capability*. AppWorld's
+state check is one number for the whole episode: a failure could be
+decomposition, briefing, or mind-modelling, and nothing here separates them. §2
+is honest about why — the transcript-judged capabilities have no free oracle, and
+building one is exactly what produced §1. But "we did not build it because
+building it is the trap" is an argument, not a deliverable. Isolating them needs
+probes this does not have.
 
-Each constraint **doubles** the Main's delegations while the outcome stays flat.
-The knobs are biting — but at this model tier the ladder is expressed as work,
-not score. By my own rule they are delete candidates; the honest reading is that
-they are **unmeasurable at this difficulty**, and telling "no effect" from "no
-headroom" needs an easier task or a stronger Main. They ship flagged.
+**`chain` is unimplemented and its score is a fake signal.** It scores with
+`deleg = 12` — exactly `max_steps` — and `answer='(out of steps)'` every time.
+The Main can reach only `roster[0]`, and the specialist→specialist handoff the
+topology exists for is defined in `Constraints.allowed_targets` and **called by
+nothing**. Its score reports the step cap, not the topology. A knob that moves the
+score by breaking the task is worse than decoration. Unshipped, with a test
+pinning it.
 
-**One task, one seed** for the knob table. Enough to show the partition
-dominates; not enough to rank configurations.
+**`delegation_budget` has never been measured.** It ships in `partition.py` and
+in no configuration.
 
-**The instrument nearly lied, twice** — both worth stating because both are the
-same disease as the original:
+**The dataset is not pinned.** The Python packages are (`appworld==0.1.3.post1`),
+but `appworld download data` takes no version argument — `download_data()` has no
+parameters — so the image pulls whatever the current dataset is. Long-term
+reproducibility needs a base image published at a known digest or a vendored
+snapshot. Task ids have been stable across releases so far, which is luck.
 
-1. **Floor effect.** The first sweep used gpt-4.1 as the Main. Control and
-   partitioned runs all scored 0.17 — an apparent "the knob does nothing". The
-   control was already failing.
-2. **A silent harness bug producing the identical number.** gpt-5.x rejects
-   `temperature=0`. Every call 400'd, my `except` swallowed it, and rows still
-   reported `partial=0.17` — the untouched world's score, *the same number the
-   genuinely-failing runs produced*. Only a mechanism-level field (`turns=0`)
-   distinguished a harness bug from a real result.
+**The sandbox is a static gate over a namespace we do not own** (§7.3). It holds
+against everything demonstrated, and its horizon is real.
 
-Outcome-only logging cannot tell *"the agent tried and failed"* from *"the agent
-never ran"*.
-
-**Scope.** The constraints *pressure* theory of mind and communication — §5 shows
-the Main failing at exactly the ToM step — but nothing here **isolates** them. A
-failure could be decomposition, briefing, or mind-modelling. Attribution needs
-per-capability probes this does not have.
+**The oracle is probabilistic.** `solve.sh` needs `OPENAI_API_KEY`, costs tokens,
+and runs live models. A deterministic oracle is not available at this design's
+price — that is a real cost of building a task whose environment contains models,
+and it is the direct trade for never having to design a judge.
 
 ---
 
-## 7. Scale, and where it actually binds
+## 7. The bugs, and why they are the point
+
+§1 is about failures I designed into v1. This section is the same story in v2,
+and the reason the write-up leads with it rather than burying it: **borrowing a
+correct judge does not buy you a correct world.** Every bug below produced a
+plausible number, for days, while every gate stayed green.
+
+### 7.1 The 0.333 was a hidden API, not a hard task
+
+`run_specialist` fed execution output back to the specialist through
+`str(result)[:2500]` — a cap added to survive the TPM ceiling. Every specialist's
+first act is `apis.api_docs.show_api_descriptions(...)`. Venmo's catalog is
+**5,444 characters**, so the cap cut it mid-JSON, with no marker, and deleted
+**30 of its 54 APIs — including `like_transaction` and `show_social_feed`**.
+
+The shipped tasks are *"Like all the venmo transactions … on my venmo social
+feed."* The specialist was ordered not to guess API names and then shown a list
+that did not contain the verb. It reported the API did not exist, which was true
+of what it had been shown.
+
+**And it could not see its own output either.** AppWorld's `execute()` returns
+captured *stdout*, not the expression's value: a bare
+`apis.api_docs.show_api_descriptions(app_name='phone')` returns the literal string
+`"Execution successful."` and no data. The prompt instructed exactly that call,
+without `print`. So the specialist's first action returned nothing, every time.
+
+Measured — `2a163ab_1`, phone specialist, *"List the full names of all of my
+roommates"*:
+
+| | result |
+|---|---|
+| before | *"I could not list your roommates' full names because I could not access the available phone APIs"* |
+| after | *"Anthony Harrison, Anita Burch, and Nicholas Weber"* — 10 turns |
+
+Evidence: `sweep/appworld_api_catalog.json`
+(`scripts/appworld_catalog_probe.py`). The cap is now pinned by a test against
+the measured catalog size, truncation announces itself, and the prompt's own
+examples print.
+
+**The tell was in the ledger the whole time**, in plain English — *"I could not
+access the available phone APIs"* — in every row, for two days, while the number
+next to it was being written up as evidence about orchestration. Nobody read it.
+That is §7.4, and it is the most expensive habit in this repository.
+
+### 7.2 The 0.833 ceiling was ours
+
+For two days every action task was silently capped at 5/6, because the harness
+submitted a prose summary where the ground truth returns `None`, failing
+`assert answers match`. Measured: same work, prose → 0.833 `success=False`;
+`answer=None` → **1.000 `success=True`**.
+
+`success=True` was never reachable through the pipeline at all, and an earlier
+draft claimed "the ceiling is not pinned either" — false. Fixed; the sweep in §5
+is the re-measurement.
+
+This fix is also what moved the do-nothing floor from 1/6 to 2/6 (§3.3), because
+`None` is now correct for free. The floor moved, the scores moved with it, and
+**nobody subtracted** — which is how 0.333 survived as a headline.
+
+### 7.3 The reward token was readable, and the first fix did not close it
+
+The Main writes the brief that produces a specialist's code, and
+`world.execute()` runs that code **in the sidecar process** — the process holding
+`MAF_VERIFIER_TOKEN`. The only thing between the Main and its own reward was a
+sentence in the specialist's system prompt asking it not to.
+
+AppWorld's `SafetyGuard` does not close this and was never meant to: it allows
+`os` outright and its denylists name *functions*, so `os.environ` was never
+covered. Its comment says the guard exists to stop a benign agent damaging the
+host. Containing an adversarial Main was always ours to do.
+
+Demonstrated both ways against a real AppWorld
+(`scripts/appworld_injection_probe.py` → `sweep/appworld_injection.json`):
+
+| payload | unguarded | with the sandbox |
+|---|---|---|
+| `import os; print(os.environ[TOKEN])` | **leaks** | refused |
+| `get_ipython().run_cell("import os; …")` | **leaks** | refused |
+| `get_ipython().ev("__import__('os')…")` | **leaks** | refused |
+
+The last two are the interesting ones: **they defeated the first fix.** That gate
+enumerated dangerous names — a denylist — while its docstring claimed
+"anything unrecognised is refused rather than permitted". The payload hides in a
+*string literal*, so there is no `import os` in the AST to catch, only a method
+call on a name nobody had banned. AppWorld also binds **`requester`**, a second
+API client, into the same namespace.
+
+Both names were already there and both were missed. That is the argument: the
+namespace is **not ours**, and a denylist only covers what its author thought of.
+The rule is now **default-deny** — every name the code did not bind itself must be
+one we permit — which covers `get_ipython`, `requester`, and whatever the next
+release binds without telling us.
+
+Honest posture: this is a **static gate over a namespace we do not own**, and it
+has a horizon. It is the second lock, not the only one — the sidecar also pops its
+secrets out of `os.environ` at startup, and the probe fails loudly if the
+*unguarded* arm ever stops leaking, so it cannot rot into a green that proves
+nothing. If this boundary ever has to hold against a motivated optimiser rather
+than a prompt-injected one, the answer is not a longer list: it is an app-scoped
+API proxy, or an execution process that never holds a secret.
+
+### 7.4 The instrument keeps lying the same way
+
+Every one of these produced a number that looked like a measurement:
+
+- **Floor effect.** The first sweep used gpt-4.1 as the Main: control *and*
+  partitioned runs scored 0.17. It read as "the knob does nothing". The control
+  was already failing. A knob's effect is unmeasurable when the control is on the
+  floor.
+- **A silent harness bug producing the same number.** gpt-5.x rejects
+  `temperature=0`. Every call 400'd, an `except` swallowed it, and rows reported
+  the untouched world's score — identical to genuinely-failing runs. Only
+  `turns=0` told them apart.
+- **Zero variance read as a triumph.** A 12-row sweep came back `min=max` in
+  every cell. It hid §7.1 and the `chain` bug.
+- **A number that was the floor.** Nobody ran the do-nothing agent. It costs one
+  line and no LLM, and it is now `scripts/appworld_donothing_probe.py`.
+- **A report nobody read.** §7.1, in plain English, in every row, for two days.
+
+They are all the same bug: **outcome-only logging cannot tell "the agent tried
+and failed" from "the agent was never shown the task".** Both print 0.333. Every
+fix has been the same shape — stop reading the metric, start reading the level
+below it. Rows now carry `ran`; `/state` returns the failing requirements *by
+name* rather than a count; the ledger carries the specialist's own words and the
+reasons the sandbox refused it.
+
+That last one paid for itself the same day: a 5/6 that could finally say *which*
+6th named the exact five transactions a specialist had missed, and the fix took
+minutes instead of a re-roll.
+
+---
+
+## 8. Scale, and where it binds
 
 | stage | cost |
 |---|---|
-| environment | free — `pip install`; 250+ prebuilt images exist |
+| environment | free — `pip install` |
 | oracle | free — `evaluate()` |
 | task + ground truth | free — 732 tasks |
 | selection | seconds — regex over ground truth, automated |
@@ -420,40 +502,17 @@ per-capability probes this does not have.
 
 Measured: one partitioned rollout took **4.2 hours** (15,127s / 66 specialist
 turns ≈ 229s per turn), almost all of it sleeping in 429 backoff against a 30k
-TPM ceiling. An account limit rather than an inherent cost — but it is what
-stands between 3 sample tasks and 408.
+TPM ceiling. An account limit rather than an inherent cost — and the fix in §7
+made it worse, because a specialist that can see its whole API catalog spends
+more tokens per turn than one that cannot. Correctness over speed, knowingly.
 
-A subtler bottleneck: **only tasks whose control succeeds can measure a knob.**
-That filter needs real rollouts; it cannot be derived by inspection.
+A subtler bottleneck: **only tasks whose OPEN control succeeds can measure a
+knob**. That filter needs real rollouts; it cannot be derived by inspection.
 
-Available scale from what exists today: **51 tasks × 8 configurations = 408 task
-variants**, plus 51 free controls. Not by inventing tasks — by reconfiguring real
-ones.
+Available scale from what exists today: **51 tasks × 2 shipped configurations =
+102 variants**, plus 51 free controls — by reconfiguring real tasks, not inventing
+them. The knob space is 8 wide; six of those do not ship (`chain` is
+unimplemented, `delegation_budget` unmeasured), so **408 is a ceiling of work, not
+an inventory**.
 
----
-
-## 8. Deliverables
-
-- **Design doc:** [`docs/DESIGN.md`](docs/DESIGN.md) — structured to the brief's
-  five questions, with the v1 retrospective that forced the method.
-- **Forging pipeline:** `forge/appworld/` — `select` (roster from the task),
-  `partition` (constraints), `runtime` (Main + specialists), `harbor` (packaging),
-  `cli` (`measure` / `render`).
-- **Harbor tasks:** `python -m forge.appworld.cli render --n 3`
-- **Evidence:** `sweep/appworld_span.json` (all 147 measured),
-  `sweep/appworld_knobs.json` (knob effects).
-- **Audit trail:** [`docs/superpowers/specs/`](docs/superpowers/specs/) — the
-  exploits, the retired dimensions, and the architecture for what was deferred.
-
-The isolation boundary is verified rather than asserted — on a rendered task the
-agent's image contains exactly one file:
-
-```
-files in agent image: ['team']
-violations: NONE
-```
-
-If AppWorld lived in the Main's container, the Main could call `apis.venmo.*`
-directly, read the ground truth, or run `evaluate()`, and the constraint layer
-would be a suggestion. That is not a hypothetical: it is precisely what the four
-exploits did to the previous design.
+And on the evidence in §5, scaling this dimension is not the next thing to do.

@@ -20,6 +20,7 @@ from pathlib import Path
 
 from forge.appworld.harbor import write_task
 from forge.appworld.partition import Constraints, Topology, Visibility
+from forge.appworld.reference import REFERENCE_PATHS
 from forge.appworld.select import MIN_ROSTER, span_of, usable
 
 
@@ -65,24 +66,32 @@ SHIPPED_CONFIGS = (
 
 def cmd_render(args: argparse.Namespace) -> None:
     rows = json.loads(args.span.read_text())
-    keep = [r for r in rows if len(r["roster"]) >= MIN_ROSTER][: args.n]
+    candidates = [r for r in rows if len(r["roster"]) >= MIN_ROSTER]
+    # Tasks with a recorded reference orchestration come first: they are the
+    # only ones that can ship a demonstrated solution, and a task nobody has
+    # solved is not a deliverable. Stable, so span order holds within each group.
+    candidates.sort(key=lambda r: r["task_id"] not in REFERENCE_PATHS)
+    keep = candidates[: args.n]
     if not keep:
         raise SystemExit(f"no usable tasks in {args.span}; run `measure` first")
 
-    written = []
+    written, solvable = [], 0
     for row in keep:
         roster = tuple(row["roster"])
+        reference = REFERENCE_PATHS.get(row["task_id"])
         for topology, visibility, budget in SHIPPED_CONFIGS:
             c = Constraints(roster=roster, topology=topology,
                             visibility=visibility, delegation_budget=budget)
             # One token per task. It gates the sidecar's /state endpoint and
             # lives only in tests/, which Harbor uploads after the agent phase.
             d = write_task(row["task_id"], row["instruction"], c, args.out,
-                           token=secrets.token_hex(16))
+                           token=secrets.token_hex(16), reference=reference)
             written.append(d)
-            print(f"  {d.name}")
+            solvable += reference is not None
+            print(f"  {d.name}{'' if reference else '   (no solution: no reference)'}")
 
     print(f"\nwrote {len(written)} Harbor tasks to {args.out}")
+    print(f"{solvable} ship a reference solution; {len(written) - solvable} do not")
 
 
 def main(argv: list[str] | None = None) -> None:

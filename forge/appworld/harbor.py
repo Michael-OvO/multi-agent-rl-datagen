@@ -31,6 +31,7 @@ import os
 from pathlib import Path
 
 from forge.appworld.partition import Constraints, Topology, Visibility
+from forge.appworld.reference import Reference
 
 _RUNTIME = Path(__file__).parent / "container"
 
@@ -94,7 +95,9 @@ _COMPOSE = """services:
     expose:
       - "8079"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8079/roster', timeout=3)"]
+      # /health, not /roster: /roster executes the API catalog against the live
+      # world, and this fires every 3s for the life of the episode.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8079/health', timeout=3)"]
       interval: 3s
       timeout: 5s
       retries: 30
@@ -108,6 +111,72 @@ WORKDIR /app
 COPY team /usr/local/bin/team
 RUN chmod +x /usr/local/bin/team
 """
+
+
+#: Placeholders rather than `.format()`: the script body is dense with literal
+#: braces (f-strings, dict literals, the `{prev}` marker) and escaping every one
+#: of them is a bug waiting to happen.
+_SOLVE_REFERENCE = '''#!/bin/bash
+# The reference orchestration: the decomposition a competent Main would find.
+#
+# This is NOT a replay. The specialists are real LLMs and do the actual work;
+# what is recorded here is only the part the Main is measured on -- noticing that
+# `phone` holds a fact `venmo` needs, and carrying it across. Everything else is
+# still done live.
+#
+# So this oracle is probabilistic, not deterministic: it needs OPENAI_API_KEY at
+# verification time, it costs tokens, and a bad specialist turn can fail it. That
+# is a real cost, and it buys the only thing an oracle is for -- evidence the
+# task is solvable, so that a failing Main is failing at orchestration rather
+# than fighting a broken harness. See forge/appworld/reference.py.
+set -euo pipefail
+
+python3 - <<'MAF_SOLVE_EOF'
+import json
+import subprocess
+import sys
+
+STEPS = __STEPS__
+ANSWER = __ANSWER__
+
+
+def team(*args):
+    p = subprocess.run(["team", *args], capture_output=True, text=True)
+    try:
+        return json.loads(p.stdout)
+    except json.JSONDecodeError:
+        sys.exit(f"team {args[0]} returned no JSON: {p.stdout!r} {p.stderr!r}")
+
+
+prev = ""
+for step in STEPS:
+    reply = team("ask", step["specialist"], step["brief"].replace("{prev}", prev))
+    if "report" not in reply:
+        sys.exit(f"{step['specialist']} failed: {reply}")
+    prev = reply["report"]
+    print(f"{step['specialist']}: {prev}", file=sys.stderr)
+
+team("done", ANSWER)
+MAF_SOLVE_EOF
+'''
+
+#: A solve.sh that exits 0 having done nothing would claim the task is solvable
+#: on no evidence, which is worse than shipping no claim at all.
+_SOLVE_NO_REFERENCE = """#!/bin/bash
+# There is no reference orchestration recorded for this task, so no solution has
+# been demonstrated for it. Add one to forge/appworld/reference.py.
+echo 'no reference orchestration for this task -- see forge/appworld/reference.py' >&2
+exit 1
+"""
+
+
+def _solve_script(reference: Reference | None) -> str:
+    if reference is None:
+        return _SOLVE_NO_REFERENCE
+    steps = [{"specialist": s.specialist, "brief": s.brief} for s in reference.steps]
+    return (_SOLVE_REFERENCE
+            .replace("__STEPS__", json.dumps(steps, indent=4))
+            .replace("__ANSWER__", json.dumps(reference.answer)))
 
 
 def _difficulty(c: Constraints) -> str:
@@ -132,8 +201,14 @@ def write_task(
     constraints: Constraints,
     out_dir: str | Path,
     token: str,
+    reference: Reference | None = None,
 ) -> Path:
-    """Render one Harbor task. Returns its directory."""
+    """Render one Harbor task. Returns its directory.
+
+    `reference` is the orchestration the solution replays. Without one the task
+    still renders, but its solve.sh fails loudly rather than claiming a solution
+    nobody has demonstrated.
+    """
     label = constraints.label
     task_dir = Path(out_dir) / f"appworld-{label}-{task_id}"
     (task_dir / "environment").mkdir(parents=True, exist_ok=True)
@@ -170,7 +245,8 @@ def write_task(
     pkg = env / "maf_appworld"
     pkg.mkdir(exist_ok=True)
     _pkg_src = Path(__file__).parent
-    for mod in ("__init__.py", "partition.py", "runtime.py", "select.py"):
+    for mod in ("__init__.py", "partition.py", "runtime.py", "sandbox.py",
+                "select.py"):
         (pkg / mod).write_text((_pkg_src / mod).read_text())
 
     # The token lives in tests/, which Harbor uploads only at verification time,
@@ -180,11 +256,7 @@ def write_task(
     (task_dir / "tests" / "test.sh").write_text(
         "#!/bin/bash\nmkdir -p /logs/verifier\npython3 /tests/verify.py\n")
 
-    (task_dir / "solution" / "solve.sh").write_text(
-        "#!/bin/bash\n"
-        "# No planted solution. The oracle is AppWorld's state check, and the\n"
-        "# reference path is a real orchestration -- there is nothing to replay.\n"
-        "echo 'appworld tasks have no planted oracle by design' >&2\nexit 1\n")
+    (task_dir / "solution" / "solve.sh").write_text(_solve_script(reference))
 
     os.chmod(task_dir / "tests" / "test.sh", 0o755)
     os.chmod(task_dir / "solution" / "solve.sh", 0o755)

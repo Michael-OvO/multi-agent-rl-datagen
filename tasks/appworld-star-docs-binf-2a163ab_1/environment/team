@@ -7,6 +7,7 @@ specialist code, no task ground truth, and no scorer -- so "the Main has no API
 access" is a fact about what is on disk, not a rule it is asked to follow.
 
     team roster
+    team docs <specialist>
     team ask <specialist> "<request in plain English>"
     team done "<answer>"
 """
@@ -18,6 +19,11 @@ import urllib.error
 import urllib.request
 
 BASE = os.environ.get("MAF_ENV_URL", "http://maf-env:8079")
+
+#: The Main's whole vocabulary. `render_instruction` promises a subset of these
+#: and a test holds the two together -- the instruction once told the Main to run
+#: `team docs`, which for a while did not exist.
+COMMANDS = ("roster", "docs", "ask", "done")
 
 
 def _call(method, path, payload=None):
@@ -39,6 +45,7 @@ def main(argv):
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__.split("    team roster")[0].strip())
         print("\n  team roster")
+        print("  team docs <specialist>")
         print('  team ask <specialist> "<request>"')
         print('  team done "<answer>"')
         return 0
@@ -47,6 +54,27 @@ def main(argv):
 
     if cmd == "roster":
         print(json.dumps(_call("GET", "/roster"), indent=1))
+        return 0
+
+    if cmd == "docs":
+        if len(argv) < 2:
+            print("usage: team docs <specialist>", file=sys.stderr)
+            return 2
+        who = argv[1]
+        info = _call("GET", "/roster")
+        docs = info.get("docs")
+        if not docs:
+            # NAMES visibility. This is the knob doing its job, and the Main
+            # needs to tell that apart from a broken command.
+            print("documentation is not available for this team -- you know your "
+                  "specialists' names only. Ask them what they can do.",
+                  file=sys.stderr)
+            return 2
+        if who not in docs:
+            print(f"no specialist named {who!r}. Try: "
+                  f"{', '.join(info.get('roster', []))}", file=sys.stderr)
+            return 2
+        print(docs[who])
         return 0
 
     if cmd == "ask":
@@ -63,7 +91,7 @@ def main(argv):
         print(json.dumps(_call("POST", "/done", {"answer": answer}), indent=1))
         return 0
 
-    print(f"unknown command {cmd!r}. Try: roster | ask | done", file=sys.stderr)
+    print(f"unknown command {cmd!r}. Try: {' | '.join(COMMANDS)}", file=sys.stderr)
     return 2
 
 

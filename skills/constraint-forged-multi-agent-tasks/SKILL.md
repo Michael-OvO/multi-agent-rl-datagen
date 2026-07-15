@@ -233,6 +233,51 @@ ask <off-roster specialist> -> refused
 ls /tests                  -> does not exist during the agent phase
 ```
 
+#### The boundary you will forget is the specialist's
+
+That checklist covers the *Main*. It says nothing about the specialist, and the
+specialist is the one executing model-written code.
+
+We shipped a sidecar with the Main's topology enforced in code and the
+specialist's app restriction enforced in **its system prompt** — while the Main
+wrote the brief that produced the specialist's code. So the Main could ask a
+specialist to print the process environment, which held the verifier token, and
+report it back. Then it could just read the score.
+
+The environment sandbox will not save you: AppWorld's allows `os` and denies only
+*functions*, so `os.environ` was never covered, and `execute()` runs in-process.
+That is not a bug — that guard exists to stop a *benign* agent damaging the host,
+and its source says so. **Containing an adversarial agent is always your job, not
+your dependency's.** Read the guard before you rely on it.
+
+Gate model-written code at the single choke point where it enters the world. Then
+keep the secrets out of that process anyway, so the gate is not the only lock.
+
+**Make the gate default-deny, and check that it is.** Our first one enumerated
+dangerous names while its docstring claimed "anything unrecognised is refused" —
+a denylist wearing an allowlist's description. It fell to two names that were
+already in the namespace:
+
+- `get_ipython().run_cell("import os; print(os.environ[TOKEN])")` — the payload
+  is a **string literal**, so there is no `import os` in the AST to catch, only a
+  method call on a name nobody banned.
+- `requester` — the framework had quietly bound a *second* API client next to the
+  one we were guarding.
+
+The rule that holds: **every name the code did not bind itself must be one you
+permit.** Variables, loop targets, arguments, imports are the code's own; every
+free name resolves against a namespace *you do not own and did not write*. Only
+default-deny covers what the next release of your dependency puts there.
+
+And do not credit your gate for a dependency's check: `!shell` and `%magic` are
+not parseable Python, so an AST gate never sees them — they were being stopped
+by the framework's own parse step, in an ordering that is not yours to rely on.
+Refuse what you cannot parse.
+
+Ask the question that finds this class: not *"is the reward fake?"* but **"can the
+reward be purchased?"** An agent that reads the scorer scores *better*, so every
+validity gate you own will report success while it happens.
+
 ### 5. Make the specialists real LLMs
 
 If a specialist is a scripted executor of structured requests, the Main is just
@@ -264,9 +309,61 @@ decoration. A knob that moves the score by breaking the task is worse.**
 
 Every one produced a number that looked like a measurement and was not.
 
+**The one that matters most: taking the tools away is not the hard part.**
+Measured, after every bug below was fixed (n=3, one seed):
+
+| | mean |
+|---|---|
+| one agent, every API (control) | 1.000 |
+| no APIs, may read its specialists' docs | 0.944 |
+| no APIs, **does not know what they can do** | 0.778 |
+
+Blinding a strong agent did not make the task hard — **it made it longer**. Four
+of six partitioned rollouts still hit the ceiling; the Main just asks A, tells B,
+and is done in two delegations. The `1.000 → 0.333` that made the partition look
+like it worked was a harness bug, and removing it removed the result.
+
+**The difficulty is not in *having* to delegate. It is in not knowing who to
+delegate to.** That knob cost twice what the partition did — and it had previously
+been measured as having *no effect*, because the command it depends on was never
+implemented (below). Design for the information constraint, not the access
+constraint; access is the packaging.
+
+Before building the pipeline, name the *irreducible* difficulty and check that a
+strong model actually fails at it. "The control succeeds and the partitioned run
+does not" is the whole product.
+
 **Zero variance is a smell, not a triumph.** A 12-row sweep came back
 `open=0.833 (min=max)`, `every partitioned config=0.167 (min=max)`. It read as a
 clean result. It hid two bugs.
+
+**Compare every score against the do-nothing agent, and do it in code.** An agent
+that performs no action at all scores whatever the free requirements are worth —
+here 2/6 = 0.333 once the answer type was right. Every partitioned config also
+scored 0.333. The result was written up as "the partition is hard" for two days.
+It was the floor. The do-nothing baseline costs one line and no LLM; not having
+it is why "hard task" and "broken harness" were indistinguishable.
+
+**Never truncate a catalog the agent was told not to guess against.** We fed
+execution output back through `str(result)[:2500]` to survive a TPM ceiling. The
+first thing every specialist runs is `show_api_descriptions`; venmo's catalog is
+5,444 chars; so the cap silently deleted 30 of 54 APIs — including
+`like_transaction`, which *was the task*. The specialist reported the API did not
+exist, which was true of what it had been shown. Truncation must announce itself,
+and any cap must be pinned by a test against the measured worst case.
+
+**Confirm the agent can see its own output.** AppWorld's `execute()` returns
+captured *stdout*, not the expression value: a bare `apis.api_docs.show(...)`
+returns the string `"Execution successful."` and no data. Our prompt instructed
+exactly that call, without `print`. Every specialist's first act returned nothing
+for two days. Run one turn by hand and *look at the bytes* before trusting a
+sweep.
+
+**Log the names, not the counts.** `passes=5, failures=1` cannot tell you which
+requirement failed, and the oracle you need it for is the one that fails. The
+underlying framework returned the names; we reduced them to `len()`. The first
+0.833 we could actually diagnose named the exact five transactions the specialist
+had missed, and the fix took minutes.
 
 **Check `deleg == max_steps`.** A topology scored 0.167 "because it was harder".
 It was scoring the step cap: the specialist→specialist handoff it existed for was

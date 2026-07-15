@@ -1,4 +1,4 @@
-"""The CLEAN/VALID gate battery (DESIGN.md §4.3).
+"""The CLEAN/VALID gate battery (WRITEUP.md §1).
 
 Run in-process at generation time — no Docker, no LLM tokens. An instance ships
 only if every check passes. CLEAN = the reward has no noise; VALID = the reward

@@ -36,7 +36,7 @@ def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
 
     # The dimension module holds generate()/ORACLE/verify()/CHEATERS. It ships to
     # tests/, which Harbor uploads only at verification time -- never to the
-    # agent's image. See docs/DESIGN.md §5.
+    # agent's image. See WRITEUP.md §6.
     _copy_runtime(dim, task_dir / "tests" / "lib", include_cli=dim.INTERACTIVE)
     (task_dir / "task.toml").write_text(_task_toml(dim, task_id))
     (task_dir / "instruction.md").write_text(_instruction(dim, instance))

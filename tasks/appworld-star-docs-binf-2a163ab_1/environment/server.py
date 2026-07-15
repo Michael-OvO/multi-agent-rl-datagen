@@ -33,8 +33,17 @@ sys.path.insert(0, "/opt/maf")  # forge/appworld/ lives here; see Dockerfile.sid
 
 TASK_ID = os.environ["MAF_TASK_ID"]
 CONFIG = json.loads(os.environ["MAF_CONFIG"])
-TOKEN = os.environ["MAF_VERIFIER_TOKEN"]
 PORT = int(os.environ.get("MAF_PORT", "8079"))
+
+# Read once, then removed from the environment. `world.execute()` runs specialist
+# code *in this process*, so anything left in `os.environ` is one `print` away
+# from a specialist's transcript, and from there one report away from the Main --
+# who could then simply GET /state and read the reward. `sandbox.py` refuses the
+# code that would do it; this makes the environment not worth reading even if
+# that gate is ever bypassed. TASK_ID and CONFIG stay: the Main is told its own
+# task and `team roster` prints the roster, so neither is a secret.
+TOKEN = os.environ.pop("MAF_VERIFIER_TOKEN")
+_OPENAI_KEY = os.environ.pop("OPENAI_API_KEY", None)
 
 ROSTER: list[str] = CONFIG["roster"]
 TOPOLOGY: str = CONFIG["topology"]
@@ -52,15 +61,34 @@ class Episode:
 
         self.world = AppWorld(task_id=TASK_ID, experiment_name="harbor",
                               ground_truth_mode="minimal")
-        self.client = OpenAI()
+        # Explicit, because the key is no longer in the environment for the
+        # client to find on its own.
+        self.client = OpenAI(api_key=_OPENAI_KEY)
         self.ledger: list[dict] = []
         self.delegations = 0
         self.done = False
         self.answer: str | None = None
+        self._docs: dict | None = None
 
     @property
     def instruction(self) -> str:
         return self.world.task.instruction
+
+    @property
+    def docs(self) -> dict:
+        """The roster's API catalogs, fetched once.
+
+        These cannot change during an episode, and /roster is what the compose
+        healthcheck polls every 3 seconds. Recomputing them per request made the
+        probe a load generator against the same world the specialists use.
+        """
+        if self._docs is None:
+            self._docs = {
+                app: self.world.execute(
+                    f"print(apis.api_docs.show_api_descriptions(app_name={app!r}))")
+                for app in ROSTER
+            }
+        return self._docs
 
     def allowed_targets(self, sender: str) -> list[str]:
         if TOPOLOGY == "star":
@@ -91,7 +119,15 @@ class Episode:
                                 model=SUB_MODEL)
         self.delegations += 1
         entry = {"specialist": specialist, "brief": brief, "report": report,
-                 "specialist_turns": log.specialist_turns, "refused": log.refusals}
+                 "specialist_turns": log.specialist_turns, "refused": log.refusals,
+                 # Non-zero means this brief pushed the specialist outside its
+                 # app and the sandbox stopped it. The Main writes the briefs.
+                 "blocked": log.blocked,
+                 # And *why*. A bare count once said the gate had refused
+                 # something on a run that still scored 1.0, with no way to tell
+                 # an injection from the gate obstructing correct work. It was
+                 # the latter.
+                 "blocked_reasons": log.blocked_reasons}
         self.ledger.append(entry)
         return {"report": report, "delegations_used": self.delegations,
                 "budget": BUDGET}
@@ -99,13 +135,13 @@ class Episode:
     def finish(self, answer: str) -> dict:
         self.answer = answer
         self.done = True
-        self.world.execute(
-            f"apis.supervisor.complete_task(answer={answer!r}, status='success')")
+        self.world.execute(_complete_call(answer))
         return {"ok": True}
 
     def state(self) -> dict:
         ev = self.world.evaluate().to_dict()
-        passes, failures = len(ev.get("passes", [])), len(ev.get("failures", []))
+        failed = [str(f) for f in ev.get("failures", [])]
+        passes, failures = len(ev.get("passes", [])), len(failed)
         total = passes + failures
         return {
             "success": bool(ev.get("success")),
@@ -114,10 +150,43 @@ class Episode:
             "partial": round(passes / total, 3) if total else 0.0,
             "passes": passes,
             "failures": failures,
+            # The names, not just the count. A 5/6 that cannot say which 6th is
+            # the outcome-only logging §7.4 keeps losing days to. /state is
+            # token-gated and read after the episode, so this reaches the
+            # verifier and never the Main.
+            "failed": failed,
             "delegations": self.delegations,
             "answer": self.answer,
             "ledger": self.ledger,
         }
+
+
+def _as_answer(answer: str):
+    """AppWorld expects the task's own answer type, not prose.
+
+    Action tasks ("like all the transactions...") return None in their ground
+    truth; question tasks return a value. Submitting a prose summary makes the
+    `assert answers match` requirement fail, which silently caps EVERY action
+    task at 5/6 = 0.833 -- measured 2026-07-15: same work, prose answer -> 0.833,
+    answer=None -> 1.000, success=True.
+
+    The instruction tells the Main to say `completed` for action tasks. Honour it.
+    """
+    if answer.strip().lower() in ("completed", "complete", "done", ""):
+        return None
+    return answer
+
+
+def _complete_call(answer: str) -> str:
+    """Render the submission AppWorld actually receives.
+
+    `repr` already produces bare `None` for None and a quoted literal for a
+    string, so the conversion is entirely `_as_answer`'s. An earlier
+    `.replace("'None'", "None")` here was vestigial -- it could not fire on the
+    None path, and the one case it did fire on (a Main answering the literal
+    string "None") was one it got wrong.
+    """
+    return f"apis.supervisor.complete_task(answer={_as_answer(answer)!r}, status='success')"
 
 
 EPISODE: Episode | None = None
@@ -140,16 +209,26 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(n) or b"{}")
 
     def do_GET(self):
+        if self.path.startswith("/health"):
+            # Deliberately touches nothing. This is what the compose healthcheck
+            # polls; pointing it at /roster made every probe execute the API
+            # catalog against the live world.
+            #
+            # This is single-threaded and /ask blocks for minutes, so probes
+            # still queue behind a specialist and docker still gives up on them
+            # (a BrokenPipeError per abandoned probe). That is now noise rather
+            # than load: `depends_on: service_healthy` only gates startup, and
+            # nothing here reaches the world. ThreadingHTTPServer would silence
+            # it and put concurrent callers on a world that is not thread-safe,
+            # which is a worse trade than a stray traceback.
+            return self._send(200, {"ok": True})
+
         if self.path.startswith("/roster"):
             info = {"roster": ROSTER, "topology": TOPOLOGY,
                     "delegation_budget": BUDGET,
                     "instruction": EPISODE.instruction}
             if VISIBILITY == "docs":
-                info["docs"] = {
-                    app: EPISODE.world.execute(
-                        f"print(apis.api_docs.show_api_descriptions(app_name={app!r}))")
-                    for app in ROSTER
-                }
+                info["docs"] = EPISODE.docs
             return self._send(200, info)
 
         if self.path.startswith("/state"):
