@@ -5,12 +5,12 @@ read or write any app. Every action must be performed by a specialist.
 
 ## Your task
 
-Like all the venmo transactions from today involving any of my roommates on my venmo social feed.
+Like all the venmo transactions from yesterday involving any of my siblings on my venmo social feed.
 
 ## Your team
 
-You may delegate only to `phone`. Specialists hand off down the chain themselves: phone -> venmo.
-You know their names only. You do not know what any of them can do.
+You may delegate to: `phone`, `venmo`
+Each specialist's documentation is available via `team docs <name>`.
 
 Each specialist can use only its own app, and none of them knows your task.
 

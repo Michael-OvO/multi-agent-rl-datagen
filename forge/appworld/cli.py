@@ -46,14 +46,20 @@ def cmd_measure(args: argparse.Namespace) -> None:
     print(f"wrote {args.out}")
 
 
-#: The configurations we ship. Kept deliberately small: a knob that has not been
-#: shown to move the score against the OPEN control is decoration, and shipping
-#: it would inflate the task count while measuring nothing. See
-#: scripts/appworld_knob_sweep.py for the evidence behind this list.
+#: The configurations we ship. A knob that has not been shown to move the score
+#: against the OPEN control is decoration; a knob that moves it by breaking the
+#: task is worse. See scripts/appworld_knob_sweep.py for the evidence.
+#:
+#: CHAIN is NOT shipped. Measured 2026-07-15: it scored 0.167 on all three tasks
+#: with `deleg=12` -- exactly `max_steps` -- and `answer='(out of steps)'` every
+#: time. The Main can reach only `roster[0]`, and the specialist->specialist
+#: handoff that CHAIN's whole point depends on is defined in
+#: `Constraints.allowed_targets` and called by nothing. The topology is
+#: unimplemented, so the task is unsolvable, so its difficulty signal is fake.
+#: It ships when the handoff exists and is measured, not before.
 SHIPPED_CONFIGS = (
     (Topology.STAR, Visibility.DOCS, None),
     (Topology.STAR, Visibility.NAMES, None),
-    (Topology.CHAIN, Visibility.NAMES, None),
 )
 
 

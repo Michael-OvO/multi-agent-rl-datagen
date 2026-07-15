@@ -155,22 +155,87 @@ free: `OPEN` is the same task, the same oracle, the partition off.
 
 ## 5. What the measurements say
 
-Task `2a163ab_1` — *"Like all the venmo transactions from today involving any of
-my roommates"* — Main = gpt-5.6-sol, specialists = gpt-4.1:
+Three tasks (`2a163ab_1..3`, *"Like all the venmo transactions from today
+involving any of my roommates"* and variants), Main = gpt-5.6-sol, specialists =
+gpt-4.1, 12 rows:
 
-| config | partial | delegations | specialist turns |
+| config | n | partial (min–max) | delegations |
 |---|---|---|---|
-| `open` (control, no partition) | **0.83** | 0 | 12 |
-| `star-docs` | **0.17** | 3 | 39 |
-| `star-names` | **0.17** | 6 | 66 |
-| `chain-names` | **0.17** | 12 | 55 |
-
-**The partition passes the anti-toy gate, hard.** 0.83 → 0.17 from one knob. The
-sub-agents are the dominant factor in the task's difficulty.
+| `open` (control, no partition) | 3 | **0.833** (0.83–0.83) | 0 |
+| `star-docs` | 3 | **0.167** (0.17–0.17) | 5.0 |
+| `star-names` | 3 | **0.167** (0.17–0.17) | 4.3 |
+| `chain-names` | 3 | **0.167** (0.17–0.17) | 12.0 |
 
 **The task has gradient** — the thing `theory-of-mind` never had. On the same
 control, gpt-4.1 scores **0.17** and gpt-5.6-sol scores **0.83**. And 0.83 is not
 1.0: the ceiling is not pinned either.
+
+**But zero variance is a smell, not a triumph**, and reading the rows rather than
+the aggregate found two real bugs — one of them in the headline.
+
+### Bug 1: `chain` was never implemented
+
+`deleg=12.0` is exactly `max_steps=12`, in all three tasks, and every answer is
+`(out of steps)`. In CHAIN the Main can reach only `roster[0]`; the
+specialist→specialist handoff the topology exists for is defined in
+`Constraints.allowed_targets` and **called by nothing**. The task is unsolvable
+and the Main loops to the cap.
+
+Its 0.167 does not mean "chain is harder". It means "chain is impossible". A knob
+that moves the score by breaking the task is worse than decoration — it is a fake
+difficulty signal. **It is unshipped**, with the reason recorded at the decision
+point and a test pinning it.
+
+### Bug 2: the headline comparison is confounded
+
+The `star` answers are not orchestration failures. They are refusals *by the
+specialists*:
+
+    "Unable to complete: Venmo cannot access the social feed"
+    "Unable to complete: phone contact search and Venmo social-feed unavailable"
+
+The specialists are **gpt-4.1**. The OPEN control's work is done by
+**gpt-5.6-sol**. So `0.83 → 0.17` changes two things at once:
+
+- **(a)** the Main loses direct access — what I claim to measure
+- **(b)** the API work is now done by a weaker model — a confound
+
+The gate I was pleased to have passed does not cleanly separate *"partitioning is
+hard"* from *"gpt-4.1 cannot drive venmo"*. The ground truth for these tasks uses
+`venmo.show_social_feed`, so the API is there; the specialist failed to find it.
+
+### Resolving it: the confound does not explain the drop
+
+The clean experiment — `star` with **gpt-5.6-sol specialists**, isolating (a) from
+(b):
+
+| config | specialists | partial |
+|---|---|---|
+| `open` (control) | — (Main does the work) | **0.833** |
+| `star-docs` | gpt-4.1 | **0.167** |
+| `star-docs` | **gpt-5.6-sol** | **0.167** |
+
+Upgrading the specialists to the control's own model **changes nothing**. The
+0.66 drop is the partition, not the weaker model.
+
+What the upgrade *did* change is the failure mode. With gpt-4.1 specialists the
+Main gave up:
+
+    "Unable to complete: Venmo cannot access the social feed"
+
+With gpt-5.6-sol specialists it confidently concluded the opposite of the truth:
+
+    "No Venmo social-feed transactions from today involving my roommates"
+
+The control scores 0.83, so the transactions exist. **A stronger specialist did
+not rescue the task — it converted a refusal into a confident wrong answer**,
+which is the same failure the venmo hallucination showed at the very start.
+
+(n=1 at the time of writing; the second task is still running. The claim rests on
+one clean comparison, not three.)
+
+I nearly shipped the confounded number. Zero variance across 12 rows should have
+made me suspicious immediately — instead it read as a triumph.
 
 ### The failure mode the constraint exposes, unprompted
 
