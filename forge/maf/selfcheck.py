@@ -2,7 +2,8 @@
 
 Run in-process at generation time — no Docker, no LLM tokens. An instance ships
 only if every check passes. CLEAN = the reward has no noise; VALID = the reward
-gap is caused by the target skill.
+gap is caused by the target skill, and not by the instruction handing the agent
+its own optimal algorithm (V4).
 """
 
 from __future__ import annotations
@@ -74,5 +75,15 @@ def selfcheck(dim, instance, tau: float = 0.6, delta: float = 0.4,
     ]
     detail["twin_rewards"] = twin_rewards
     checks["V3_ablation"] = any(r >= 1.0 - eps for r in twin_rewards)
+
+    # V4: the dimension must name which cheater is the best policy achievable by
+    # mechanically executing its instruction text. V1 then requires that cheater
+    # to score below tau. A dimension whose instruction states its own optimal
+    # algorithm measures instruction-following, not the target skill --
+    # theory-of-mind scored asks == q_opt on 12/12 sweep runs for exactly that
+    # reason, and no cheater in its panel tested for it.
+    dictation = getattr(dim, "DICTATION_CHEATER", None)
+    checks["V4_dictation_declared"] = dictation in dim.CHEATERS
+    detail["dictation_cheater"] = dictation
 
     return SelfcheckReport(ok=all(checks.values()), checks=checks, detail=detail)
