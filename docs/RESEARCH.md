@@ -21,8 +21,10 @@ we are not asserting these capabilities matter — we are showing it, twice.
 We train a prerequisite **spine**, not a scatter: ① task decomposition → ②
 dependency-ID & parallel scheduling → ③ role assignment → ④ dynamic replanning &
 failure recovery → ⑤ theory of mind & information-asymmetric communication. The
-three shipped tasks target ②, ④, ⑤ — the widest arc. Below, each is grounded in
-literature + a failure-mode analysis, then measured empirically in §5.
+original three-task scope targeted ②, ④, ⑤ — the widest arc; ④ and ⑤ are
+currently quarantined (see §3, §4) and only ② ships today. Below, each is
+grounded in literature + a failure-mode analysis; ② is additionally measured
+empirically in §6.
 
 ---
 
@@ -64,6 +66,14 @@ scarcity → the planted trap; violate dependencies → hard-gate 0.
 
 ## 3. Dynamic replanning & failure recovery (task `failure-recovery`)
 
+> **Status (2026-07-14): not implemented/shipped.** `failure-recovery` is
+> quarantined — its CLI read the ground-truth scenario at runtime inside the
+> agent's container, leaking it into the agent's image, and its worker roster
+> was generated pre-sorted, which let the presented order reproduce the
+> oracle's tie-break and collapsed the intended skill signal. The literature
+> case below is the rationale for a later plan that rebuilds this construct
+> behind a sidecar — it is not a description of a working feature.
+
 **Models cannot reliably detect their own errors.** In the intrinsic setting (no
 external signal), self-correction *degrades* reasoning: GPT-4 on GSM8K falls
 **95.5% → 91.5% → 89.0%** over two self-correction rounds (*LLMs Cannot Self-Correct
@@ -89,6 +99,15 @@ env injects failures observable only at runtime, so a static plan cannot pass.
 ---
 
 ## 4. Theory of Mind & information-asymmetric communication (task `theory-of-mind`)
+
+> **Status (2026-07-14): not implemented/shipped.** `theory-of-mind` is
+> quarantined — its CLI read the ground-truth scenario at runtime inside the
+> agent's container, leaking it into the agent's image, and its instruction
+> named each topic's entry witness while telling the agent to follow
+> referrals, so following the instruction was already optimal play and the
+> task measured instruction-following, not theory-of-mind skill. The
+> literature case below is the rationale for a later plan that rebuilds this
+> construct behind a sidecar — it is not a description of a working feature.
 
 **Apparent ToM is brittle and pattern-matched.** Trivial ToM-preserving perturbations
 flip prior successes (*LLMs Fail on Trivial Alterations…*, Ullman 2023,
@@ -147,8 +166,14 @@ structured, recurring, *targetable* ways.
 
 ## 6. Empirical validation on our own tasks
 
-We ran a controlled sweep on the tasks this repo generates: **2 models × 3 dimensions
-× 3 difficulties × 2 seeds = 18 instances per model**, all through Harbor in Docker
+> **Scope note (2026-07-14):** this sweep originally covered all three
+> dimensions. `failure-recovery` and `theory-of-mind` are now quarantined
+> (§3, §4) — `forge_cli` refuses to render them and `scripts/eval_sweep_gen.py`
+> ships 0 instances for them — so their rows are gone from the table below,
+> and the description here covers `parallel-scheduling` only.
+
+We ran a controlled sweep on the tasks this repo generates: **2 models × 1 dimension
+× 3 difficulties × 2 seeds = 6 instances per model**, all through Harbor in Docker
 with the `terminus-2` agent, plus zero-cost **oracle** (reference) and **cheater**
 (shortcut) controls on the same instances. Reproduce with
 `scripts/eval_sweep_gen.py` + `scripts/eval_sweep_agg.py`.
@@ -161,36 +186,27 @@ with the `terminus-2` agent, plus zero-cost **oracle** (reference) and **cheater
 | parallel-scheduling | easy   | 1.00 | 1.00 | 1.00 | 0.50 |
 | parallel-scheduling | medium | 1.00 | 1.00 | **0.50** | 0.50 |
 | parallel-scheduling | hard   | 1.00 | 1.00 | 1.00 | 0.50 |
-| failure-recovery | easy   | 1.00 | 0.92 | 1.00 | 0.00 |
-| failure-recovery | medium | 1.00 | 1.00 | 0.93 | 0.00 |
-| failure-recovery | hard   | 1.00 | 0.96 | 0.96 | 0.00 |
-| theory-of-mind | easy   | 1.00 | 1.00 | 1.00 | 0.25 |
-| theory-of-mind | medium | 1.00 | 1.00 | 1.00 | 0.50 |
-| theory-of-mind | hard   | 1.00 | 1.00 | 1.00 | 0.50 |
 
-Overall: **gpt-5.6 = 0.986 (16/18 perfect)**, **gpt-4.1 = 0.931 (15/18)**.
+Overall: **gpt-5.6 = 1.000 (6/6 perfect)**, **gpt-4.1 = 0.833 (5/6 perfect)**.
 
 **What the data shows:**
 
-1. **The environments and verifiers are correct at scale.** Oracle = 1.00 in all 9
-   cells (18/18 instances) — not just the 3 hand-picked sample tasks, but every
+1. **The environment and verifier are correct at scale.** Oracle = 1.00 in all 3
+   cells (6/6 instances) — not just the 1 hand-picked sample task, but every
    procedurally generated instance the selfcheck gate shipped.
 2. **The reward discriminates skill.** The shortcut baselines fail on *solvable*
-   instances everywhere: failure-recovery cheaters score **0.00** (a static/blind
-   plan never completes), scheduling cheaters **0.50** (serialization/greed), ToM
-   cheaters **0.25–0.50** (info-dumping burns the budget). The gap between "can solve"
-   (oracle 1.0) and "used a shortcut" (≤ 0.5) is exactly the training signal.
-3. **Real models land between — with genuine partials and one hard failure.**
-   Failure-recovery is the most discriminating dimension: models score partial rewards
-   (0.92, 0.93, 0.96) by *completing every subtask but wasting dispatches recovering
-   from decoys* — the precise, gradable "recovery is inefficient" signal. The clearest
+   instances: scheduling cheaters score **0.50** (serialization/greed). The gap
+   between "can solve" (oracle 1.0) and "used a shortcut" (0.5) is exactly the
+   training signal.
+3. **Real models land between — with one hard failure.** The clearest
    **model-capability gradient** is `parallel-scheduling-medium`: gpt-4.1 emitted an
    **infeasible schedule → 0.00** while gpt-5.6 found the optimum → 1.00, reproducing
    the literature's "LLMs violate dependencies / don't exploit parallelism" failure
-   mode (§2) on our own instance. Overall gpt-4.1 (0.931) < gpt-5.6 (0.986).
+   mode (§2) on our own instance. Overall gpt-4.1 (0.833) < gpt-5.6 (1.000).
 4. **Honest scope.** At these difficulties both frontier models are largely competent
-   (most cells ≈ 1.0) — expected, and *correct*: the reward should reward competent
-   behavior. Sharper model separation appears as difficulty rises or capability drops;
+   (gpt-5.6 perfect on all 3 cells; gpt-4.1 perfect except on medium) — expected, and
+   *correct*: the reward should reward competent behavior. Sharper model separation
+   appears as difficulty rises or capability drops;
    the difficulty knobs (DESIGN §7) and the cheater controls supply the discrimination
    headroom. For RL the essential property is a **correct graded signal** — oracle 1.0,
    shortcuts low, real models in-between with informative partials — which the sweep

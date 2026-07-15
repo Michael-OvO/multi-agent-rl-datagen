@@ -54,11 +54,16 @@ verification.
 
 **Three sample tasks** span the widest curriculum arc and both verification paradigms:
 
-| Task | Capability | Paradigm | Tier |
+Only `parallel-scheduling` ships. The other two are **quarantined** (2026-07-14):
+they leaked ground truth into the agent image and their instructions stated their
+own optimal algorithm, so gate V4 rejects them. Their constructs are rebuilt on a
+sidecar in a later plan; the rows below are the target, not the current state.
+
+| Task | Capability | Paradigm | Status |
 |---|---|---|---|
-| `parallel-scheduling` | ② dependency ID + parallel scheduling (+③) | static, single-shot artifact | mid |
-| `failure-recovery`    | ④ dynamic replanning + failure recovery      | dynamic, multi-turn CLI     | mid-high |
-| `theory-of-mind`      | ⑤ ToM + info-asymmetric communication        | dynamic, multi-turn CLI     | highest |
+| `parallel-scheduling` | ② dependency ID + parallel scheduling (+③) | static, single-shot artifact | ships |
+| `failure-recovery`    | ④ dynamic replanning + failure recovery      | dynamic, multi-turn CLI     | quarantined |
+| `theory-of-mind`      | ⑤ ToM + info-asymmetric communication        | dynamic, multi-turn CLI     | quarantined |
 
 ---
 
@@ -429,21 +434,21 @@ forge/
 Kimi-RL-DataGen/
 ├── README.md                      # overview + how to run/verify
 ├── docs/DESIGN.md                 # this document  (deliverable #1)
-├── tasks/                         # ≥3 generated, verified Harbor tasks  (deliverable #2)
-│   ├── parallel-scheduling-<id>/
-│   ├── failure-recovery-<id>/
-│   └── theory-of-mind-<id>/
+├── tasks/                         # generated, oracle-verified Harbor task(s)  (deliverable #2)
+│   └── parallel-scheduling-<id>/  # failure-recovery / theory-of-mind are quarantined, see §5
 ├── forge/                         # generation pipeline  (deliverable #3)
 └── skills/multi-agent-task-forge/ # the reusable task-forging skill  (deliverable #3)
 ```
 
-**"Pass verification" means:** `harbor run --agent oracle` yields reward `1.0` for all three
-sample tasks (local Docker) — **verified** — **and** a real LLM agent run demonstrates the
-partial-reward RL signal. Verified with `terminus-2` + `openai/gpt-5.6`: scheduling 1.00,
-theory-of-mind 1.00, failure-recovery **0.75** (a genuine partial reward). Any litellm
-provider works via `--model <provider>/<id>` + a key in a gitignored `.env`. Tasks use
-`network_mode = "public"` so terminal agents can reach their model API; nothing on the
-internet helps solve them, so egress does not enable cheating. See `docs/RESULTS.md`.
+**"Pass verification" means:** `harbor run --agent oracle` yields reward `1.0` for the
+shipped sample task (`parallel-scheduling`, local Docker) — **verified** — **and** a real
+LLM agent run demonstrates the partial-reward RL signal. Verified with `terminus-2` +
+`openai/gpt-5.6`: scheduling **1.00**. `theory-of-mind` and `failure-recovery` are
+quarantined (2026-07-14, see §5) and no longer render or ship a task dir, so they have
+no verification numbers to report. Any litellm provider works via `--model <provider>/<id>`
++ a key in a gitignored `.env`. Tasks use `network_mode = "public"` so terminal agents can
+reach their model API; nothing on the internet helps solve them, so egress does not
+enable cheating. See `docs/RESULTS.md`.
 
 ---
 
