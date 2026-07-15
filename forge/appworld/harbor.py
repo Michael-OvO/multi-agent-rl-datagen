@@ -76,7 +76,11 @@ _COMPOSE = """services:
       dockerfile: Dockerfile
     command: sleep infinity
     depends_on:
-      - maf-env
+      maf-env:
+        # Wait for the sidecar to be READY, not merely started. AppWorld's world
+        # takes seconds to load; a plain `depends_on` let the verifier fire
+        # first and report "cannot reach the sidecar" on a task that was fine.
+        condition: service_healthy
 
   maf-env:
     build:
@@ -89,6 +93,12 @@ _COMPOSE = """services:
       OPENAI_API_KEY: "${{OPENAI_API_KEY}}"
     expose:
       - "8079"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8079/roster', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
 """
 
 _MAIN_DOCKERFILE = """FROM python:3.11-slim
