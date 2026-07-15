@@ -266,12 +266,15 @@ task-dir/
 ├── task.toml            # [environment] our image; [verifier] continuous reward; timeouts
 ├── instruction.md       # "You are the Main agent; goal = X." Describe the goal, not steps.
 ├── environment/
-│   ├── Dockerfile       # python:3.11-slim + copy env server + scenario
-│   ├── scenario.json    # this instance (seed-generated): DAG / roster / private info / GT
-│   └── coord|interview  # (dynamic tasks) CLI exposing a RESTRICTED view of scenario state
+│   ├── Dockerfile       # python:3.11-slim + COPY task.json (nothing else)
+│   └── task.json        # the PUBLIC view only: DAG / roster. No `_` ground-truth keys.
+│                        # Gated by forge/maf/leak_audit.py (G1), which statically
+│                        # resolves this Dockerfile's COPYs and scans what they ship.
 ├── tests/
 │   ├── test.sh          # runs verify.py, writes reward ∈ [0,1] to /logs/verifier/reward.txt
 │   ├── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
+│   ├── ground_truth.json  # the `_` keys stripped from task.json -- the answer
+│   ├── verify_config.json # paths the in-container verifier reads
 │   └── lib/             # the dimension module (generate/ORACLE/verify/CHEATERS) --
 │                        # uploaded by Harbor only at verification time, after the
 │                        # agent phase; never present in environment/, never in the image
@@ -280,15 +283,22 @@ task-dir/
 ```
 
 **Isolation invariant.** The dimension module (`generate`, `ORACLE`, `verify`,
-`CHEATERS`) never enters the agent's image. Static dimensions ship it to
-`tests/lib/`, which Harbor uploads only at verification time. Interactive
-dimensions keep it in a sidecar. Identical grading between selfcheck and the
-in-container verifier is achieved by shipping the *same file to a place the
-agent cannot read* -- not by shipping it to the agent.
+`CHEATERS`) and the ground truth never enter the agent's image. Static
+dimensions ship both to `tests/`, which Harbor uploads only at verification
+time. Identical grading between selfcheck and the in-container verifier is
+achieved by shipping the *same file to a place the agent cannot read* -- not
+by shipping it to the agent. G1 (`forge/maf/leak_audit.py`) enforces this
+statically over the emitted Dockerfile.
 
-**Reward shape (uniform):** `reward = hard_gate ∈ {0,1} × quality ∈ (0,1]`. Ground truth lives
-in the container but is **never exposed** through the agent's protocol (the CLI returns only
-what a peer would legitimately reveal).
+**Interactive dimensions do not satisfy this invariant and are quarantined**
+(`forge/forge_cli.py:QUARANTINED`). Their CLI must read the scenario at
+runtime from inside the container, so the full instance -- ground-truth `_`
+fields included -- necessarily ships in the agent's image; an audit read it
+straight out with `cat /opt/maf/scenario.json`. The Plan 2 sidecar (scenario
+served from a process outside the agent's filesystem) is the fix, and it is
+not built yet. Until then `forge gen` refuses to render them.
+
+**Reward shape (uniform):** `reward = hard_gate ∈ {0,1} × quality ∈ (0,1]`.
 
 ---
 
@@ -391,22 +401,22 @@ self-check gate. **No human is in the per-task loop.**
 
 ```
 forge/
-├── common/
-│   ├── harbor_writer.py   # writes task.toml / instruction.md / environment / tests / solution
-│   ├── reward.py          # shared reward helpers (gate × quality)
-│   └── selfcheck.py       # runs oracle + baseline in-container, enforces the §4.3 gates
-├── generators/
-│   ├── parallel_scheduling.py   # generate(seed, difficulty) -> task dir
-│   ├── failure_recovery.py
-│   └── theory_of_mind.py
+├── maf/
+│   ├── core.py            # reward shape (gate × quality) + the Dimension contract
+│   ├── selfcheck.py       # the §4.3 CLEAN/VALID gates — pure in-process Python, no Docker
+│   ├── harbor.py          # write_task(dim, instance, out, id) -> a Harbor task directory
+│   ├── leak_audit.py      # G1: static audit that the agent's image leaks no ground truth
+│   ├── dimensions/        # scheduling.py, failure_recovery.py, theory_of_mind.py
+│   └── runtime/           # cli.py + verify_entry.py — copied into generated tasks
 └── forge_cli.py           # `forge gen --dim X --seed S --difficulty D --n 100 --out tasks/`
 ```
 
-- Each `generate(seed, difficulty)` is **pure** (seed-deterministic) and emits a complete
-  Harbor task directory.
+- Each `generate(seed, difficulty)` is **pure** (seed-deterministic) and returns an
+  **instance dict**. Rendering it to a Harbor task directory is `harbor.write_task`'s
+  job — the two are separate so an instance can be gated *before* anything is written.
 - `forge_cli gen` fans out over seeds/difficulty, and — **critically** — runs `selfcheck` on
-  each output, shipping only instances that pass both gates (§4.3). Failures are logged, not
-  shipped.
+  each instance, writing only those that pass both gates (§4.3). Failures are logged, not
+  shipped. It also refuses to render a quarantined dimension (see §5).
 - A companion **skill `multi-agent-task-forge`** documents the design invariants
   (shortcut-closure, the two gates, difficulty knobs) so future authors (human or Claude) can
   add new dimensions without re-deriving the methodology.

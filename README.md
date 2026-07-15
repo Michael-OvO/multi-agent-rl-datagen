@@ -42,7 +42,7 @@ forge/maf/selfcheck.py            the CLEAN/VALID gate battery
 forge/maf/harbor.py               renders a Dimension+instance -> Harbor task dir
 forge/maf/runtime/                generic in-container CLI + verifier (copied into tasks)
 forge/forge_cli.py                `forge gen` — generate + gate + write
-forge/tests/                      41 in-process tests (no Docker)
+forge/tests/                      the test suite — all in-process (no Docker)
 tasks/                            3 generated, oracle-verified sample tasks
 scripts/verify_all.sh             real Harbor oracle run (needs Docker)
 scripts/dryrun_local.py           oracle->verify logic check (no Docker)
@@ -53,7 +53,7 @@ skills/multi-agent-task-forge/    the reusable task-forging skill
 
 ```bash
 uv venv && uv sync                      # dev env (Python 3.11+)
-uv run pytest forge/tests -q            # 41 tests, all in-process (no Docker)
+uv run pytest forge/tests -q            # whole suite, all in-process (no Docker)
 
 # generate more tasks (each passes the CLEAN/VALID gate before it is written)
 uv run python -m forge.forge_cli gen --dim parallel-scheduling \

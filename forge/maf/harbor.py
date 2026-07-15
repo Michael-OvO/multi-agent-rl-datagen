@@ -82,11 +82,29 @@ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Interactive dimensions — completed in Task 6 (needs runtime/cli.py)
+# Interactive dimensions — QUARANTINED, not shippable (see forge_cli.QUARANTINED)
+#
+# Task 6 quarantined these; it did not complete them. `forge gen` refuses to
+# render failure-recovery and theory-of-mind, and this function is what it
+# refuses to call. It is kept only so the Plan 2 sidecar has something to
+# replace -- nothing here currently produces a task that can be shipped.
 # --------------------------------------------------------------------------- #
 def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:
-    # Full scenario (incl. ground-truth `_` fields) lives at /opt/maf, outside the
-    # agent's /app workdir. The CLI reads it; the agent uses only the CLI.
+    # BROKEN, and this is why the dimension is quarantined. The line below
+    # writes the FULL instance -- ground-truth `_` fields included -- into
+    # environment/, and the Dockerfile below COPYs it to /opt/maf/scenario.json
+    # inside the agent's own image. `/opt/maf` is merely outside the agent's
+    # /app workdir; it is not outside the agent's filesystem. `cat
+    # /opt/maf/scenario.json` hands over the answer, and an audit executed
+    # exactly that exploit.
+    #
+    # This comment used to describe that layout as a mitigation ("The CLI reads
+    # it; the agent uses only the CLI"). Nothing enforced "uses only the CLI" --
+    # it was an assumption about agent behaviour, stated as a defense. Only the
+    # Plan 2 sidecar (scenario served from a process the agent cannot read,
+    # never present in its image) fixes this; relocating the file within the
+    # image cannot, because the CLI must read it at runtime from inside the
+    # container.
     (task_dir / "environment" / "scenario.json").write_text(json.dumps(instance, indent=2))
     cli = dim.CLI_NAME
     (task_dir / "environment" / cli).write_text(
