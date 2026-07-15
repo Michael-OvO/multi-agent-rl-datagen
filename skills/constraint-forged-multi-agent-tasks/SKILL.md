@@ -1,13 +1,30 @@
 ---
 name: constraint-forged-multi-agent-tasks
-description: Use when building RL training tasks for multi-agent capabilities (theory of mind, decomposition, role assignment, Main↔Sub communication, failure recovery). Mines an existing single-agent environment that already has a free programmatic oracle, then manufactures the multi-agent structure by constraining the agent's access — never by designing a world or a judge.
+description: Use when building RL training tasks for multi-agent capabilities (theory of mind, decomposition, role assignment, Main↔Sub communication, failure recovery). Mines an existing single-agent task library that already ships a free programmatic oracle — AppWorld, SWE-smith, tau-bench — measures which of its tasks can carry a partition, then manufactures the multi-agent structure by constraining the agent's access. Never designs a world, a task, or a judge.
 ---
 
 # Constraint-Forged Multi-Agent Tasks
 
 ## The rule
 
-**Manufacture constraints. Inherit the judge. Never design an oracle.**
+**Mine an existing task library. Manufacture constraints. Inherit the judge.
+Never design an oracle.**
+
+The whole method in three moves:
+
+```
+1. MINE       an existing task library that already has a free programmatic
+              oracle           -> task, ground truth, environment, judge: all free
+2. MEASURE    which of its tasks the reference solution proves are multi-seam
+                               -> the roster comes from the task, never from you
+3. CONSTRAIN  access / information / topology
+                               -> the multi-agent structure, and the ONLY thing
+                                  you built
+```
+
+Step 1 is the enabler and the hard part. If you cannot find a library, **stop** —
+do not fall back to writing a generator. That fallback is what this skill exists
+to prevent.
 
 If you design both the world and the judge, a flaw in the world becomes a flaw in
 the reward — and it will be invisible, because your own tests will agree with
@@ -60,45 +77,128 @@ So you must manufacture the structure. **The only question is which layer.**
 
 ## The procedure
 
-### 1. Find a substrate with a free oracle
+### 1. Find the library — the step everything else rests on
 
-Requirements, in priority order:
+**Do not build an environment. Do not write tasks. Find a library that already
+has both, plus a judge.** Every later step is downstream of this one: if you
+cannot find a substrate, the honest move is to stop, not to start writing a
+generator.
+
+The leverage is SWE-smith's, generalised. Its 128 repos → 50k tasks does not come
+from clever bug injection; it comes from **never designing an oracle** — take
+something that already works, perturb it, let the existing tests grade the
+repair. Whatever you mine, you are looking for that same shape: *a working
+artifact with a checker already attached.*
+
+#### The four requirements, in priority order
 
 1. **A programmatic oracle with no LLM in it.** State-based, ideally
-   side-effect-aware. This is non-negotiable — it is the whole point.
-2. **Real, executable, installable.** Not a description of a world.
-3. **Naturally partitionable** — its action surface must have seams (apps,
-   services, tools, repos) that make plausible role boundaries.
-4. **Ground truth available** for at least a train split, so you can measure.
+   side-effect-aware. **Non-negotiable.** An LLM judge is another oracle you
+   designed, with the added property that you cannot grep it for the bug.
+2. **Real, executable, installable.** Not a description of a world. If you cannot
+   `pip install` or `docker pull` it, you will end up building it.
+3. **Ground truth for at least a train split**, so you can *measure* which tasks
+   qualify instead of guessing.
+4. **Seams.** The action surface must decompose along lines that make plausible
+   role boundaries — apps, services, tools, repos, teams. No seams, no partition.
 
-Verified example: **AppWorld** — 9 apps, 457 APIs, 732 tasks, `pip install
-appworld`, `evaluate()` compares database state against the goal and also fails
-an agent that reached it destructively.
+#### What is out there (surveyed 2026-07)
 
-**Verify the oracle by hand before building anything.** Solve one task manually,
-call `evaluate()`, and see `success=True`. If you cannot make the oracle say yes,
-you do not have an oracle.
+| library | oracle | verdict |
+|---|---|---|
+| **AppWorld** — 9 apps, 457 APIs, 732 tasks | state-based unit tests, **no LLM**, checks side effects | **use this** — seams are the apps |
+| **SWE-smith** — 50k tasks, 128 repos, 250+ images | the repo's own pytest | strong oracle, but the seams are code modules → the task turns into SWE, not orchestration |
+| **SWE-Gym / R2E-Gym** — 2.4k / 8.1k tasks | repo tests | same as above |
+| **τ-bench / τ²-bench** | terminal DB state | good oracle; seams are thin (one domain API) |
+| **MultiAgentBench** — has star/chain/tree topologies | **milestone KPIs, LLM-judged** | **disqualified** — no free oracle, which is the one thing you cannot supply yourself |
+| orchestration-trace corpora | — | **do not exist.** The survey says causal credit "is not identifiable from realized on-policy traces alone" and ships a JSON schema instead of data |
 
-### 2. Measure the roster — never choose it
+The last row is the important one. **There is no multi-agent trace + environment
++ oracle corpus.** Everyone must manufacture the multi-agent structure. This
+skill's entire claim is about *which layer* you manufacture — constraints, not
+judges.
+
+#### Disqualifiers, in the order they will bite
+
+- **The judge is an LLM or a rubric** → you are designing the oracle again, only
+  now it is unauditable. Walk away.
+- **No ground truth** → you cannot measure which tasks qualify, so you will guess,
+  so you will pad.
+- **One seam** → nothing to partition. A single-API environment cannot carry
+  roles no matter how you prompt it.
+- **The oracle grades the trajectory, not the state** → multiple valid paths
+  satisfy the same goal; path-matching will punish correct work. (This is why
+  τ-bench, τ²-bench and AppWorld all converged on terminal-state checks.)
+
+#### Verify the oracle by hand before building anything
+
+Solve one task manually, call the judge, and see it say **yes**. Not "it looks
+programmatic" — see `success=True` with your own eyes.
+
+This took an hour on AppWorld and was worth it twice over: it proved the oracle
+reachable *and* surfaced that the shipped ground-truth solutions are reference
+implementations using internal helpers, which do not run in the agent sandbox. A
+naive "run the GT to check the oracle" would have failed and looked like the
+oracle was broken.
+
+**If you cannot make the oracle say yes, you do not have an oracle.**
+
+### 2. Measure which of its tasks can carry a partition
+
+A task library is not a task set. Most of it will not qualify, and **which part
+qualifies is measured, not judged**. The measurement is cheap — a regex over
+ground truth, seconds for the whole corpus — and it is the same trick regardless
+of substrate: *read what the reference solution actually touches.*
+
+```python
+# the roster is what the GT reaches for, not what we would like it to be
+_CALL = re.compile(r"apis\.(\w+)\.(\w+)\(")
+
+def derive_roster(solution_code: str) -> tuple[str, ...]:
+    apps = {app for app, api in _CALL.findall(solution_code)
+            if app not in _INFRA_APPS and (app, api) not in _INFRA_APIS}
+    return tuple(sorted(apps))          # sorted: same task must render the same way
+```
 
 **The task decides the partition. You never do.** A task's specialists are the
 seams its ground truth actually touches. Never pad a task with a role it does not
-need; drop tasks that cannot be coordinated.
+need; drop tasks that cannot be coordinated. `MIN_ROSTER = 2`.
 
-Watch for infrastructure masquerading as a collaborator. In AppWorld,
-`supervisor.complete_task` is the submit channel and appears in **all 147**
-ground-truth tasks:
+#### Infrastructure will masquerade as a collaborator
+
+This is where the mining goes wrong, and it goes wrong in the flattering
+direction. In AppWorld, `supervisor.complete_task` is the **submit channel** and
+appears in **all 147** ground-truth tasks:
 
 | filter | usable |
 |---|---|
-| naive — count every seam the GT touches | 147 / 147 (100%) |
+| naive — count every seam the GT touches | 147 / 147 (**100%**) |
 | strict — drop the submit channel | **51 / 147 (34%)** |
 
-The naive number is the flattering one. It would ship 96 single-seam puzzles with
-a decorative second agent — passing every check, measuring nothing.
+100% is the number that would have gone in the write-up. It would have shipped 96
+single-seam puzzles with a decorative second agent — each passing every check and
+measuring nothing.
 
-**Write this rule as code with a test, not as a note.** Sabotage the test to
-confirm it goes red.
+Every substrate has one of these. Look for a seam that appears in *every* task
+and carries no information *between* seams: submit channels, auth, logging,
+documentation lookup. Exclude the **API**, not the seam — if a task genuinely
+reads data from `supervisor`, that *is* a coordination edge and must count.
+
+#### Then measure the structure, do not assume it
+
+Even a qualifying library may have no partial order to exploit. On a Python repo,
+deleting each module and recording which tests break gives the true dependency
+matrix by **measurement** — and on `funcy` it returned only **4 distinct
+breakage classes across 15 modules**, because its `__init__` imports everything.
+The repo is nearly all-or-nothing and makes a weak orchestration task.
+
+That negative result is the useful one: **the same measurement that builds the
+task also filters the library.** Run it across the corpus, keep what has
+structure. That is the scale story, and it is automated.
+
+**Write these rules as code with tests, not as notes.** Sabotage each test and
+confirm it goes red — the naive filter is *more* appealing than the strict one,
+so the only thing keeping it out is a test that fails when someone relaxes it.
 
 ### 3. Constrain, do not construct
 
