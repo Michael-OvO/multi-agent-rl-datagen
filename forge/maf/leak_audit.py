@@ -230,7 +230,15 @@ def _ground_truth_keys(path: Path) -> list[str]:
 
 
 def audit(task_dir: Path) -> list[str]:
-    """Return violations. Empty means the agent image derives no ground truth."""
+    """Return violations found in the files this module can resolve.
+
+    An empty list means: no ground-truth key and no grading-machinery marker was
+    found in any file reachable from a COPY/ADD directive this module could parse,
+    and no directive was left uninspected. It is *not* an unconditional guarantee
+    that the image is clean -- this is a static approximation that never builds
+    the image. See the module docstring for the exact scope. Unrecognized forms
+    fail closed and appear here as violations rather than being assumed safe.
+    """
     task_dir = Path(task_dir)
     violations: list[str] = []
     for line in unparsed_copies(task_dir):
