@@ -1,5 +1,3 @@
-import pytest
-
 from forge.maf.dimensions.scheduling import DIM as SCHED
 from forge.maf.harbor import write_task
 from forge.maf.leak_audit import audit, image_files, unparsed_copies
@@ -27,14 +25,27 @@ def test_image_files_follows_dockerfile_copy(tmp_path):
     # task.json is COPYed in; the Dockerfile itself is build context, not image.
     assert "task.json" in names
     assert "Dockerfile" not in names
-    # COPY lib /app/lib pulls the whole lib dir in via directory expansion --
-    # that's the exact leak this audit exists to catch. Pin it independently of
-    # the xfail'd leak test below, so directory expansion stays covered even
-    # while the leak itself remains open.
+    # Task 3 relocated the dimension module to tests/lib/, which Harbor
+    # uploads only at verification time. The real task's Dockerfile no
+    # longer COPYs a directory into the agent image at all.
+    assert "maf_dim.py" not in names
+
+
+def test_image_files_expands_directory_copy(tmp_path):
+    # Directory-expansion coverage, now synthetic since the real task's
+    # Dockerfile no longer COPYs a directory into the agent image (see
+    # test_image_files_follows_dockerfile_copy above). Pinned independently
+    # of test_scheduling_task_does_not_leak so this parser capability stays
+    # covered on its own merits.
+    d = _task_with_dockerfile(
+        tmp_path,
+        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
+        {"lib/maf_dim.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
+    )
+    names = {p.name for p in image_files(d)}
     assert "maf_dim.py" in names
 
 
-@pytest.mark.xfail(reason="leak open until Task 3 relocates the dimension module", strict=True)
 def test_scheduling_task_does_not_leak(tmp_path):
     inst = SCHED.generate(3, {"n": 6, "k": 2, "trap": True})
     d = write_task(SCHED, inst, tmp_path, "0001")

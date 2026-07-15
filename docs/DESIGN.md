@@ -271,7 +271,10 @@ task-dir/
 │   └── coord|interview  # (dynamic tasks) CLI exposing a RESTRICTED view of scenario state
 ├── tests/
 │   ├── test.sh          # runs verify.py, writes reward ∈ [0,1] to /logs/verifier/reward.txt
-│   └── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
+│   ├── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
+│   └── lib/             # the dimension module (generate/ORACLE/verify/CHEATERS) --
+│                        # uploaded by Harbor only at verification time, after the
+│                        # agent phase; never present in environment/, never in the image
 └── solution/
     └── solve.sh         # oracle: solves via the PUBLIC interface → reward 1.0 (self-check)
 ```
