@@ -34,13 +34,26 @@ DEFAULT_MODEL = "gpt-4.1"
 _RETRYABLE = ("rate_limit", "429", "timeout", "timed out", "connection")
 
 
+#: Models that reject `temperature=0` (they only accept the default). Discovered
+#: the hard way: every call 400'd, the caller swallowed it, and three rollouts
+#: reported `turns=0` with a plausible-looking score instead of an error.
+_NO_TEMPERATURE: set[str] = set()
+
+
 def chat(client, messages: list[dict], model: str = DEFAULT_MODEL, retries: int = 6) -> str:
     for attempt in range(retries):
+        kwargs: dict = {"model": model, "messages": messages}
+        if model not in _NO_TEMPERATURE:
+            kwargs["temperature"] = 0
         try:
-            r = client.chat.completions.create(model=model, messages=messages, temperature=0)
+            r = client.chat.completions.create(**kwargs)
             return r.choices[0].message.content or ""
         except Exception as e:
-            if not any(t in str(e).lower() for t in _RETRYABLE) or attempt == retries - 1:
+            msg = str(e).lower()
+            if "temperature" in msg and "unsupported" in msg:
+                _NO_TEMPERATURE.add(model)  # retry immediately without it
+                continue
+            if not any(t in msg for t in _RETRYABLE) or attempt == retries - 1:
                 raise
             time.sleep(min(2**attempt + random.random(), 30))
     raise RuntimeError("unreachable")
@@ -161,7 +174,7 @@ When the task is fully done, reply with exactly:
 
 def run_main(
     client, world, task: str, constraints: Constraints, log: RunLog,
-    model: str = DEFAULT_MODEL, max_steps: int = 12,
+    model: str = DEFAULT_MODEL, sub_model: str | None = None, max_steps: int = 12,
 ) -> str:
     """Run the Main. Returns its final answer string."""
     note = (
@@ -201,7 +214,8 @@ def run_main(
             continue
 
         log.delegations += 1
-        reply = run_specialist(client, world, who, brief, log, model=model)
+        reply = run_specialist(client, world, who, brief, log,
+                               model=sub_model or model)
         log.interactions.append(Interaction("main", who, brief, reply))
         msgs.append({"role": "user", "content": f"{who} reports: {reply}"})
 

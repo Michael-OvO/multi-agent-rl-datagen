@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+# AppWorld + the specialists + the oracle live here, and only here. The agent's
+# container (service `main`) has none of it -- see docker-compose.yaml.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir appworld openai
+
+WORKDIR /opt/maf
+COPY server.py /opt/maf/server.py
+
+# The dimension's own runtime (specialist loop, constraint enforcement). Copied
+# into the sidecar, never into the agent image.
+COPY forge /opt/maf/forge
+
+# The AppWorld dataset. Baked in so the task is reproducible without network at
+# run time; `appworld download data` is what produced it.
+ENV APPWORLD_ROOT=/opt/maf
+COPY appworld_data /opt/maf/data
+
+EXPOSE 8079
+CMD ["python", "/opt/maf/server.py"]
