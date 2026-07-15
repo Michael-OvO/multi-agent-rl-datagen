@@ -261,6 +261,23 @@ Two real failures, on the first runs:
 That is theory of mind, produced by a constraint, graded by an oracle I did not
 write. Compare the ToM dimension I built on purpose, which measured nothing.
 
+### And the capability is real, because a better model does it right
+
+Running the same task in Harbor with `terminus-2` / gpt-5.6-sol as the Main — a
+real agent in the container, reaching the world only through `team` — its second
+step reads:
+
+    "Analysis: The phone specialist request has been sent, but no reply is
+     visible yet, so the command is still processing."
+
+It delegated to **`phone` first** — the specialist that actually knows — where the
+in-process gpt-4.1 Main went straight to venmo and was taken in by the invented
+roommate list.
+
+Same constraint, same oracle: the weaker model asks the wrong specialist, the
+stronger one asks the right specialist. That difference is the capability, and
+nothing I wrote judges it.
+
 ---
 
 ## 6. What is not established
