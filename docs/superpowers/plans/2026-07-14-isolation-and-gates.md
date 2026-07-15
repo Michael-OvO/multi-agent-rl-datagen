@@ -43,10 +43,15 @@ Create `forge/tests/test_docs_honesty.py`:
 ```python
 """Docs must not claim capabilities the code does not have.
 
-Every string here was verified absent from forge/ during the 2026-07-14 audit.
+Every pattern here was verified absent from forge/ during the 2026-07-14 audit.
 If you implement one of these for real, delete its entry -- do not weaken the test.
+
+Patterns are word-boundary regexes, not substrings: a bare "liar" substring also
+matches "familiar" and "peculiar", which would fail this test for prose that
+claims nothing.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -54,20 +59,20 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 _DESIGN = _ROOT / "docs" / "DESIGN.md"
 
-# (claim, why it is a lie)
+# (regex, human name, why it is a lie)
 UNIMPLEMENTED_CLAIMS = [
-    ("z3", "no z3/CSP solver exists in forge/"),
-    ("random-valid", "no random-valid baseline exists in forge/"),
-    ("liar", "no liar dimension exists in forge/"),
-    ("reward.json", "the verifier writes reward.txt, not reward.json"),
-    ("held-out", "no held-out config machinery exists in forge/"),
+    (r"\bz3\b", "z3", "no z3/CSP solver exists in forge/"),
+    (r"\brandom[- ]valid\b", "random-valid", "no random-valid baseline exists in forge/"),
+    (r"\bliar\b", "liar", "no liar dimension exists in forge/"),
+    (r"\breward\.json\b", "reward.json", "the verifier writes reward.txt, not reward.json"),
+    (r"\bheld[- ]out\b", "held-out", "no held-out config machinery exists in forge/"),
 ]
 
 
-@pytest.mark.parametrize("claim,why", UNIMPLEMENTED_CLAIMS)
-def test_design_does_not_claim_unimplemented_feature(claim, why):
-    text = _DESIGN.read_text().lower()
-    assert claim.lower() not in text, f"DESIGN.md claims {claim!r} but {why}"
+@pytest.mark.parametrize("pattern,name,why", UNIMPLEMENTED_CLAIMS)
+def test_design_does_not_claim_unimplemented_feature(pattern, name, why):
+    hits = re.findall(pattern, _DESIGN.read_text(), flags=re.IGNORECASE)
+    assert not hits, f"DESIGN.md claims {name!r} ({len(hits)} hits) but {why}"
 
 
 def test_design_is_not_marked_draft():
@@ -564,7 +569,9 @@ would have exposed it at generation time, with no model runs."
 
 ### Task 5: Adversarial regression tests
 
-The four executed exploits become permanent tests. Exploits 1, 3, and 4 are now structural (the files are gone), so they assert absence. Exploit 2 (forged submission) is a verifier-contract test and applies to static dimensions now.
+The executed exploits become permanent tests. Exploits 1, 3, and 4 are structural after Task 3 — the files are gone — so they assert absence from the agent image.
+
+**Exploit 2 is deliberately not covered here.** Forging the graded artifact is an interactive-dimension attack: it works because the verifier counts `asks` out of an agent-written transcript. `parallel-scheduling`'s submission is a schedule that `_check_schedule` (`scheduling.py:183`) independently re-executes — every dependency, skill match, and overlap re-checked, makespan recomputed — so "forging" it requires actually solving the instance. Its regression test belongs to Plan 2. Naming the gap in the module docstring is required; a test named for exploit 2 that actually checks something else would repeat the exact failure this audit found in `test_public_files_hide_ground_truth`.
 
 **Files:**
 - Create: `forge/tests/test_adversarial.py`
@@ -580,7 +587,15 @@ Create `forge/tests/test_adversarial.py`:
 ```python
 """Regression tests for exploits executed against the shipped tasks on 2026-07-14.
 
-Each test corresponds to an attack that scored reward 1.0 before this plan.
+Exploits 1, 3, and 4 scored reward 1.0 on parallel-scheduling or on the
+interactive dimensions. They are structural now -- the files are gone -- so
+these tests assert absence from the agent image.
+
+Exploit 2 (forging the graded artifact) does NOT apply to parallel-scheduling:
+its submission is a schedule the verifier independently re-executes, so
+"forging" it means solving the problem. Exploit 2 is interactive-only and its
+regression test lands in Plan 2 with the sidecar. It is named here so the gap
+is explicit rather than silently absent.
 """
 
 import json
@@ -595,14 +610,7 @@ def _task(tmp_path):
     return inst, write_task(DIM, inst, tmp_path, "0001")
 
 
-def test_exploit1_scenario_not_readable_from_agent_image(tmp_path):
-    # Attack: cat the scenario out of the image to read the answer.
-    _, d = _task(tmp_path)
-    for f in image_files(d):
-        assert not any(k.startswith("_") for k in _keys(f))
-
-
-def _keys(path):
+def _json_keys(path):
     if path.suffix != ".json":
         return []
     try:
@@ -612,27 +620,38 @@ def _keys(path):
     return list(data) if isinstance(data, dict) else []
 
 
-def test_exploit3_oracle_not_present_in_agent_image(tmp_path):
+def test_exploit1_ground_truth_absent_from_agent_image(tmp_path):
+    # Attack: cat the scenario out of the image to read the answer.
+    _, d = _task(tmp_path)
+    for f in image_files(d):
+        leaked = [k for k in _json_keys(f) if k.startswith("_")]
+        assert not leaked, f"{f.name} leaks {leaked}"
+
+
+def test_exploit3_oracle_absent_from_agent_image(tmp_path):
     # Attack: import maf_dim from /app/lib and run the shipped ORACLE.
     _, d = _task(tmp_path)
     for f in image_files(d):
-        assert "ORACLE" not in f.read_text(errors="ignore")
+        assert "ORACLE" not in f.read_text(errors="ignore"), f"{f.name} ships the oracle"
 
 
-def test_exploit4_generator_not_present_in_agent_image(tmp_path):
+def test_exploit4_generator_absent_from_agent_image(tmp_path):
     # Attack: brute-force the seed against the shipped generate() until the
-    # public fields match, then read the private ones. Recovered _planted at
-    # seed=3 and scored 1.0.
+    # public fields match, then read the private ones out of the regenerated
+    # instance. Recovered _planted at seed=3 and scored 1.0.
     _, d = _task(tmp_path)
     for f in image_files(d):
-        assert "def generate(" not in f.read_text(errors="ignore")
+        assert "def generate(" not in f.read_text(errors="ignore"), (
+            f"{f.name} ships the generator; seed brute-force defeats /tests isolation"
+        )
 
 
-def test_exploit2_forged_submission_scores_zero(tmp_path):
-    # Attack: submit a fabricated artifact instead of doing the work.
+def test_incomplete_schedule_scores_zero(tmp_path):
+    # Not exploit 2 -- see module docstring. This pins the gate: a submission
+    # that does not schedule every subtask is invalid regardless of makespan.
     inst, _ = _task(tmp_path)
-    forged = [{"subtask": "t0", "worker": "w0", "start": 0}]  # incomplete schedule
-    assert DIM.verify(inst, forged).reward == 0.0
+    partial = [{"subtask": "t0", "worker": "w0", "start": 0}]
+    assert DIM.verify(inst, partial).reward == 0.0
 
 
 def test_empty_submission_scores_zero(tmp_path):
@@ -645,6 +664,8 @@ def test_empty_submission_scores_zero(tmp_path):
 Run: `.venv/bin/python -m pytest forge/tests/test_adversarial.py -v`
 
 Expected: PASS (5 passed). If any fails, Task 3 is incomplete — do not weaken these tests.
+
+`test_incomplete_schedule_scores_zero` relies on `_check_schedule` (`forge/maf/dimensions/scheduling.py:198`) returning `False` when `set(seen) != set(subs)`. If it passes trivially, verify the fixture actually has more than one subtask.
 
 - [ ] **Step 3: Commit**
 
