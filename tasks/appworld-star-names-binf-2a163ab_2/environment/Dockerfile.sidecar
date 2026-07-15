@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+# AppWorld + the specialists + the oracle live here, and only here. The agent's
+# container (service `main`) has none of it -- see docker-compose.yaml.
+# build-essential is needed: appworld pulls psutil, which has no arm64 wheel on
+# python:3.11-slim and falls back to compiling.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir appworld openai
+
+WORKDIR /opt/maf
+ENV APPWORLD_ROOT=/opt/maf
+
+# Fetch the dataset at build time, not from the task directory. Copying 183M of
+# AppWorld into every rendered task would make the repo unusable and the tasks
+# un-reviewable; this way the layer is cached across every task built from this
+# image, which is the same shared-base-image trick SWE-smith uses to get 50k
+# tasks out of 295GB.
+RUN appworld install && appworld download data
+
+COPY server.py /opt/maf/server.py
+
+# The dimension's own runtime: the specialist loop and the constraint
+# enforcement. Copied into the sidecar, never into the agent's image.
+COPY maf_appworld /opt/maf/forge/appworld
+RUN touch /opt/maf/forge/__init__.py
+ENV PYTHONPATH=/opt/maf
+
+EXPOSE 8079
+CMD ["python", "/opt/maf/server.py"]

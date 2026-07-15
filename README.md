@@ -1,87 +1,96 @@
 # Multi-Agent Foundational-Capability RL Data Generation
 
-A scalable pipeline (`forge`) that generates **verifiable RL training tasks** for
-multi-agent **orchestration** capabilities, packaged in [Harbor](https://www.harborframework.com)
-format, plus three oracle-verified sample tasks and a reusable task-forging skill.
+A forge that produces **verifiable RL training tasks** for multi-agent
+orchestration, packaged in [Harbor](https://www.harborframework.com) format.
+
+**Start here:** [`WRITEUP.md`](WRITEUP.md) — what was built, what was measured,
+and what was wrong.
+Design detail: [`docs/APPWORLD_DESIGN.md`](docs/APPWORLD_DESIGN.md).
 
 ## The idea in one paragraph
 
-Multi-agent capabilities normally live in *live* multi-agent systems, which are
-non-deterministic, expensive, and hard to grade — the opposite of what RL needs.
-We **invert the setup**: the model under test plays the single **orchestrator
-(Main agent)** role, while every other agent and the world are a **deterministic
-scripted environment that holds ground truth**. The environment *is* the verifier,
-so reward is programmatic, reproducible, continuous (`[0,1]`), and cheap. Each
-capability is a **parametric environment family** sampled by `generate(seed,
-difficulty)`, so tasks scale procedurally — each auto-gated by a **CLEAN/VALID**
-battery before it ships.
+Multi-agent capability data has no free oracle: judging coordination means
+simulating the other agents, and then **you** design the reward — which is exactly
+how this repo's first attempt produced a `theory-of-mind` dimension that scored
+1.0 on 12 of 12 runs while measuring instruction-following. So this forge does not
+build tasks, environments, or verifiers. It takes [AppWorld](https://appworld.dev)
+— 9 real apps, 457 APIs, 732 tasks, and a programmatic state-based oracle with no
+LLM in it — and **constrains the agent's access to it**: the Main gets zero APIs
+and can only delegate to app-specialist sub-agents, each bound to one app and
+blind to the task. The task, the ground truth, the environment and the judge are
+all AppWorld's, untouched.
 
-Full design + validity argument: [`docs/DESIGN.md`](docs/DESIGN.md).
-Verification evidence: [`docs/RESULTS.md`](docs/RESULTS.md).
-
-## The three skills / tasks
-
-| Task | Skill trained | Paradigm |
-|---|---|---|
-| `parallel-scheduling` | dependency identification + parallel scheduling | static, single-shot artifact |
-| `failure-recovery` | dynamic replanning + failure recovery | interactive, multi-turn CLI |
-| `theory-of-mind` | theory of mind + information-asymmetric communication | interactive, multi-turn CLI |
-
-Each ships with an oracle that scores **1.0**, a **cheater panel** of shortcut
-policies that provably lose, and an **ablation twin** proving the reward gap is
-*caused by* the target skill (see `docs/DESIGN.md` §4.3).
+> A badly chosen constraint makes a task too easy or too hard — **measurable**.
+> A badly designed oracle makes the reward measure the wrong thing — **invisible**.
 
 ## Layout
 
-```
-docs/DESIGN.md                    design doc (research + method + validity argument)
-docs/RESULTS.md                   verification evidence
-forge/maf/core.py                 reward shape + Dimension contract
-forge/maf/dimensions/*.py         the three capability generators
-forge/maf/selfcheck.py            the CLEAN/VALID gate battery
-forge/maf/harbor.py               renders a Dimension+instance -> Harbor task dir
-forge/maf/runtime/                generic in-container CLI + verifier (copied into tasks)
-forge/forge_cli.py                `forge gen` — generate + gate + write
-forge/tests/                      the test suite — all in-process (no Docker)
-tasks/                            3 generated, oracle-verified sample tasks
-scripts/verify_all.sh             real Harbor oracle run (needs Docker)
-scripts/dryrun_local.py           oracle->verify logic check (no Docker)
-skills/multi-agent-task-forge/    the reusable task-forging skill
-```
+| | |
+|---|---|
+| `forge/appworld/` | the pipeline: `select` (roster from the task), `partition` (constraints), `runtime` (Main + specialists), `harbor` (packaging), `cli` |
+| `forge/maf/` | the earlier from-scratch forge; `parallel-scheduling` ships, two dimensions are quarantined (below) |
+| `tasks/` | rendered Harbor tasks |
+| `sweep/` | measurement evidence (`appworld_span.json`, `appworld_knobs.json`) |
+| `scripts/appworld_knob_sweep.py` | the anti-toy gate: does each knob actually move the score? |
+| `docs/superpowers/specs/` | audit trail — the exploits, the retired dimensions, the deferred architecture |
 
 ## Quickstart
 
 ```bash
-uv venv && uv sync                      # dev env (Python 3.11+)
-uv run pytest forge/tests -q            # whole suite, all in-process (no Docker)
+pip install appworld && appworld install && appworld download data
 
-# generate more tasks (each passes the CLEAN/VALID gate before it is written)
-uv run python -m forge.forge_cli gen --dim parallel-scheduling \
-    --seed 0 --n 20 --difficulty medium --out tasks/
+# measure every AppWorld task's task-determined roster (we never choose it)
+python -m forge.appworld.cli measure --out sweep/appworld_span.json
 
-python3 scripts/dryrun_local.py         # confirm oracle=1.0 without Docker
-bash scripts/verify_all.sh              # confirm oracle=1.0 in real Harbor (Docker)
+# render Harbor tasks
+python -m forge.appworld.cli render --n 2 --out tasks
+
+# run one with a real model
+harbor run --path tasks/appworld-star-names-binf-2a163ab_1 \
+    --agent terminus-2 --model openai/gpt-5.6-sol -n 1 --env-file .env
 ```
 
-## Verify a single task in Harbor
+The earlier dimension still ships and is verified end-to-end:
 
 ```bash
-uv tool install harbor                  # Harbor 0.18+
-
-# reference solution (no API key needed) -> reward 1.0
-harbor run --path tasks/parallel-scheduling-0003 --agent oracle -n 1
-
-# a real LLM agent (any litellm provider; put the key in a gitignored .env)
-harbor run --path tasks/parallel-scheduling-0003 \
-    --agent terminus-2 --model openai/gpt-5.6 -n 1 --env-file .env
+harbor run --path tasks/parallel-scheduling-0003 --agent oracle -n 1   # reward 1.0
 ```
 
-Measured with `gpt-5.6`: scheduling 1.00, theory-of-mind 1.00, failure-recovery
-**0.75** (a real partial reward) — see [`docs/RESULTS.md`](docs/RESULTS.md).
+## Headline measurements
 
-## Adding a new capability dimension
+All produced in this repo. Main = gpt-5.6-sol, specialists = gpt-4.1.
 
-Follow `skills/multi-agent-task-forge/SKILL.md`: name the skill and its shortcuts,
-build an environment where each shortcut provably loses, write a **constructive**
-generator (plant instance + optimal solution), a cheater panel, and an ablation
-twin — then confirm `selfcheck` passes across ≥20 seeds.
+| | |
+|---|---|
+| Tasks that can carry a partition | **51 / 147** — counting the submit channel as a collaborator would claim 147/147 |
+| Partition effect | **0.833 → 0.167** (n=3) |
+| Confound check (specialists upgraded to gpt-5.6-sol) | **still 0.167** (n=2) — the drop is the partition, not the weaker model |
+| Model gradient on the control | gpt-4.1 **0.17** vs gpt-5.6-sol **0.83** |
+| Agent image contents | exactly one file (`team`); leak audit: 0 violations |
+| Cost | one partitioned rollout ≈ **4.2h**, almost all of it 429 backoff |
+
+Not established, and stated as such in the write-up: the partition saturates, so
+the finer knobs are unmeasured; `chain` is unimplemented and unshipped; three
+tasks at one seed.
+
+## Two dimensions are quarantined, on purpose
+
+`theory-of-mind` and `failure-recovery` do not ship. Both leaked ground truth into
+the agent's image, and both stated their own optimal algorithm in the
+instruction. `forge/forge_cli.py` refuses to render them, and gate V4 rejects them
+independently. Their constructs and the sidecar architecture that would fix them
+are recorded in
+[`docs/superpowers/specs/2026-07-15-deferred-dimensions-architecture.md`](docs/superpowers/specs/2026-07-15-deferred-dimensions-architecture.md).
+
+Four exploits were executed against the earlier forge, each scoring 1.0 — the
+worst being seed brute-force against a generator that shipped inside the agent's
+own image. They are pinned at reward 0 in `forge/tests/test_adversarial.py`.
+
+## Tests
+
+```bash
+python -m pytest        # 118 passed, 2 xfailed
+```
+
+The two xfails are deliberate: they are the quarantined dimensions failing gate
+V4 — the gate working, not a defect.
