@@ -4,9 +4,9 @@ The sweep prints a number per rollout. That is the habit this whole repo is a
 warning about: every bug in WRITEUP.md §7 was invisible in the score and sitting
 in plain English one level below it. This prints the level below it.
 
-    APPWORLD_ROOT=$PWD python -m scripts.watch_episode
-    APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config open
-    APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config star-names --task 2a163ab_3
+    python -m scripts.watch_episode
+    python -m scripts.watch_episode --config open
+    python -m scripts.watch_episode --config star-names --task 2a163ab_3
 
 What you are watching:
 
@@ -113,8 +113,9 @@ def main() -> None:
     ap.add_argument("--sub-model", default="gpt-4.1")
     args = ap.parse_args()
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise SystemExit("OPENAI_API_KEY not set (try: set -a && . ./.env && set +a)")
+    from scripts._env import ensure_appworld_root, require_api_key
+    ensure_appworld_root()
+    require_api_key()
 
     from appworld import AppWorld
     from openai import OpenAI

@@ -21,7 +21,7 @@ The ungated arm is the important half: a security test that cannot demonstrate
 the vulnerability is not testing anything. If this file ever prints
 `vulnerability is real: False`, the probe has rotted, not the exploit.
 
-    APPWORLD_ROOT=$PWD python -m scripts.appworld_injection_probe
+    python -m scripts.appworld_injection_probe
 
 Measured 2026-07-15: ungated leaks, gated refuses. No LLM, no API key.
 """
@@ -82,7 +82,11 @@ def _attempt(task_id: str, name: str, payload: str, gated: bool) -> dict:
 
     original = runtime.inspect_code
     if not gated:
-        runtime.inspect_code = lambda code, app: None
+        # Must mirror inspect_code's real signature, `known` included. It did not,
+        # and this probe silently stopped running the moment session tracking was
+        # added -- while the test kept passing, because the test reads the
+        # evidence file rather than the probe. Regenerate after touching either.
+        runtime.inspect_code = lambda code, app, known=(): None
     try:
         with AppWorld(task_id=task_id, experiment_name="injection_probe",
                       ground_truth_mode="minimal") as world:
@@ -97,6 +101,9 @@ def _attempt(task_id: str, name: str, payload: str, gated: bool) -> dict:
 
 
 def main() -> None:
+    from scripts._env import ensure_appworld_root
+    ensure_appworld_root()
+
     os.environ["MAF_VERIFIER_TOKEN"] = CANARY
     task_id = "2a163ab_1"
 

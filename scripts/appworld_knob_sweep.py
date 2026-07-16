@@ -137,10 +137,12 @@ def main() -> None:
                     help="specialists: narrow, mechanical work; a cheap model is fine")
     args = ap.parse_args()
 
+    from scripts._env import ensure_appworld_root, require_api_key
+    ensure_appworld_root()
+    require_api_key()
+
     from openai import OpenAI
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise SystemExit("OPENAI_API_KEY not set")
     client = OpenAI()
 
     spans = json.loads(args.span.read_text())

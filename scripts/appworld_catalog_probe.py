@@ -15,7 +15,7 @@ and then shown a list that did not contain the one it needed.
 This is what the 0.333 was. Not "the partition is hard" -- the specialist could
 not find the verb.
 
-    APPWORLD_ROOT=$PWD python -m scripts.appworld_catalog_probe
+    python -m scripts.appworld_catalog_probe
 
 Measured 2026-07-15. No LLM involved; this is a property of the catalog and an
 integer.
@@ -40,6 +40,9 @@ LOAD_BEARING = {"venmo": ("like_transaction", "show_social_feed")}
 
 
 def main() -> None:
+    from scripts._env import ensure_appworld_root
+    ensure_appworld_root()
+
     from appworld import AppWorld
 
     rows = []

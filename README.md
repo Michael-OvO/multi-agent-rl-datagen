@@ -74,43 +74,90 @@ Every number in the write-up names the file that produced it:
 | `appworld_oracle.json` | do the shipped solutions actually pass? |
 | `appworld_span.json` | which of AppWorld's 147 tasks can carry a partition? |
 
-## Quickstart
-
-**Watch one episode happen, message by message** — no Docker, ~2 minutes. This is
-the fastest way to understand what the thing actually does:
+## Setup
 
 ```bash
-set -a && . ./.env && set +a                 # OPENAI_API_KEY
-APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config star-docs
-APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config open        # the control
-APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config star-names  # the knob that bites
+uv sync                          # appworld==0.1.3.post1, openai==2.16.0, pytest
+uv run appworld install          # unpacks the app source
+uv run appworld download data    # the 183MB dataset -> ./data
+cp .env.example .env             # then put your OPENAI_API_KEY in it
+```
+
+`appworld install` is **required again after any reinstall** of the package — it
+unpacks source that `uv sync` wipes. If AppWorld starts raising
+`No module named 'appworld.apps.admin'`, that is what happened.
+
+The pins are not cosmetic: they are exactly what
+`forge/appworld/container/Dockerfile.sidecar` installs, so the sweep measures the
+same AppWorld the shipped task runs. `forge/tests/test_environment.py` fails if
+they drift.
+
+```bash
+uv run pytest        # the count is whatever the command prints
+```
+
+## Quickstart
+
+**Watch one episode happen, message by message** — no Docker, ~2 minutes. The
+fastest way to understand what this actually does:
+
+```bash
+set -a && . ./.env && set +a                          # OPENAI_API_KEY
+
+python -m scripts.watch_episode --config star-docs    # the partition
+python -m scripts.watch_episode --config open         # the control
+python -m scripts.watch_episode --config star-names   # the knob that bites
 ```
 
 It prints the Main's briefs, each specialist's code, the sandbox's verdict on
-that code, what AppWorld printed back, and the final score against the floor.
+that code, what AppWorld printed back, and the score against the floor.
+
+**The measurements** (each writes its evidence file):
 
 ```bash
-pip install appworld && appworld install && appworld download data
+python -m scripts.appworld_donothing_probe    # where is the floor?      (no LLM)
+python -m scripts.appworld_catalog_probe      # what did truncation kill? (no LLM)
+python -m scripts.appworld_injection_probe    # can a brief leak the token? (no LLM)
+python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v3.json
+```
 
+**The pipeline:**
+
+```bash
 # which of AppWorld's tasks are genuinely multi-app (we never choose the roster)
 python -m forge.appworld.cli measure --out sweep/appworld_span.json
 
 # render Harbor tasks: 3 AppWorld tasks x 2 shipped configurations
 python -m forge.appworld.cli render --n 3 --out tasks
+```
 
-# run one with a real model
+**In containers** (the real deliverable — first build is ~30 min, then ~2 min):
+
+```bash
+# the reference solution
+harbor run --path tasks/appworld-star-docs-binf-2a163ab_1 \
+    --agent oracle -n 1 --env-file .env -o jobs/mine     # success=True, reward 1.0
+
+# a real Main
 harbor run --path tasks/appworld-star-names-binf-2a163ab_1 \
     --agent terminus-2 --model openai/gpt-5.6-sol -n 1 --env-file .env
 ```
 
-Every AppWorld task ships a reference solution, verified end-to-end:
+Read the result — `breakdown.json` is the interesting one, not `reward.txt`:
 
 ```bash
-harbor run --path tasks/appworld-star-docs-binf-2a163ab_1 \
-    --agent oracle -n 1 --env-file .env          # success=True, reward 1.0
+python -m json.tool jobs/mine/*/appworld-*/verifier/breakdown.json
 ```
 
-That oracle is **probabilistic**: it replays the decomposition a competent Main
+| field | what it tells you |
+|---|---|
+| `partial` | the score. **Compare to the 0.333 floor before anything else.** |
+| `failed` | *which* requirements failed, by name |
+| `ledger[].brief` | what the Main actually said to each specialist |
+| `ledger[].report` | what came back — **read this first when a number looks wrong** |
+| `ledger[].blocked_reasons` | the sandbox refusing something, and why |
+
+The oracle is **probabilistic**: it replays the decomposition a competent Main
 would find, but the specialists are real LLMs doing the real work, so it needs
 `OPENAI_API_KEY` at verification time and costs tokens.
 

@@ -14,7 +14,7 @@ scoring what it would score by doing nothing at all.
 This is cheap to settle and needs no LLM: open the task, submit nothing but the
 answer, evaluate. That is the entire probe.
 
-    APPWORLD_ROOT=$PWD python -m scripts.appworld_donothing_probe
+    python -m scripts.appworld_donothing_probe
 
 Measured 2026-07-15 on all three shipped tasks: passes=2, failures=4, 0.333.
 """
@@ -32,6 +32,9 @@ OUT = Path("sweep/appworld_donothing.json")
 
 
 def main() -> None:
+    from scripts._env import ensure_appworld_root
+    ensure_appworld_root()
+
     from appworld import AppWorld
 
     rows = []
