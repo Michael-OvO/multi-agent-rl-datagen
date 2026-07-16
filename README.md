@@ -76,6 +76,19 @@ Every number in the write-up names the file that produced it:
 
 ## Quickstart
 
+**Watch one episode happen, message by message** — no Docker, ~2 minutes. This is
+the fastest way to understand what the thing actually does:
+
+```bash
+set -a && . ./.env && set +a                 # OPENAI_API_KEY
+APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config star-docs
+APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config open        # the control
+APPWORLD_ROOT=$PWD python -m scripts.watch_episode --config star-names  # the knob that bites
+```
+
+It prints the Main's briefs, each specialist's code, the sandbox's verdict on
+that code, what AppWorld printed back, and the final score against the floor.
+
 ```bash
 pip install appworld && appworld install && appworld download data
 
