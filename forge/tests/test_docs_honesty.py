@@ -262,9 +262,21 @@ def test_the_report_does_not_conclude_more_than_the_validity_rule_allows():
     is the better knob is the reading the rule disqualifies.
     """
     text = _TEX.read_text()
-    assert "这说明更有价值的难度来自角色能力未知" not in text, (
-        "the report draws the conclusion its own section 4 criterion rejects"
-    )
+
+    # Banned phrasings, each one a conclusion the sweep does not support. The
+    # first version of this guard listed only the first, and the report went on
+    # withdrawing the claim in section 7 and asserting it again in the
+    # conclusion -- which is the same drift the guard exists to stop, three
+    # pages later. Test the property, not one sentence.
+    for banned in (
+        "这说明更有价值的难度来自角色能力未知",
+        "初步难度梯度",
+        "展示出从 open 到 star-docs、再到 star-names",
+    ):
+        assert banned not in text, (
+            f"the report claims {banned!r}, which its own section 4 criterion "
+            f"rejects: star-names yields 0/3 usable cells against star-docs' 1/3"
+        )
     assert "不足以" in text and "0/3" in text, (
         "the report must say what the sandwich rule says about star-names"
     )
@@ -303,3 +315,21 @@ def test_every_section_cross_reference_points_at_a_section_that_exists():
         f"the write-up cites sections that do not exist: {dangling} "
         f"(it has {sorted(sections)})"
     )
+
+
+def test_the_build_refuses_a_pdf_that_lost_characters():
+    """A glyph the font lacks is dropped in silence and the log says so.
+
+    Fandol has no 啰 (U+5570). The sentence shipped as "只是变得更" and stopped,
+    the log recorded it, and the build passed -- because the build's own check
+    counted overfull boxes and nothing else. A check chosen because it passes is
+    the shape of every failure in WRITEUP.md section 7.
+    """
+    script = (_ROOT / "scripts" / "build_report.sh").read_text()
+    assert "Missing character" in script, (
+        "build_report.sh does not check for dropped glyphs; XeLaTeX reports them "
+        "as a warning and -halt-on-error will not stop"
+    )
+    assert "Overfull" in script
+    # ... and it must actually fail, not just print.
+    assert "exit 1" in script, "the build must refuse to copy the PDF, not warn"
