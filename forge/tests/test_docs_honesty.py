@@ -28,6 +28,12 @@ _SWEEP = _ROOT / "sweep"
 
 _WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
 
+#: The sweep §5 rests on. Named once: the write-up, the README and these
+#: assertions have to move together or the guard checks a file the prose
+#: stopped citing -- which is how "three tasks" came to describe a sweep of
+#: two, and how v3's means outlived the code path that produced them.
+_SWEEP_FILE = "appworld_knobs_v5.json"
+
 # (regex, human name, why it is a lie)
 UNIMPLEMENTED_CLAIMS = [
     (r"\bz3\b", "z3", "no z3/CSP solver exists in forge/"),
@@ -108,14 +114,14 @@ def test_the_headline_measurement_matches_the_sweep_it_rests_on():
     Every previous version of this claim drifted from its evidence: "three
     tasks" for a two-task sweep, and a partition effect that was a harness bug.
     """
-    rows = json.loads((_SWEEP / "appworld_knobs_v3.json").read_text())
+    rows = json.loads((_SWEEP / _SWEEP_FILE).read_text())
     text = _DOC.read_text()
 
     tasks = sorted({r["task_id"] for r in rows})
     m = re.search(r"\*\*(\w+) tasks\*\* \(([^)]+)\)", text)
     assert m, "§5 must name the tasks it measured"
     assert _WORDS[m.group(1).lower()] == len(tasks), (
-        f"§5 says {m.group(1)} tasks; appworld_knobs_v3.json has {len(tasks)}"
+        f"§5 says {m.group(1)} tasks; {_SWEEP_FILE} has {len(tasks)}"
     )
     assert re.findall(r"2a163ab_\d", m.group(2)) == tasks
 
@@ -140,7 +146,7 @@ def test_the_writeup_states_the_partition_result_it_measured():
     that reports the sweep in a table and then talks around it in the prose is
     the failure this whole document is about.
     """
-    rows = json.loads((_SWEEP / "appworld_knobs_v3.json").read_text())
+    rows = json.loads((_SWEEP / _SWEEP_FILE).read_text())
     partitioned = [r["partial"] for r in rows if r["config"].startswith("star")]
     control = [r["partial"] for r in rows if r["config"].startswith("open")]
     if not (partitioned and control):
@@ -176,5 +182,124 @@ def test_the_writeup_keeps_the_v1_retrospective_rather_than_hiding_it():
     """
     text = _DOC.read_text()
     assert "12 of 12" in text, "the ToM degeneracy result must survive"
+
+    # ... and it must still be true of the data. The evidence for this claim was
+    # deleted once already (31bd588, "drop the orphaned measurements for the
+    # quarantined dimensions"), leaving section 1's load-bearing number as the
+    # least checkable one in the document while this guard pinned only the prose.
+    rows = json.loads((_SWEEP / "tom_degeneracy.json").read_text())
+    runs = [r[m] for r in rows for m in ("gpt56", "gpt41")]
+    assert len(runs) == 12, f"the claim says 12 runs; the file has {len(runs)}"
+    assert all(r == 1.0 for r in runs), (
+        f"12 of 12 at reward 1.0 is the whole of section 1; the file says {runs}"
+    )
     assert "seed brute-force" in text, "the exploit that broke every dimension must survive"
     assert "manufacture constraints" in text.lower(), "the principle must be stated"
+
+
+# -- the Chinese report ------------------------------------------------------
+#
+# docs/*.tex is the artefact that gets handed to a reader, and until now it was
+# the only document nothing checked. Its numbers come from the same files
+# WRITEUP.md's do, so they can rot the same way -- and the regressions this
+# module's docstring memorialises ("a partition effect that was a harness bug",
+# "'three tasks' described a sweep containing two") are exactly the species a
+# report drifts into once the sweep beneath it moves.
+
+_TEX = _ROOT / "docs" / "multi_agent_rl_data_generation_zh.tex"
+
+
+def test_the_report_states_the_shipped_configuration_count_it_multiplies_by():
+    from forge.appworld.cli import SHIPPED_CONFIGS
+
+    text = _TEX.read_text()
+    n = len(SHIPPED_CONFIGS)
+    assert f"{51 * n} 个协作配置" in text, (
+        f"the report must say {51 * n} configurations for {n} shipped configs"
+    )
+    assert f"{n} 个已实现配置" in text
+    # 102 is a count of configurations, not of tasks. Calling them tasks is the
+    # framing section 4 exists to correct, and section 6 used to undo it.
+    assert f"{51 * n} 个协作任务" not in text, (
+        "the report calls configurations tasks again; 51 x N is not N x 51 new tasks"
+    )
+
+
+def test_the_report_states_the_do_nothing_floor_it_measured():
+    rows = json.loads((_SWEEP / "appworld_donothing.json").read_text())
+    floors = {r["partial"] for r in rows}
+    assert len(floors) == 1
+    floor = floors.pop()
+    assert f"{floor}" in _TEX.read_text(), (
+        f"the report must state the measured floor ({floor})"
+    )
+
+
+def test_the_report_does_not_claim_an_unimplemented_operator_is_shipped():
+    """The operator table's 未交付/未实现 labels must match the code.
+
+    `chain` is defined in `Constraints.allowed_targets` and called by nothing, so
+    it is 未实现 (not built), not 未交付 (built, unshipped). The report had it as
+    the latter, which reads as a knob one flag away from working.
+    """
+    from forge.appworld.cli import SHIPPED_CONFIGS
+    from forge.appworld.partition import Topology
+
+    text = _TEX.read_text()
+    shipped_topologies = {t for t, _, _ in SHIPPED_CONFIGS}
+    assert Topology.CHAIN not in shipped_topologies
+    assert "chain-names（未实现）" in text, (
+        "chain is unimplemented, not merely unshipped; its handoff has no caller"
+    )
+
+
+def test_the_report_does_not_conclude_more_than_the_validity_rule_allows():
+    """Section 4 builds the sandwich rule; sections 7-9 must not violate it.
+
+    star-names yields 0/3 usable cells against star-docs' 1/3, and its entire
+    mean drop is one cell on the floor -- the same verdict this report gives
+    chain and calls a fake signal. Concluding from the *mean* that role-opacity
+    is the better knob is the reading the rule disqualifies.
+    """
+    text = _TEX.read_text()
+    assert "这说明更有价值的难度来自角色能力未知" not in text, (
+        "the report draws the conclusion its own section 4 criterion rejects"
+    )
+    assert "不足以" in text and "0/3" in text, (
+        "the report must say what the sandwich rule says about star-names"
+    )
+
+
+# -- the two guards that would have caught the drift generically -------------
+
+
+def test_every_evidence_file_the_docs_name_exists():
+    """"The file that produced it is named next to it" is a promise (WRITEUP:5).
+
+    A named file that is not there is worse than an unnamed number: it reads as
+    checkable and is not. Two of these were deleted by housekeeping commits while
+    the prose kept citing them.
+    """
+    named = set()
+    for doc in (_DOC, _ROOT / "README.md",
+                _ROOT / "skills" / "constraint-forged-multi-agent-tasks" / "SKILL.md"):
+        named |= set(re.findall(r"`?(?:sweep/)?(\w+\.json)`?", doc.read_text()))
+
+    on_disk = {p.name for p in _SWEEP.glob("*.json")}
+    # Only names that look like this repo's evidence, not e.g. package.json.
+    claimed = {n for n in named if n in on_disk or n.startswith(("appworld_", "tom_"))}
+    missing = sorted(claimed - on_disk)
+    assert not missing, f"the docs name evidence files that do not exist: {missing}"
+
+
+def test_every_section_cross_reference_points_at_a_section_that_exists():
+    """§8 was cited for a claim §6 makes; both exist, so nothing complained."""
+    text = _DOC.read_text()
+    sections = {int(m) for m in re.findall(r"^## (\d+)\.", text, re.M)}
+    assert sections, "the write-up has no numbered sections to check"
+    cited = {int(m) for m in re.findall(r"§(\d+)", text)}
+    dangling = sorted(cited - sections)
+    assert not dangling, (
+        f"the write-up cites sections that do not exist: {dangling} "
+        f"(it has {sorted(sections)})"
+    )
