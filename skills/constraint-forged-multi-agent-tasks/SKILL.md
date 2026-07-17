@@ -96,21 +96,15 @@ artifact with a checker already attached.*
    Free, and already validated by somebody else -- that is the whole of its
    value. Strongly prefer a substrate that has one.
 
-   This used to read "a programmatic oracle with **no LLM in it**,
-   non-negotiable," and cited this repo's v1 as the evidence. **The evidence does
-   not support it.** The `theory-of-mind` dimension that died had no LLM in it at
-   all: its reward was one line of hand-written arithmetic,
-   `quality = min(1, q_opt/asks)`, and it was worthless because the instruction
-   stated its own optimal algorithm, so obeying it was optimal play -- 1.0 on 12
-   of 12, zero variance. What that indicts is an **unmeasured** oracle, not a
-   language model. An LLM judge is a designed oracle, and it is *not* unauditable
-   -- sample its verdicts against human labels and you have precision and recall.
-   The v1 division was never measured that way, which is exactly why it stayed
-   green.
-
-   The rule that survives contact with the evidence: **inherit where you can;
-   where you must design -- LLM, AST, or arithmetic -- measure its error rate
-   before you trust it.**
+   The rule is **inherit where you can; where you must design -- LLM, AST, or
+   arithmetic -- measure its error rate before you trust it.** The thing that
+   kills a forge is an oracle nobody measured, not a language model: §1's
+   `theory-of-mind` had no model anywhere in it and died of one line of
+   arithmetic that nobody checked for discrimination. An LLM judge is a designed
+   oracle and is perfectly auditable -- sample its verdicts against human labels
+   and you have precision and recall. The free oracle is still what to look for
+   first, because that validation study is a real cost and inheriting spares you
+   it.
 2. **Real, executable, installable.** Not a description of a world. If you cannot
    `pip install` or `docker pull` it, you will end up building it.
 3. **Ground truth for at least a train split**, so you can *measure* which tasks
