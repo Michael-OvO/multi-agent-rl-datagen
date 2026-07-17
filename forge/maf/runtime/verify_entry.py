@@ -3,7 +3,8 @@
 Reads ``verify_config.json`` (written next to it by the Harbor renderer), loads
 the full instance + the agent's submission, calls the copied dimension's
 ``verify``, and writes a float reward to ``/logs/verifier/reward.txt`` plus a
-diagnostic breakdown. Stdlib-only; never raises out — always writes a reward.
+diagnostic breakdown. Stdlib-only. A verifier crash is written for diagnostics
+and then re-raised so infrastructure failure cannot masquerade as agent reward 0.
 """
 
 import json
@@ -30,14 +31,17 @@ def _load_submission(cfg):
 
 def _grade():
     here = os.path.dirname(os.path.abspath(__file__))
-    cfg = json.load(open(os.path.join(here, "verify_config.json")))
+    with open(os.path.join(here, "verify_config.json")) as fh:
+        cfg = json.load(fh)
     sys.path.insert(0, "/tests/lib")
-    import maf_dim  # noqa: E402
+    import maf_dim  # noqa: E402  # pyright: ignore[reportMissingImports]
 
-    instance = json.load(open(cfg["scenario_path"]))
+    with open(cfg["scenario_path"]) as fh:
+        instance = json.load(fh)
     gt = cfg.get("ground_truth_path")
     if gt and os.path.exists(gt):
-        instance.update(json.load(open(gt)))
+        with open(gt) as fh:
+            instance.update(json.load(fh))
 
     submission = _load_submission(cfg)
     return maf_dim.verify(instance, submission)
@@ -60,3 +64,4 @@ if __name__ == "__main__":
     except Exception:
         traceback.print_exc()
         _write(0.0)
+        raise

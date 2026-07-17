@@ -22,6 +22,8 @@ from forge.appworld.validity import (
     is_control,
     is_measurement,
     judge,
+    judge_cell,
+    judge_cells,
     judge_rows,
     yield_by_config,
 )
@@ -159,7 +161,7 @@ def test_the_weakest_cell_governs_the_seed_count():
     rows += [_row("a", "star-docs-binf", 0.5) for _ in range(9)]
     rows += [_row("b", "star-docs-binf", 0.5)]
 
-    y = yield_by_config(judge_rows(rows, FLOOR))["star-docs-binf"]
+    y = yield_by_config(judge_cells(rows, FLOOR))["star-docs-binf"]
     assert y.seeds == 1, "the 1-seed cell governs, not the 10/2 average"
     assert not y.measured
 
@@ -169,7 +171,7 @@ def test_enough_seeds_in_every_cell_makes_the_rate_a_measured_yield():
     rows = [_row("a", "open-docs-binf", 1.0)]
     rows += [_row("a", "star-docs-binf", 0.5) for _ in range(SEEDS_FOR_YIELD)]
 
-    y = yield_by_config(judge_rows(rows, FLOOR))["star-docs-binf"]
+    y = yield_by_config(judge_cells(rows, FLOOR))["star-docs-binf"]
     assert y.seeds == SEEDS_FOR_YIELD
     assert y.measured
 
@@ -182,7 +184,7 @@ def test_the_rate_is_the_usable_fraction():
     rows += [_row("c", "star-docs-binf", 1.0)]  # no-bite
     rows += [_row("d", "star-docs-binf", 0.1)]  # degenerate
 
-    y = yield_by_config(judge_rows(rows, FLOOR))["star-docs-binf"]
+    y = yield_by_config(judge_cells(rows, FLOOR))["star-docs-binf"]
     assert (y.valid, y.total) == (2, 4)
     assert y.rate == pytest.approx(0.5)
 
@@ -201,9 +203,57 @@ def test_cells_whose_control_failed_are_not_counted_against_the_knob():
         _row("broke2", "open-docs-binf", 0.333),
         _row("broke2", "star-docs-binf", 0.333),
     ]
-    y = yield_by_config(judge_rows(rows, FLOOR))["star-docs-binf"]
+    y = yield_by_config(judge_cells(rows, FLOOR))["star-docs-binf"]
     assert (y.valid, y.total, y.unmeasurable) == (1, 1, 2)
     assert y.rate == pytest.approx(1.0), "1/1 measurable, not 1/3"
+
+
+# -- the cell rule: what replicates buy you ---------------------------------
+
+
+def test_five_identical_replicates_have_no_gradient_however_good_the_score():
+    """The v1 failure, in the shape a sandwich alone cannot see.
+
+    0.833 sits comfortably inside `floor < score < control`, so every per-rollout
+    verdict says VALID -- five times. But five identical scores give GRPO nothing
+    to subtract: zero variance, zero advantage, zero gradient. That is
+    `theory-of-mind` scoring 1.0 on 12 of 12 with a different number on it.
+    """
+    assert judge_cell([0.833] * 5, control=1.0, floor=FLOOR) is Verdict.NO_VARIANCE
+    # ... and the per-rollout rule really would have called every one of them fine
+    assert all(judge(s, 1.0, FLOOR) is Verdict.VALID for s in [0.833] * 5)
+
+
+def test_a_cell_is_usable_when_its_replicates_actually_spread():
+    """Sometimes solved, sometimes not: the thing you can learn from."""
+    assert judge_cell([1.0, 1.0, 0.833, 0.333, 1.0], 1.0, FLOOR) is Verdict.VALID
+
+
+def test_one_replicate_is_never_called_zero_variance():
+    """A single point has no variance by construction; that is ignorance, not a
+    verdict. Calling it NO_VARIANCE would condemn every 1-seed sweep."""
+    assert judge_cell([0.833], control=1.0, floor=FLOOR) is Verdict.VALID
+
+
+def test_a_cell_that_never_clears_the_floor_is_degenerate_even_with_spread():
+    """Variance between bad and worse is not signal about the task."""
+    assert judge_cell([0.333, 0.167, 0.333], 1.0, FLOOR) is Verdict.DEGENERATE
+
+
+def test_a_cell_that_always_ties_the_ceiling_never_bit():
+    assert judge_cell([1.0, 1.0, 1.0], 1.0, FLOOR) is Verdict.NO_BITE
+
+
+def test_the_yield_counts_cells_not_rollouts():
+    """The unit of RL data is the prompt. Counting rollouts answers a different
+    question -- "how often does a rollout land in the band" -- and at K seeds it
+    silently multiplies the denominator by K."""
+    rows = [_row("a", "open-docs-binf", 1.0), _row("b", "open-docs-binf", 1.0)]
+    rows += [_row("a", "star-docs-binf", s) for s in (1.0, 0.833, 1.0)]  # spread -> valid
+    rows += [_row("b", "star-docs-binf", s) for s in (0.333, 0.333, 0.333)]  # floor
+
+    y = yield_by_config(judge_cells(rows, FLOOR))["star-docs-binf"]
+    assert (y.valid, y.total) == (1, 2), "two cells, one usable -- not six rollouts"
 
 
 # -- the rule, against the sweep it was written for --------------------------
@@ -240,7 +290,7 @@ def test_the_shipped_configs_yield_one_usable_cell_in_six():
     This asserts the arithmetic, not that the arithmetic is good news. If a
     later sweep moves these, update the numbers -- after checking the harness.
     """
-    ys = yield_by_config(judge_rows(_sweep(), _floor()))
+    ys = yield_by_config(judge_cells(_sweep(), _floor()))
 
     shipped = {"star-docs-binf", "star-names-binf"}
     assert shipped <= set(ys), f"the shipped configs are not in the sweep: {set(ys)}"
@@ -281,6 +331,23 @@ def test_the_unshipped_chain_config_is_degenerate_everywhere():
 
 def test_the_shipped_sweep_is_one_seed_and_therefore_measures_no_yield():
     """The number above is an observation. Calling it a yield needs seeds."""
-    ys = yield_by_config(judge_rows(_sweep(), _floor()))
+    ys = yield_by_config(judge_cells(_sweep(), _floor()))
     assert all(y.seeds == 1 for y in ys.values())
     assert not any(y.measured for y in ys.values())
+
+
+def test_at_one_replicate_the_cell_rule_and_the_row_rule_agree():
+    """`cli judge` prints both tables. If they can disagree, one of them lies.
+
+    The rules are separate because they answer different questions -- is this
+    rollout in the band, is this prompt trainable -- and at a single replicate
+    those questions collapse into one. Exhaustive over the score/control lattice
+    the oracle can actually produce (N/6 for N in 0..6, plus the boundaries).
+    """
+    grid = [round(n / 6, 3) for n in range(7)] + [0.0, 1.0, 1.1]
+    for score in grid:
+        for control in grid:
+            assert judge(score, control, FLOOR) is judge_cell([score], control, FLOOR), (
+                f"score={score} control={control}: the per-rollout table and the "
+                f"per-cell table would print different verdicts for the same row"
+            )

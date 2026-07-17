@@ -35,6 +35,34 @@ from forge.appworld.reference import Reference
 
 _RUNTIME = Path(__file__).parent / "container"
 
+#: Which sources of this package the sidecar imports, and therefore which the
+#: renderer copies into the build context. Only what the sidecar imports:
+#: `select.py` used to be copied here and is not, because nothing in the
+#: container imports it -- harmless, but "it was in the loop by accident" is not
+#: an answer worth giving a reviewer.
+SIDECAR_MODULES = ("__init__.py", "partition.py", "runtime.py", "sandbox.py")
+
+#: Every file a rendered task gets *verbatim*, as {path in the task} -> {source}.
+#:
+#: This is a manifest rather than a run of `write_text` calls because the copies
+#: need a second reader. `tasks/` is committed, so a file edited in `forge/` and
+#: not re-rendered ships stale -- the defect this module's tests were written
+#: for. The guard (`test_appworld_harbor.py`) walks this dict, so a copy cannot
+#: be added without being guarded, and the guard cannot fall behind the copies.
+#:
+#: It used to be able to. The renderer copied five things; the guard hand-listed
+#: three. `verify.py` -- the code that computes the reward -- and
+#: `Dockerfile.sidecar` were the two nobody was watching, verified 2026-07-17 by
+#: mutating each and watching the suite stay green.
+VERBATIM_COPIES = {
+    "environment/Dockerfile.sidecar": _RUNTIME / "Dockerfile.sidecar",
+    "environment/team": _RUNTIME / "team",
+    "environment/server.py": _RUNTIME / "server.py",
+    "tests/verify.py": _RUNTIME / "verify.py",
+    **{f"environment/maf_appworld/{mod}": Path(__file__).parent / mod
+       for mod in SIDECAR_MODULES},
+}
+
 _TASK_TOML = """schema_version = "1.3"
 artifacts = []
 
@@ -233,30 +261,22 @@ def write_task(
     (env / "docker-compose.yaml").write_text(_COMPOSE.format(
         task_id=task_id, config_json=json.dumps(config), token=token))
     (env / "Dockerfile").write_text(_MAIN_DOCKERFILE)
-    (env / "Dockerfile.sidecar").write_text((_RUNTIME / "Dockerfile.sidecar").read_text())
-    (env / "team").write_text((_RUNTIME / "team").read_text())
-    (env / "server.py").write_text((_RUNTIME / "server.py").read_text())
 
-    # The sidecar needs the specialist loop and the constraint definitions. They
-    # go into the build context under their own directory, which only
-    # Dockerfile.sidecar copies -- the agent's Dockerfile does not, so they never
-    # reach the image the Main runs in. Plan 1's leak audit reads COPY
+    # Every verbatim copy, from the one manifest the drift guard also reads.
+    #
+    # maf_appworld/ holds the specialist loop and the constraint definitions. It
+    # goes into the build context under its own directory, which only
+    # Dockerfile.sidecar copies -- the agent's Dockerfile does not, so it never
+    # reaches the image the Main runs in. Plan 1's leak audit reads COPY
     # directives precisely so it can tell these two cases apart.
-    pkg = env / "maf_appworld"
-    pkg.mkdir(exist_ok=True)
-    _pkg_src = Path(__file__).parent
-    # Only what the sidecar imports. `select.py` used to be copied here and is
-    # not: it is the module that parses a task's ground-truth solution, and
-    # nothing in the container imports it. Harmless (the sidecar holds the
-    # ground truth anyway) but it invites the reviewer's obvious question, and
-    # the answer "it was in the loop by accident" is not one worth giving.
-    for mod in ("__init__.py", "partition.py", "runtime.py", "sandbox.py"):
-        (pkg / mod).write_text((_pkg_src / mod).read_text())
+    for dest, src in VERBATIM_COPIES.items():
+        target = task_dir / dest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(src.read_text())
 
     # The token lives in tests/, which Harbor uploads only at verification time,
     # so the agent phase never sees it. Without it the sidecar refuses /state.
     (task_dir / "tests" / "verifier_token.txt").write_text(token)
-    (task_dir / "tests" / "verify.py").write_text((_RUNTIME / "verify.py").read_text())
     (task_dir / "tests" / "test.sh").write_text(
         "#!/bin/bash\nmkdir -p /logs/verifier\npython3 /tests/verify.py\n")
 

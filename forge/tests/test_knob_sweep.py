@@ -77,3 +77,82 @@ def test_the_open_control_is_told_the_answer_protocol():
         "the open control is not told the answer protocol that every partitioned "
         "arm is told"
     )
+
+
+def test_the_config_filter_always_keeps_the_control():
+    """A constrained score with no ceiling is not a measurement.
+
+    `validity.judge_rows` raises for a task with no control row, so a filter that
+    could drop the control would produce a sweep the judge refuses to read. The
+    filter exists to skip `chain` -- unimplemented, known degenerate, and the
+    most expensive cell in the sweep -- not to skip the reference point.
+    """
+    from scripts.appworld_knob_sweep import _configs
+
+    roster = ("phone", "venmo")
+    for only in ({"star-docs-binf"}, {"star-names-binf"}, {"chain-names-binf"}):
+        labels = [c.label for c in _configs(roster, only=only)]
+        assert any(c.main_has_apis for c in _configs(roster, only=only)), (
+            f"filtering to {only} dropped the control; the judge would refuse this"
+        )
+        assert only <= set(labels)
+
+
+def test_an_unknown_config_label_is_refused_rather_than_silently_empty():
+    """A typo'd label that filtered to nothing would sweep only the control and
+    report an empty knob table, which reads as 'no effect'."""
+    import pytest
+
+    from scripts.appworld_knob_sweep import _configs
+
+    with pytest.raises(SystemExit, match="unknown config"):
+        _configs(("phone", "venmo"), only={"star-doc-binf"})  # missing an s
+
+
+def test_every_sentinel_the_runtime_can_emit_is_recognised_by_the_sweep():
+    """A harness marker the sweep does not know gets submitted as a real answer.
+
+    `run_specialist` returns `(no answer within turn limit)` when it exhausts
+    `max_turns`, and `_HARNESS_SENTINELS` listed only `run_main`'s marker. The
+    partitioned arms answer through `run_main`, so they were covered; the OPEN
+    control answers through `run_specialist` directly (`_run_open_control`), so
+    it is the *only* arm that could emit the unrecognised one.
+
+    That is the same shape as the bug `_is_action_answer`'s docstring
+    memorialises -- a conversion asymmetry landing on the control alone -- and
+    it points the other way: a turn-limited control submits the sentinel as
+    prose, fails `assert answers match`, and drops. Every constrained cell on
+    that task is then read against a broken ceiling, which `validity.judge`
+    reports as CONTROL_FAILED or, worse, as NO_BITE.
+
+    It has never fired in a shipped sweep. The pin is here so it cannot start
+    quietly: the strings are defined in `runtime.py` now, and this asserts the
+    sweep imports them rather than re-typing them.
+    """
+    import inspect
+
+    from forge.appworld import runtime
+
+    emitted = {
+        node.value
+        for node in _string_returns(inspect.getsource(runtime))
+        if node.value.startswith("(") and node.value.endswith(")")
+    }
+    unknown = {s for s in emitted if not _is_action_answer(s)}
+    assert not unknown, (
+        f"runtime.py can return {sorted(unknown)}, which the sweep would submit "
+        f"to AppWorld as a literal answer instead of None"
+    )
+
+
+def _string_returns(source: str):
+    """Every `return "..."` in a module's source."""
+    import ast
+
+    return [
+        node.value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ]

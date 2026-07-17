@@ -4,8 +4,8 @@ Every claim here was verified against `forge/` or against a file in `sweep/`.
 These are not style checks: each one is a specific overclaim this repo actually
 published and had to withdraw.
 
-  * "51 tasks x 8 configurations = 408 variants" sat three paragraphs from the
-    section saying `chain` was unimplemented and unsolvable.
+  * "51 tasks x 8 configurations = 408 variants" counted tasks rejected by the
+    information-seam gate and configurations that do not ship.
   * "Three tasks" described a sweep containing two.
   * "118 passed" was wrong by the next commit.
   * The do-nothing floor was stated as 0.167 after the fix that moved it to
@@ -78,15 +78,19 @@ def test_the_scale_claim_counts_only_configurations_that_ship():
     from forge.appworld.cli import SHIPPED_CONFIGS
 
     text = _DOC.read_text()
+    seams = json.loads((_SWEEP / "appworld_seams.json").read_text())
+    pool = sum(bool(row["seams"]) for row in seams)
     # \s+ rather than a literal space: the claim wraps across lines in markdown.
-    m = re.search(r"51 tasks × (\d+) shipped configurations\s*=\s*(\d+)\s*variants",
-                  text)
+    m = re.search(
+        rf"{pool} tasks × (\d+) shipped configurations\s*=\s*(\d+)\s*variants",
+        text,
+    )
     assert m, "the scale claim must state the shipped configuration count explicitly"
     assert int(m.group(1)) == len(SHIPPED_CONFIGS), (
         f"the write-up claims {m.group(1)} shipped configurations; "
         f"cli.SHIPPED_CONFIGS has {len(SHIPPED_CONFIGS)}"
     )
-    assert int(m.group(2)) == 51 * len(SHIPPED_CONFIGS)
+    assert int(m.group(2)) == pool * len(SHIPPED_CONFIGS)
 
 
 # -- claims that must match the evidence -------------------------------------
@@ -197,7 +201,7 @@ def test_the_writeup_keeps_the_v1_retrospective_rather_than_hiding_it():
     assert "manufacture constraints" in text.lower(), "the principle must be stated"
 
 
-# -- the Chinese report ------------------------------------------------------
+# -- the reports -------------------------------------------------------------
 #
 # docs/*.tex is the artefact that gets handed to a reader, and until now it was
 # the only document nothing checked. Its numbers come from the same files
@@ -205,55 +209,114 @@ def test_the_writeup_keeps_the_v1_retrospective_rather_than_hiding_it():
 # module's docstring memorialises ("a partition effect that was a harness bug",
 # "'three tasks' described a sweep containing two") are exactly the species a
 # report drifts into once the sweep beneath it moves.
+#
+# There are now two of them, and they carry the same numbers. A translation is
+# exactly where a number rots unobserved: nobody rereads the version they do not
+# speak, and the sweep moves under both. So every check here runs against both,
+# and each report supplies its own phrasings.
 
-_TEX = _ROOT / "docs" / "multi_agent_rl_data_generation_zh.tex"
+_TEX_ZH = _ROOT / "docs" / "multi_agent_rl_data_generation_zh.tex"
+_TEX_EN = _ROOT / "docs" / "multi_agent_rl_data_generation_en.tex"
+
+#: Per-report phrasings for the checks below, keyed by the id pytest shows on
+#: failure. `directories`/`configs`/`tasks_banned` take the computed count.
+_REPORTS = {
+    "zh": {
+        "path": _TEX_ZH,
+        "directories": "{n} 个任务目录",
+        "configs": "{n} 个已实现配置",
+        "tasks_banned": "{n} 个协作任务",
+        "chain_unbuilt": "chain-names（未实现）",
+        "insufficient": "不足以",
+        "overclaims": (
+            "这说明更有价值的难度来自角色能力未知",
+            "初步难度梯度",
+            "展示出从 open 到 star-docs、再到 star-names",
+        ),
+    },
+    "en": {
+        "path": _TEX_EN,
+        "directories": "{n} task directories",
+        "configs": "{n} implemented configurations",
+        "tasks_banned": "{n} collaborative tasks",
+        "chain_unbuilt": "chain-names (not built)",
+        "insufficient": "insufficient",
+        # No drift history here yet -- the zh list memorialises real regressions,
+        # this one is the same property stated forward, in the phrasings an
+        # English rewrite would reach for first.
+        "overclaims": (
+            "role opacity is the more effective source of difficulty",
+            "preliminary difficulty gradient",
+            "a difficulty gradient from open to star-docs",
+        ),
+    },
+}
+
+_reports = pytest.mark.parametrize("report", _REPORTS.values(), ids=_REPORTS.keys())
 
 
-def test_the_report_states_the_shipped_configuration_count_it_multiplies_by():
+@_reports
+def test_the_report_multiplies_the_candidate_pool_the_seam_gate_actually_leaves(report):
+    """The multiplicand is the seam-filtered pool, not the strict-filtered one.
+
+    This test used to hardcode 51 -- the count *before* `seams.py` ran. That is
+    the number §4.4 exists to retire: 12 of those 51 carry no information seam,
+    so multiplying by 51 re-inflates the pool by the exact 23.5% the seam gate
+    was built to remove. Derive it from the measurement instead, so the report
+    and the gate cannot drift apart again.
+    """
     from forge.appworld.cli import SHIPPED_CONFIGS
 
-    text = _TEX.read_text()
+    text = report["path"].read_text()
     n = len(SHIPPED_CONFIGS)
-    assert f"{51 * n} 个协作配置" in text, (
-        f"the report must say {51 * n} configurations for {n} shipped configs"
+    seams = json.loads((_SWEEP / "appworld_seams.json").read_text())
+    pool = sum(1 for r in seams if r["seams"])
+
+    assert report["directories"].format(n=pool * n) in text, (
+        f"the report must say {pool * n} directories for {pool} seam-bearing "
+        f"tasks x {n} shipped configs"
     )
-    assert f"{n} 个已实现配置" in text
-    # 102 is a count of configurations, not of tasks. Calling them tasks is the
-    # framing section 4 exists to correct, and section 6 used to undo it.
-    assert f"{51 * n} 个协作任务" not in text, (
-        "the report calls configurations tasks again; 51 x N is not N x 51 new tasks"
+    assert report["configs"].format(n=n) in text
+    # 78 counts configurations, not tasks. Calling them tasks is the framing
+    # section 4 exists to correct, and section 6 used to undo it.
+    assert report["tasks_banned"].format(n=pool * n) not in text, (
+        f"the report calls configurations tasks again; {pool} x {n} is not "
+        f"{n} x {pool} new tasks"
     )
 
 
-def test_the_report_states_the_do_nothing_floor_it_measured():
+@_reports
+def test_the_report_states_the_do_nothing_floor_it_measured(report):
     rows = json.loads((_SWEEP / "appworld_donothing.json").read_text())
     floors = {r["partial"] for r in rows}
     assert len(floors) == 1
     floor = floors.pop()
-    assert f"{floor}" in _TEX.read_text(), (
+    assert f"{floor}" in report["path"].read_text(), (
         f"the report must state the measured floor ({floor})"
     )
 
 
-def test_the_report_does_not_claim_an_unimplemented_operator_is_shipped():
-    """The operator table's 未交付/未实现 labels must match the code.
+@_reports
+def test_the_report_does_not_claim_an_unimplemented_operator_is_shipped(report):
+    """The operator table's unshipped/not-built labels must match the code.
 
     `chain` is defined in `Constraints.allowed_targets` and called by nothing, so
-    it is 未实现 (not built), not 未交付 (built, unshipped). The report had it as
-    the latter, which reads as a knob one flag away from working.
+    it is not built, rather than built-but-unshipped. The report had it as the
+    latter, which reads as a knob one flag away from working.
     """
     from forge.appworld.cli import SHIPPED_CONFIGS
     from forge.appworld.partition import Topology
 
-    text = _TEX.read_text()
+    text = report["path"].read_text()
     shipped_topologies = {t for t, _, _ in SHIPPED_CONFIGS}
     assert Topology.CHAIN not in shipped_topologies
-    assert "chain-names（未实现）" in text, (
+    assert report["chain_unbuilt"] in text, (
         "chain is unimplemented, not merely unshipped; its handoff has no caller"
     )
 
 
-def test_the_report_does_not_conclude_more_than_the_validity_rule_allows():
+@_reports
+def test_the_report_does_not_conclude_more_than_the_validity_rule_allows(report):
     """Section 4 builds the sandwich rule; sections 7-9 must not violate it.
 
     star-names yields 0/3 usable cells against star-docs' 1/3, and its entire
@@ -261,23 +324,19 @@ def test_the_report_does_not_conclude_more_than_the_validity_rule_allows():
     chain and calls a fake signal. Concluding from the *mean* that role-opacity
     is the better knob is the reading the rule disqualifies.
     """
-    text = _TEX.read_text()
+    text = report["path"].read_text()
 
     # Banned phrasings, each one a conclusion the sweep does not support. The
     # first version of this guard listed only the first, and the report went on
     # withdrawing the claim in section 7 and asserting it again in the
     # conclusion -- which is the same drift the guard exists to stop, three
     # pages later. Test the property, not one sentence.
-    for banned in (
-        "这说明更有价值的难度来自角色能力未知",
-        "初步难度梯度",
-        "展示出从 open 到 star-docs、再到 star-names",
-    ):
+    for banned in report["overclaims"]:
         assert banned not in text, (
             f"the report claims {banned!r}, which its own section 4 criterion "
             f"rejects: star-names yields 0/3 usable cells against star-docs' 1/3"
         )
-    assert "不足以" in text and "0/3" in text, (
+    assert report["insufficient"] in text and "0/3" in text, (
         "the report must say what the sandwich rule says about star-names"
     )
 

@@ -16,15 +16,20 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import re
 import time
 from pathlib import Path
 
 from forge.appworld.partition import Constraints, Topology, Visibility, control_for
 from forge.appworld.reference import REFERENCE_PATHS
+from forge.appworld.seams import information_seam_task_ids
 from forge.appworld.select import MIN_ROSTER
-from forge.appworld.runtime import RunLog, run_main, run_specialist
+from forge.appworld.runtime import (
+    NO_ANSWER,
+    OUT_OF_STEPS,
+    RunLog,
+    run_main,
+    run_specialist,
+)
 
 
 #: The protocol words the instruction asks for. Identical to the shipped
@@ -38,7 +43,15 @@ _ACTION_ANSWERS = ("completed", "complete", "done", "")
 #: come from the world's state, not from a penalty for a string the agent never
 #: wrote. (Submitting these as prose fails `assert answers match` and drops a
 #: dead run to 1/6 = 0.167, the pre-fix floor, which no probe measures.)
-_HARNESS_SENTINELS = ("(out of steps)", "(error)")
+#:
+#: Imported from `runtime`, not re-typed. As literals this list was missing
+#: `NO_ANSWER`, which only the OPEN control can emit -- it answers through
+#: `run_specialist` while every partitioned arm goes through `run_main` -- so
+#: the single row that can depress the ceiling every knob is read against was
+#: the one row nothing covered. `_ERROR` stays local: the sweep raises it, not
+#: the runtime. Pinned by forge/tests/test_knob_sweep.py.
+_ERROR = "(error)"
+_HARNESS_SENTINELS = (OUT_OF_STEPS, NO_ANSWER, _ERROR)
 
 
 def _is_action_answer(answer: str) -> bool:
@@ -131,7 +144,7 @@ def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
                                   sub_model=sub_model)
             error = None
         except Exception as e:  # a crashed rollout is a data point, not a stop
-            answer, error = "(error)", f"{type(e).__name__}: {e}"[:200]
+            answer, error = _ERROR, f"{type(e).__name__}: {e}"[:200]
             # A rollout that never ran is not a rollout. Without this, a
             # misconfigured call (e.g. a model rejecting temperature=0) 400s on
             # every turn, gets swallowed here, and still reports a plausible
@@ -143,9 +156,12 @@ def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
         # `assert answers match` requirement and caps them at 5/6 = 0.833.
         # Measured: same work, prose -> 0.833; None -> 1.000, success=True.
         submitted = None if _is_action_answer(answer) else answer
+        # `%r` of None is already "None", so the else-branch this used to carry
+        # produced a byte-identical string and never ran. It also parsed only by
+        # precedence accident: `%` binds tighter than the conditional, so it read
+        # as though the format applied to the whole ternary.
         w.execute("apis.supervisor.complete_task(answer=%r, status='success')"
-                  % (submitted,) if submitted is not None
-                  else "apis.supervisor.complete_task(answer=None, status='success')")
+                  % (submitted,))
         ev = w.evaluate().to_dict()
 
     failed = [str(f) for f in ev.get("failures", [])]
@@ -200,6 +216,7 @@ def main() -> None:
              "Validity is a property of the distribution over replicates, so one "
              "of these measures nothing -- see forge/appworld/validity.py.")
     ap.add_argument("--span", type=Path, default=Path("sweep/appworld_span.json"))
+    ap.add_argument("--seams", type=Path, default=Path("sweep/appworld_seams.json"))
     ap.add_argument("--out", type=Path, default=Path("sweep/appworld_knobs_v5.json"),
                     help="the file the docs and tests read; a new name here is a "
                          "sweep nothing checks")
@@ -219,11 +236,20 @@ def main() -> None:
     client = OpenAI()
 
     spans = json.loads(args.span.read_text())
+    seam_rows = json.loads(args.seams.read_text())
+    try:
+        seam_task_ids = information_seam_task_ids(spans, seam_rows)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     # Same selection the renderer uses, or the sweep measures tasks that do not
-    # ship: MIN_ROSTER rather than a copy of the number, and reference-bearing
-    # tasks first (cli.cmd_render sorts the same way). These agreed by luck
-    # while --tasks was 3.
-    candidates = [s for s in spans if len(s["roster"]) >= MIN_ROSTER]
+    # ship: the roster and information-seam gates, then reference-bearing tasks
+    # first (cli.cmd_render uses the same measurements and ordering).
+    candidates = [
+        span
+        for span in spans
+        if len(span["roster"]) >= MIN_ROSTER
+        and span["task_id"] in seam_task_ids
+    ]
     candidates.sort(key=lambda s: s["task_id"] not in REFERENCE_PATHS)
     usable = candidates[: args.tasks]
     if not usable:

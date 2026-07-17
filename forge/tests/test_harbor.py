@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+import pytest
 import tomllib
 
 from forge.maf.dimensions.scheduling import DIM
@@ -68,3 +71,57 @@ def test_embedded_oracle_solution_verifies(tmp_path):
     end = solve.rindex("]") + 1
     schedule = json.loads(solve[start:end])
     assert DIM.verify(inst, schedule).reward == 1.0
+
+
+# -- the committed v1 task must not drift behind its generator ---------------
+
+
+def test_the_committed_scheduling_task_matches_its_generator(tmp_path):
+    """`tasks/parallel-scheduling-0003` is committed; nothing was checking it.
+
+    `test_appworld_harbor.py` guards the appworld artifacts for exactly this
+    reason, and its docstring records the burn: "a fix landed in forge/ and
+    never reached the artifacts anyone would run". The v1 task had no such
+    guard, which is how it kept shipping `scenario_path: /app/task.json` -- an
+    agent-writable grading input, reward 1.0 for a forged problem -- while
+    `_write_static` was the thing anyone would have read.
+
+    The suffix is the seed (`forge_cli.gen`: f"{seed:04d}"), and generation is
+    deterministic, so re-rendering seed 3 at the default difficulty must
+    reproduce the committed tree byte for byte.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    committed = repo / "tasks" / "parallel-scheduling-0003"
+    if not committed.exists():
+        pytest.skip("no committed parallel-scheduling task")
+
+    inst = DIM.generate(3, DIM.DIFFICULTY_PRESETS["medium"])
+    fresh = write_task(DIM, inst, tmp_path, "0003")
+
+    for rel in ("tests/verify_config.json", "tests/scenario.json",
+                "tests/ground_truth.json", "environment/task.json",
+                "environment/Dockerfile", "tests/verify.py",
+                "tests/lib/maf_core.py", "tests/lib/maf_dim.py"):
+        assert (committed / rel).exists(), f"the committed task lacks {rel}"
+        assert (committed / rel).read_text() == (fresh / rel).read_text(), (
+            f"tasks/parallel-scheduling-0003 ships a stale {rel} -- re-render "
+            f"with `python -m forge.forge_cli gen --dim parallel-scheduling "
+            f"--seed 3 --n 1 --out tasks`"
+        )
+
+
+def test_the_committed_scheduling_task_grades_from_a_path_the_agent_cannot_write():
+    """The property, asserted on the artifact rather than on a fresh render.
+
+    test_adversarial.py proves the renderer is fixed. This proves the thing in
+    the repository is -- the two are different claims, and the gap between them
+    is what this file's new guard exists to close.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    committed = repo / "tasks" / "parallel-scheduling-0003"
+    if not committed.exists():
+        pytest.skip("no committed parallel-scheduling task")
+
+    cfg = json.loads((committed / "tests" / "verify_config.json").read_text())
+    assert cfg["scenario_path"].startswith("/tests/")
+    assert cfg["ground_truth_path"].startswith("/tests/")

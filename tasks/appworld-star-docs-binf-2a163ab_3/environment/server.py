@@ -192,11 +192,19 @@ def _complete_call(answer: str) -> str:
 EPISODE: Episode | None = None
 
 
-class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *a):  # keep the sidecar quiet
-        pass
+def _episode() -> Episode:
+    """Return the initialized episode or fail loudly during invalid embedding."""
+    if EPISODE is None:
+        raise RuntimeError("sidecar episode has not been initialized")
+    return EPISODE
 
-    def _send(self, code: int, payload: dict) -> None:
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, format: str, *args: object) -> None:
+        """Keep routine HTTP access logs out of the experiment transcript."""
+        return
+
+    def _send(self, code: int, payload: dict[str, object]) -> None:
         body = json.dumps(payload).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -204,11 +212,11 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _body(self) -> dict:
+    def _body(self) -> dict[str, object]:
         n = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(n) or b"{}")
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path.startswith("/health"):
             # Deliberately touches nothing. This is what the compose healthcheck
             # polls; pointing it at /roster made every probe execute the API
@@ -226,9 +234,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/roster"):
             info = {"roster": ROSTER, "topology": TOPOLOGY,
                     "delegation_budget": BUDGET,
-                    "instruction": EPISODE.instruction}
+                    "instruction": _episode().instruction}
             if VISIBILITY == "docs":
-                info["docs"] = EPISODE.docs
+                info["docs"] = _episode().docs
             return self._send(200, info)
 
         if self.path.startswith("/state"):
@@ -241,18 +249,20 @@ class Handler(BaseHTTPRequestHandler):
                         token = part[6:]
             if token != TOKEN:
                 return self._send(403, {"error": "forbidden"})
-            return self._send(200, EPISODE.state())
+            return self._send(200, _episode().state())
 
         self._send(404, {"error": "no such endpoint"})
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         try:
             if self.path.startswith("/ask"):
                 b = self._body()
-                return self._send(200, EPISODE.ask(b.get("specialist", ""),
-                                                   b.get("brief", "")))
+                specialist = str(b.get("specialist", ""))
+                brief = str(b.get("brief", ""))
+                return self._send(200, _episode().ask(specialist, brief))
             if self.path.startswith("/done"):
-                return self._send(200, EPISODE.finish(str(self._body().get("answer", ""))))
+                answer = str(self._body().get("answer", ""))
+                return self._send(200, _episode().finish(answer))
             self._send(404, {"error": "no such endpoint"})
         except Exception:
             traceback.print_exc()

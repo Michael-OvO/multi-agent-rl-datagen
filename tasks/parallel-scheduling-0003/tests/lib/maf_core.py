@@ -66,9 +66,11 @@ class Env(Protocol):
 
     def public_state(self) -> dict:
         """What the agent is allowed to observe."""
+        ...
 
     def submission(self) -> object:
         """The graded artifact/transcript accumulated so far."""
+        ...
 
 
 @runtime_checkable

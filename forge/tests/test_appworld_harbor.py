@@ -20,7 +20,11 @@ from pathlib import Path
 
 import pytest
 
-from forge.appworld.harbor import write_task
+from forge.appworld.harbor import (
+    SIDECAR_MODULES,
+    VERBATIM_COPIES,
+    write_task,
+)
 from forge.appworld.partition import Constraints, Topology, Visibility
 from forge.appworld.reference import REFERENCE_PATHS
 
@@ -226,19 +230,42 @@ _TASKS = sorted((REPO / "tasks").glob("appworld-*"))
 
 @pytest.mark.skipif(not _TASKS, reason="no rendered appworld tasks in the repo")
 @pytest.mark.parametrize("task", _TASKS, ids=lambda p: p.name)
-def test_committed_tasks_match_the_generator(task):
-    """A committed task running old code is a task measuring the old bug."""
-    shipped_server = (task / "environment" / "server.py").read_text()
-    assert shipped_server == (CONTAINER / "server.py").read_text(), (
-        f"{task.name} ships a stale server.py -- re-render with "
+@pytest.mark.parametrize("dest", sorted(VERBATIM_COPIES), ids=lambda d: d)
+def test_committed_tasks_match_the_generator(task, dest):
+    """A committed task running old code is a task measuring the old bug.
+
+    Driven off `harbor.VERBATIM_COPIES`, not a list kept here by hand. The hand
+    list is what failed: the renderer copied five things and this guard checked
+    three, so a stale `verify.py` -- the code that computes the reward -- and a
+    stale `Dockerfile.sidecar` both shipped silently. Verified 2026-07-17 by
+    appending a line to each and watching the suite stay green.
+
+    Reading the manifest means a copy added to the renderer is guarded the day
+    it is added, rather than the day someone remembers this file.
+    """
+    shipped = task / dest
+    assert shipped.exists(), (
+        f"{task.name} does not ship {dest}, which the renderer copies -- "
+        f"re-render with `python -m forge.appworld.cli render`"
+    )
+    assert shipped.read_text() == VERBATIM_COPIES[dest].read_text(), (
+        f"{task.name} ships a stale {dest} -- re-render with "
         f"`python -m forge.appworld.cli render`"
     )
 
-    pkg = task / "environment" / "maf_appworld"
-    for mod in pkg.glob("*.py"):
-        assert mod.read_text() == (SOURCE / mod.name).read_text(), (
-            f"{task.name} ships a stale {mod.name}"
-        )
 
-    assert (task / "environment" / "team").read_text() == (
-        CONTAINER / "team").read_text()
+@pytest.mark.skipif(not _TASKS, reason="no rendered appworld tasks in the repo")
+@pytest.mark.parametrize("task", _TASKS, ids=lambda p: p.name)
+def test_committed_tasks_ship_no_module_the_generator_dropped(task):
+    """The other direction: a file the renderer stopped copying, still shipped.
+
+    The old guard globbed the *shipped* package, so it could only ever compare
+    files that were there -- a module the renderer no longer emits would sit in
+    `tasks/` forever, and a module it newly emits would be missing with nothing
+    to say so. Both directions are drift.
+    """
+    shipped = {p.name for p in (task / "environment" / "maf_appworld").glob("*.py")}
+    assert shipped == set(SIDECAR_MODULES), (
+        f"{task.name} ships {sorted(shipped)} but the renderer emits "
+        f"{sorted(SIDECAR_MODULES)}"
+    )

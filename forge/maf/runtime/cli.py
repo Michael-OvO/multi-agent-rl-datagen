@@ -19,10 +19,15 @@ TRANSCRIPT = os.environ.get("MAF_TRANSCRIPT", "/app/transcript.jsonl")
 
 def main(argv):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import maf_dim
+    import maf_dim  # pyright: ignore[reportMissingImports]
 
-    instance = json.load(open(SCENARIO))
-    state = json.load(open(STATE)) if os.path.exists(STATE) else None
+    with open(SCENARIO) as fh:
+        instance = json.load(fh)
+    if os.path.exists(STATE):
+        with open(STATE) as fh:
+            state = json.load(fh)
+    else:
+        state = None
     env = maf_dim.make_env(instance, state)
     resp = env.handle(argv)
     with open(STATE, "w") as fh:

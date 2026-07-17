@@ -1,30 +1,45 @@
 ---
 name: constraint-forged-multi-agent-tasks
-description: Use when building RL training tasks for multi-agent capabilities (theory of mind, decomposition, role assignment, Main↔Sub communication, failure recovery). Mines an existing single-agent task library that already ships a free programmatic oracle — AppWorld, SWE-smith, tau-bench — measures which of its tasks can carry a partition, then manufactures the multi-agent structure by constraining the agent's access. Never designs a world, a task, or a judge.
+description: Use when building RL training tasks for multi-agent capabilities (theory of mind, decomposition, role assignment, Main↔Sub communication, failure recovery). A substrate-independent method - admit an agentic task database that already ships a free programmatic oracle (AppWorld, SWE-smith, tau-bench), mine which of its tasks can carry a partition, manufacture the multi-agent structure by constraining the agent's access, and accept only the cells that score between the do-nothing floor and the unconstrained control. Never designs a world, a task, or a judge.
 ---
 
 # Constraint-Forged Multi-Agent Tasks
 
 ## The rule
 
-**Mine an existing task library. Manufacture constraints. Inherit the judge.
-Never design an oracle.**
+**Admit an existing agentic task database. Mine its seams. Manufacture
+constraints. Inherit the judge. Measure which cells are usable. Never design an
+oracle.**
 
-The whole method in three moves:
+This is a method, not a substrate. It converts an agentic task database that was
+never meant for multi-agent work into multi-agent RL tasks, and it does so
+without ever writing a reward. The whole of it in four moves:
 
 ```
-1. MINE       an existing task library that already has a free programmatic
-              oracle           -> task, ground truth, environment, judge: all free
-2. MEASURE    which of its tasks the reference solution proves are multi-seam
+1. ADMIT      does the substrate qualify? four requirements, below
+                               -> task, ground truth, environment, judge: all free
+2. MINE       which of its tasks the reference solution proves are multi-seam
                                -> the roster comes from the task, never from you
-3. CONSTRAIN  access / information / topology
+3. CONSTRAIN  access / information / topology / budget
                                -> the multi-agent structure, and the ONLY thing
                                   you built
+4. ACCEPT     floor < score < control, per cell
+                               -> which renders are usable RL data, measured
 ```
 
-Step 1 is the enabler and the hard part. If you cannot find a library, **stop** —
-do not fall back to writing a generator. That fallback is what this skill exists
-to prevent.
+Only move 3 is construction, and it cannot reach the judge. Moves 1, 2 and 4 are
+measurements — which is why the method's output is a *yield* rather than a
+promise.
+
+Move 1 is the enabler and the hard part. If you cannot admit a substrate,
+**stop** — do not fall back to writing a generator. That fallback is what this
+skill exists to prevent.
+
+**Move 4 is what makes the output trustworthy rather than merely plausible.** A
+forge without an acceptance rule cannot tell a task that teaches coordination
+from one that is unsolvable, one that is trivial, and one whose harness is
+broken — all four look like a number. v1 had no such rule and shipped a
+dimension that scored reward 1.0 on 12 of 12 runs while measuring nothing.
 
 If you design both the world and the judge, a flaw in the world becomes a flaw in
 the reward — and it will be invisible, because your own tests will agree with
@@ -77,11 +92,14 @@ So you must manufacture the structure. **The only question is which layer.**
 
 ## The procedure
 
-### 1. Find the library — the step everything else rests on
+Steps 1 and 2 are `ADMIT` and `MINE`; steps 3–5 are the one construction move,
+`CONSTRAIN`; the gates at the end are `ACCEPT`.
 
-**Do not build an environment. Do not write tasks. Find a library that already
+### 1. Admit the substrate — the step everything else rests on
+
+**Do not build an environment. Do not write tasks. Admit a database that already
 has both, plus a judge.** Every later step is downstream of this one: if you
-cannot find a substrate, the honest move is to stop, not to start writing a
+cannot admit a substrate, the honest move is to stop, not to start writing a
 generator.
 
 The leverage is SWE-smith's, generalised. Its 128 repos → 50k tasks does not come
@@ -128,6 +146,17 @@ The last row is the important one. **There is no multi-agent trace + environment
 skill's entire claim is about *which layer* you manufacture — constraints, not
 judges.
 
+**How far this generalises, stated honestly.** Nothing in the four moves is
+AppWorld-shaped: the admission test is a property of a substrate, the roster is
+read off whatever a reference solution touches, the constraints act on an access
+surface, and the acceptance rule needs only a floor and a control. But the table
+above is a **survey, not a set of results** — this method has been run end to end
+on **exactly one substrate**. The reach claimed here is therefore the admission
+test's, not a measured one: *any database clearing all four requirements should
+work, and one has.* A second substrate is the cheapest thing anyone could do to
+falsify that, and nobody has done it. Do not upgrade "should" to "does" on the
+strength of a table.
+
 #### Disqualifiers, in the order they will bite
 
 - **The judge is an LLM or a rubric, and nobody has measured it** → you are
@@ -158,12 +187,13 @@ oracle was broken.
 
 **If you cannot make the oracle say yes, you do not have an oracle.**
 
-### 2. Measure which of its tasks can carry a partition
+### 2. Mine the seams — measure which of its tasks can carry a partition
 
-A task library is not a task set. Most of it will not qualify, and **which part
-qualifies is measured, not judged**. The measurement is cheap — a regex over
-ground truth, seconds for the whole corpus — and it is the same trick regardless
-of substrate: *read what the reference solution actually touches.*
+A task database is not a task set. Most of it will not qualify, and **which part
+qualifies is measured, not judged**. The measurement is cheap — roster parsing
+plus a static data-flow pass over ground truth, seconds for the whole corpus —
+and it is the same trick regardless of substrate: *read what the reference
+solution actually touches, then verify that information crosses the boundary.*
 
 ```python
 # the roster is what the GT reaches for, not what we would like it to be
@@ -189,10 +219,13 @@ appears in **all 147** ground-truth tasks:
 |---|---|
 | naive — count every seam the GT touches | 147 / 147 (**100%**) |
 | strict — drop the submit channel | **51 / 147 (34.7%)** |
+| information seam — a fact must cross roles | **39 / 147 (26.5%)** |
 
 100% is the number that would have gone in the write-up. It would have shipped 96
 single-seam puzzles with a decorative second agent — each passing every check and
-measuring nothing.
+measuring nothing. The second gate removes another 12 tasks that touch two real
+apps but only sequence independent operations. They are dispatch tasks, not
+information-bearing coordination tasks.
 
 Every substrate has one of these. Look for a seam that appears in *every* task
 and carries no information *between* seams: submit channels, auth, logging,
@@ -201,14 +234,23 @@ reads data from `supervisor`, that *is* a coordination edge and must count.
 
 #### Then measure the structure, do not assume it
 
-Even a qualifying library may have no partial order to exploit. On a Python repo,
-deleting each module and recording which tests break gives the true dependency
-matrix by **measurement** — and on `funcy` it returned only **4 distinct
-breakage classes across 15 modules**, because its `__init__` imports everything.
-The repo is nearly all-or-nothing and makes a weak orchestration task.
+Even a qualifying substrate may have no partial order to exploit. Admission is
+necessary and not sufficient: a database can ship a perfect oracle and still
+have every task collapse into one seam. On a Python repo, deleting each module
+and recording which tests break gives the true dependency matrix by
+**measurement** — on `funcy`, recollection says it returned only 4 distinct
+breakage classes across 15 modules, because its `__init__` imports everything,
+making the repo nearly all-or-nothing and a weak orchestration task.
 
-That negative result is the useful one: **the same measurement that builds the
-task also filters the library.** Run it across the corpus, keep what has
+**That anecdote is uncited** — no file in this repo produced it, and by the
+standard the rest of this skill applies, it is a recollection wearing a
+measurement's clothes rather than evidence. It is kept because the *shape* of
+the argument is what matters and is independently checkable on your substrate;
+it is marked because a second substrate measured properly is exactly what this
+method still lacks. If you run this, write the file.
+
+The point survives the missing citation: **the same measurement that builds the
+task also filters the substrate.** Run it across the corpus, keep what has
 structure. That is the scale story, and it is automated.
 
 **Write these rules as code with tests, not as notes.** Sabotage each test and
@@ -307,9 +349,48 @@ with no address book substituted its **friends list** and answered confidently.
 The Main never asked `phone` — the only app that knows. Real theory-of-mind
 pressure, from a constraint, graded by an oracle nobody wrote.
 
-## The gates
+## 4. ACCEPT — the gates
 
-Every knob must earn its place. **A knob that does not move the score is
+The forge renders cells; this move decides which are worth training on. Without
+it you have a generator, and a generator cannot tell four different things apart,
+because all four print a number:
+
+```
+score <= floor    the task is unsolvable, OR the harness is broken
+score >= control  the constraint never bit
+floor < s < ctrl  the constraint bit and the task survived   <- the only usable one
+min == max        no variance -> no advantage -> no gradient
+```
+
+**The acceptance rule: a cell is usable RL data only if
+`floor < score < control`.**
+
+Two fixed points make it mechanical, and neither costs a judge:
+
+- **the floor** — what an agent that does nothing scores. Some requirements pass
+  for free; that number is not zero and you must measure it, not assume it.
+- **the control** — the same task, same oracle, partition **off**. Free: just
+  turn the knob off.
+
+This is **SWE-smith's Fail-to-Pass rule, generalised**: a candidate perturbation
+counts iff the repo's existing tests go red. The only difference is that a graded
+oracle makes the rule a sandwich rather than a flip. Both are mechanical, free,
+and inherit somebody else's judge — which is why this move transfers to any
+substrate that clears admission.
+
+**Report the yield, do not assume it.** The fraction of cells coming back valid
+is an output of the method. SWE-smith reports 56% / 35% / 40.2% / 33.8% / 96.9%
+for its five generators and uses them to decide where to spend. A forge that
+cannot state this number does not know what it is shipping. And **one seed cannot
+measure yield** — validity is a property of the score distribution, and a single
+draw cannot separate "always bottoms out" from "got unlucky once". Below full
+replication you have an observation, not a yield. Say which.
+
+**Write the rule as code and run it.** This rule existed as prose in this repo
+while it published a floor score as "the partition is hard" for two days. A rule
+nobody runs loses to the flattering number.
+
+Then every knob must earn its place. **A knob that does not move the score is
 decoration. A knob that moves the score by breaking the task is worse.**
 
 | gate | rule |

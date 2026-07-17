@@ -91,3 +91,43 @@ def test_appworld_data_is_reachable_from_the_repo_root():
     assert (data / "tasks").exists() or (data / "base").exists(), (
         f"{data} exists but does not look like the AppWorld dataset"
     )
+
+
+def test_every_entry_point_that_imports_appworld_hardens_the_root_first():
+    """`_env.ensure_appworld_root()` before `import appworld`, everywhere.
+
+    AppWorld resolves its dataset relative to APPWORLD_ROOT, so an entry point
+    that skips this works from the repo root and dies anywhere else, deep inside
+    a dependency, with a message about a path nobody wrote. That is the whole
+    reason `scripts/_env.py` exists.
+
+    It was a rule six of seven callers followed. The seventh was
+    `forge/appworld/cli.py` -- the module README calls "the pipeline" -- and
+    nothing noticed, because pytest and every documented command already start
+    in the right directory. A convention that only one file breaks is a
+    convention nothing is enforcing.
+    """
+    import ast
+
+    root = Path(__file__).resolve().parents[2]
+    entry_points = sorted((root / "scripts").glob("appworld_*.py"))
+    entry_points += [root / "scripts" / "watch_episode.py",
+                     root / "forge" / "appworld" / "cli.py"]
+
+    offenders = []
+    for path in entry_points:
+        text = path.read_text()
+        tree = ast.parse(text)
+        imports_appworld = any(
+            (isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] == "appworld")
+            or (isinstance(n, ast.Import)
+                and any(a.name.split(".")[0] == "appworld" for a in n.names))
+            for n in ast.walk(tree)
+        )
+        if imports_appworld and "ensure_appworld_root()" not in text:
+            offenders.append(path.relative_to(root).as_posix())
+
+    assert not offenders, (
+        f"these import appworld without pointing it at the dataset first: "
+        f"{offenders}; call scripts._env.ensure_appworld_root() before the import"
+    )

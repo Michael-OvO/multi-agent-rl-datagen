@@ -143,6 +143,85 @@ def test_a_dangerous_module_is_refused_even_unimported(module):
     assert inspect_code(f"x = {module}", APP) is not None
 
 
+#: An allowlisted module that binds a banned one as a plain attribute. Computed
+#: rather than enumerated, so this list cannot go stale against a Python upgrade
+#: -- but pinned here as literals too, because a bug that recomputes its own
+#: expectation from the same source it is testing proves nothing.
+_RE_EXPORTS = [
+    ("uuid", "os"),          # uuid.os is the os module
+    ("uuid", "sys"),
+    ("pprint", "_sys"),      # -> sys.modules -> every loaded module
+    ("collections", "_sys"),
+    ("statistics", "sys"),
+    ("statistics", "random"),
+    ("json", "codecs"),      # codecs.open reads any file
+    ("string", "_re"),
+]
+
+
+@pytest.mark.parametrize("module,attr", _RE_EXPORTS, ids=lambda v: str(v))
+def test_an_allowlisted_module_cannot_re_export_a_banned_one(module, attr):
+    """`import uuid; uuid.os.environ[...]` read the token past this gate.
+
+    The module docstring said `os`, `sys` and `subprocess` were "absent on
+    purpose". They were absent as *names* and reachable as *attributes*: the
+    import ban is default-deny, but the attribute check was a denylist of one
+    pattern (`__*`) -- the exact shape this file's own docstring argues against.
+
+    Measured 2026-07-17: 8 of the 13 allowlisted modules re-export something,
+    and `os`, `sys` and `codecs` are all reachable. `sys` alone is total, via
+    `sys.modules`.
+    """
+    assert inspect_code(f"import {module}\nprint({module}.{attr})", APP) is not None
+
+
+@pytest.mark.parametrize("module,attr", _RE_EXPORTS, ids=lambda v: str(v))
+def test_a_banned_module_cannot_be_imported_out_of_an_allowlisted_one(module, attr):
+    """`from uuid import os` is the same hole with the chain removed.
+
+    The ImportFrom check validated the *root* (`uuid`, allowlisted) and never
+    what was pulled out of it, so the banned module arrived as a first-class
+    name and `_bound_names` then counted it as the code's own. Strictly easier
+    than the attribute chain, and it needs no attribute access at all.
+    """
+    assert inspect_code(f"from {module} import {attr}", APP) is not None
+    assert inspect_code(f"from {module} import {attr} as _x", APP) is not None
+
+
+def test_a_module_can_still_import_the_names_it_is_for():
+    """The from-import block must not cost the legitimate half."""
+    assert permitted("from json import dumps\nprint(dumps({'a': 1}))")
+    assert permitted("from collections import Counter\nprint(Counter('ab'))")
+    assert permitted("from datetime import datetime\nprint(datetime.now())")
+
+
+def test_the_re_export_block_is_computed_from_the_running_interpreter():
+    """Not a hardcoded list: the sidecar is 3.11 and the sweep host is 3.13.
+
+    Which modules re-export which is a property of the interpreter, and it moves
+    between releases. A literal list would be correct in one environment and
+    quietly wrong in the other -- which is the same shape as the pins
+    `test_environment.py` exists to hold together.
+    """
+    from forge.appworld.sandbox import _module_attrs
+
+    assert "os" in _module_attrs("uuid")
+    assert "_sys" in _module_attrs("pprint")
+    # Non-module attributes are the module's actual API and must stay reachable.
+    assert "uuid4" not in _module_attrs("uuid")
+    assert "dumps" not in _module_attrs("json")
+
+
+def test_the_gate_still_allows_the_real_api_of_an_allowlisted_module():
+    """The block must cost nothing legitimate. Nobody reaches `math` via
+    `statistics.math`, but everybody calls `json.dumps`."""
+    assert permitted("import json\nprint(json.dumps({'a': 1}))")
+    assert permitted("import uuid\nprint(uuid.uuid4())")
+    assert permitted("import statistics\nprint(statistics.mean([1, 2]))")
+    assert permitted("import datetime\nprint(datetime.datetime.now())")
+    assert permitted("import re\nprint(re.compile('x').match('x'))")
+
+
 def test_eval_and_exec_are_blocked():
     assert inspect_code("eval('1+1')", APP) is not None
     assert inspect_code("exec('x=1')", APP) is not None
@@ -150,6 +229,30 @@ def test_eval_and_exec_are_blocked():
 
 def test_getattr_cannot_be_used_to_reach_a_forbidden_app():
     assert inspect_code("getattr(apis, 'phone').search_contacts()", APP) is not None
+
+
+# -- namespace bindings are scope- and flow-sensitive -------------------------
+#
+# A Store somewhere in the tree is not proof that a module-level name exists.
+# These three shapes previously made an AppWorld namespace name look user-created:
+# a dead branch, a later assignment, and a lambda parameter in another scope.
+# Keep them as ordinary regressions now that the gate follows definite bindings.
+
+_LAUNDERING = {
+    "dead branch never executes": "if False:\n    get_ipython = None\nprint(get_ipython())",
+    "payload before the shadow": "print(get_ipython())\nget_ipython = None",
+    "lambda parameter binds at module scope": "f = lambda requester: None\nprint(requester)",
+}
+
+
+@pytest.mark.parametrize("code", _LAUNDERING.values(), ids=_LAUNDERING.keys())
+def test_a_namespace_name_cannot_be_laundered_by_a_binding_that_never_runs(code):
+    assert inspect_code(code, APP) is not None
+
+
+def test_namespace_names_are_refused_without_a_user_binding():
+    assert inspect_code("print(get_ipython())", APP) is not None
+    assert inspect_code("print(requester)", APP) is not None
 
 
 # -- the gate must not break honest work -----------------------------------
@@ -319,8 +422,11 @@ def test_a_name_bound_on_an_earlier_turn_is_available_later():
 
 def test_bound_names_reports_what_a_turn_binds():
     assert bound_names("token = 1\nrows = []") == {"token", "rows"}
-    assert bound_names("for txn in feed:\n    pass") == {"txn"}
+    # An empty iterable leaves no `txn`; publishing it to the next turn would
+    # let the load fall through to a same-named AppWorld global.
+    assert bound_names("for txn in feed:\n    pass") == set()
     assert bound_names("import json") == {"json"}
+    assert bound_names("if flag:\n    x = 1\nelse:\n    x = 2") == {"x"}
 
 
 def test_a_forbidden_name_cannot_be_bound_earlier_and_borrowed_later():
@@ -348,14 +454,16 @@ def test_a_global_declaration_does_not_count_as_binding():
     assert inspect_code("global requester\nprint(requester)", APP) is not None
 
 
-def test_a_real_global_assignment_still_binds():
-    # `global counter` followed by an actual assignment binds it the normal way.
+def test_global_assignments_are_refused():
+    # Proving that a nested function ran before the later module-level load would
+    # require interprocedural control flow. Specialists do not need `global`, so
+    # the safe rule is to refuse it.
     code = ("def bump():\n"
             "    global counter\n"
             "    counter = 1\n"
             "bump()\n"
             "print(counter)")
-    assert permitted(code)
+    assert inspect_code(code, APP) is not None
 
 
 # -- the control holds every app, and the gate must not break it -----------

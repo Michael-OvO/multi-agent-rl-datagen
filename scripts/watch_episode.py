@@ -27,7 +27,6 @@ understanding, not for measuring. Numbers come from the sweep.
 from __future__ import annotations
 
 import argparse
-import os
 import textwrap
 
 from forge.appworld.partition import Constraints, Topology, Visibility, control_for
@@ -106,7 +105,7 @@ def _install_tracing(runtime, sub_model: str) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--task", default="2a163ab_1")
     ap.add_argument("--config", default="star-docs", choices=sorted(CONFIGS))
     ap.add_argument("--main-model", default="gpt-5.6-sol")

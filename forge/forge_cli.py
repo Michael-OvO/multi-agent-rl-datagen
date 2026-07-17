@@ -41,18 +41,28 @@ QUARANTINED = {
 }
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
+
+
 def registry() -> dict:
-    reg = {}
+    """The dimensions `gen` can actually render.
+
+    It used to import the quarantined two as well, under a bare
+    `except Exception: pass`, so that `--dim bogus` answered
+    `have ['failure-recovery', 'parallel-scheduling', 'theory-of-mind']` -- two
+    of which `gen` refuses four lines later, and both of which are refused
+    *before* this dict is consulted. So the import bought a wrong error message,
+    and the bare `except` would have swallowed a genuine ImportError in the one
+    dimension that does ship. `QUARANTINED` names them, and their modules stay
+    importable for `selfcheck` and the tests that measure them.
+    """
     from forge.maf.dimensions import scheduling
 
-    reg[scheduling.DIM.NAME] = scheduling.DIM
-    for name in ("failure_recovery", "theory_of_mind"):
-        try:
-            mod = __import__(f"forge.maf.dimensions.{name}", fromlist=["DIM"])
-            reg[mod.DIM.NAME] = mod.DIM
-        except Exception:
-            pass
-    return reg
+    return {scheduling.DIM.NAME: scheduling.DIM}
 
 
 def gen(args) -> dict:
@@ -102,10 +112,21 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="forge")
     sub = p.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("gen", help="generate tasks")
-    g.add_argument("--dim", required=True)
+    g.add_argument(
+        "--dim",
+        required=True,
+        help=(
+            "dimension to render (available: parallel-scheduling; "
+            "quarantined: failure-recovery, theory-of-mind)"
+        ),
+    )
     g.add_argument("--seed", type=int, default=0)
-    g.add_argument("--n", type=int, default=1)
-    g.add_argument("--difficulty", default="medium")
+    g.add_argument("--n", type=_positive_int, default=1, help="task count (at least 1)")
+    g.add_argument(
+        "--difficulty",
+        default="medium",
+        help="difficulty preset (easy, medium, hard)",
+    )
     g.add_argument("--out", default="tasks")
     g.set_defaults(func=gen)
     args = p.parse_args(argv)

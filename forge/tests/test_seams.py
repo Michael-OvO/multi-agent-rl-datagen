@@ -8,12 +8,17 @@ are decoration.
 import json
 from pathlib import Path
 
-from forge.appworld.seams import has_information_seam, seams_of
+import pytest
+
+from forge.appworld.cli import main as appworld_cli
+from forge.appworld.seams import (
+    has_information_seam,
+    information_seam_task_ids,
+    seams_of,
+)
 
 _ROOT = Path(__file__).resolve().parents[2]
 _DATA = _ROOT / "appworld_data" / "tasks"
-
-import pytest
 
 _has_data = _DATA.exists()
 
@@ -109,6 +114,97 @@ def solution(apis):
 
 def test_unparseable_ground_truth_reports_nothing_rather_than_crashing():
     assert seams_of("def solution(:  syntax error") == []
+
+
+def test_a_binding_in_one_branch_does_not_leak_into_its_sibling():
+    code = """
+def solution(apis, flag):
+    if flag:
+        names = apis.phone.search_contacts(query="roommate")
+    else:
+        apis.venmo.search(query=names)
+"""
+    assert seams_of(code) == []
+
+
+def test_selection_measurements_must_cover_the_same_tasks_and_rosters():
+    spans = [
+        {"task_id": "a", "roster": ["phone", "venmo"]},
+        {"task_id": "b", "roster": ["phone", "venmo"]},
+    ]
+    seams = [
+        {"task_id": "a", "roster": ["phone", "venmo"], "seams": [{"line": 1}]},
+        {"task_id": "b", "roster": ["phone", "venmo"], "seams": []},
+    ]
+    assert information_seam_task_ids(spans, seams) == {"a"}
+
+    with pytest.raises(ValueError, match="different task sets"):
+        information_seam_task_ids(spans, seams[:1])
+
+    seams[1]["roster"] = ["phone", "spotify"]
+    with pytest.raises(ValueError, match="roster differs"):
+        information_seam_task_ids(spans, seams)
+
+
+def test_renderer_excludes_multi_app_tasks_without_an_information_seam(tmp_path):
+    span = tmp_path / "span.json"
+    seam_file = tmp_path / "seams.json"
+    out = tmp_path / "tasks"
+    rows = [
+        {
+            "task_id": "with-seam",
+            "split": "train",
+            "instruction": "Do coordinated work.",
+            "roster": ["phone", "venmo"],
+        },
+        {
+            "task_id": "operation-only",
+            "split": "train",
+            "instruction": "Do two independent operations.",
+            "roster": ["phone", "venmo"],
+        },
+    ]
+    span.write_text(json.dumps(rows))
+    seam_file.write_text(
+        json.dumps(
+            [
+                {
+                    "task_id": "with-seam",
+                    "roster": ["phone", "venmo"],
+                    "seams": [{"source": "phone", "target": "venmo"}],
+                },
+                {
+                    "task_id": "operation-only",
+                    "roster": ["phone", "venmo"],
+                    "seams": [],
+                },
+            ]
+        )
+    )
+
+    appworld_cli(
+        [
+            "render",
+            "--n",
+            "10",
+            "--span",
+            str(span),
+            "--seams",
+            str(seam_file),
+            "--out",
+            str(out),
+        ]
+    )
+
+    rendered = sorted(path.name for path in out.iterdir())
+    assert len(rendered) == 2  # one seam-bearing task x two shipped configs
+    assert all("with-seam" in name for name in rendered)
+
+
+def test_renderer_rejects_a_nonpositive_task_count():
+    with pytest.raises(SystemExit) as exc:
+        appworld_cli(["render", "--n", "0"])
+    assert exc.value.code != 0
 
 
 # -- against the corpus -------------------------------------------------------

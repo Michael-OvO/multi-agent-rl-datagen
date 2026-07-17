@@ -32,6 +32,21 @@ def test_cli_rejects_unknown_dimension(tmp_path):
     assert r.returncode != 0
 
 
+def test_cli_rejects_a_nonpositive_task_count(tmp_path):
+    r = _run(
+        "gen",
+        "--dim",
+        "parallel-scheduling",
+        "--n",
+        "0",
+        "--out",
+        str(tmp_path),
+    )
+    assert r.returncode != 0
+    assert "at least 1" in r.stderr
+    assert not list(tmp_path.iterdir())
+
+
 def test_quarantined_dimension_cannot_be_rendered(tmp_path):
     with pytest.raises(SystemExit) as exc:
         main(["gen", "--dim", "theory-of-mind", "--out", str(tmp_path)])

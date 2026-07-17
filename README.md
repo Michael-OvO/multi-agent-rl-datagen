@@ -1,35 +1,102 @@
 # Multi-Agent Foundational-Capability RL Data Generation
 
-A forge that turns [AppWorld](https://appworld.dev)'s single-agent tasks into
-multi-agent orchestration tasks by **constraining the agent's access to the
-world, and never touching the judge** — packaged in
+**A method for turning an agentic task database into multi-agent RL tasks
+without ever designing a reward** — and for measuring which of the tasks it
+produces are worth training on. Instantiated here on
+[AppWorld](https://appworld.dev), packaged in
 [Harbor](https://www.harborframework.com) format.
 
 **Start here:** [`WRITEUP.md`](WRITEUP.md) — what was built, what was measured,
-and what it turned out to measure. The polished Chinese report is available as
-[`LaTeX source`](docs/multi_agent_rl_data_generation_zh.tex) and a compiled PDF
-at `output/pdf/multi_agent_rl_data_generation_zh.pdf` (build it with
-`bash scripts/build_report.sh`).
+and what it turned out to measure. The method itself is
+[`skills/constraint-forged-multi-agent-tasks/SKILL.md`](skills/constraint-forged-multi-agent-tasks/SKILL.md),
+which is the canonical statement and the one to read if you are repeating this on
+a different substrate. Polished reports are available in
+[English](docs/multi_agent_rl_data_generation_en.tex) and
+[Chinese](docs/multi_agent_rl_data_generation_zh.tex) LaTeX, compiled to
+`output/pdf/` (build them with `bash scripts/build_report.sh`).
 
-## The idea in one paragraph
+## The method in one paragraph
 
 Multi-agent capability data has no free oracle: judging coordination means
 simulating the other agents, and then **you** design the reward — which is how
 this repo's first attempt produced a `theory-of-mind` dimension that scored 1.0
 on 12 of 12 runs while measuring instruction-following. (That reward was one line
 of arithmetic, not a model. The lesson is about oracles nobody measured, not
-about LLM judges — see [`WRITEUP.md`](WRITEUP.md) §6.) So this forge does not
-build tasks, environments, or verifiers. It takes AppWorld — 9 real apps, 457
-APIs, 732 tasks, and a programmatic state-based oracle with no LLM in it — and
-**constrains the agent's access to it**: the Main gets zero APIs and can only
-delegate to app-specialist sub-agents, each bound to one app and blind to the
-task. The task, the ground truth, the environment and the judge are all
-AppWorld's, untouched.
+about LLM judges — see [`WRITEUP.md`](WRITEUP.md) §6.) Since no corpus of
+multi-agent traces with environments and free oracles exists, **everyone has to
+manufacture the multi-agent structure. The only question is which layer.** Design
+the judge and your mistakes become invisible, because your own tests agree with
+your own errors. So this method manufactures **only constraints** — which change
+*who can do what*, never *what counts as done* — and takes the task, the ground
+truth, the environment and the judge from a single-agent task database that
+already has them. A constraint's failure mode is that the task gets too easy or
+too hard, and that is a thing you can see.
 
 > A badly chosen constraint makes a task too easy or too hard — **measurable**.
 > A badly designed oracle makes the reward measure the wrong thing — **invisible**.
+>
+> Trade the invisible failure mode for the visible one.
 
-## The headline
+## The four moves
+
+Nothing here is AppWorld-shaped. The substrate is an argument to the method.
+
+```
+1. ADMIT      does the database qualify? four requirements, below
+                          -> task, ground truth, environment, judge: all free
+2. MINE       which tasks does the reference solution prove are multi-seam?
+                          -> the roster comes from the task, never from you
+3. CONSTRAIN  access / information / topology / budget
+                          -> the multi-agent structure, and the ONLY thing built
+4. ACCEPT     floor < score < control, per cell
+                          -> which renders are usable RL data, measured
+```
+
+**Only move 3 is construction, and no knob in it can reach the judge.** The other
+three are measurements — which is why the output is a *yield* rather than a
+promise. This is SWE-smith's leverage, generalised: its 128 repos → 50k tasks
+came not from clever bug injection but from **never designing an oracle** — break
+something that works, let the existing tests grade the repair. SWE-smith breaks
+the world; **this method blinds the agent.** Its Fail-to-Pass acceptance rule
+generalises too: a graded oracle turns the flip into a sandwich (move 4).
+
+### 1. ADMIT — what the method needs from a substrate
+
+| requirement | why, and what breaks without it |
+|---|---|
+| **a verifier you did not write** | free, and already validated by somebody else — that is the whole of its value. Without it you are designing the oracle again |
+| **real, executable, installable** | not a description of a world. If you cannot `pip install` or `docker pull` it, you will end up building it |
+| **a reference solution per task** | derives the roster *and* proves solvability. Without it you guess which tasks qualify, so you pad |
+| **seams** | an action surface that divides along role boundaries — apps, services, repos, teams. No seams, no partition |
+
+**Admission is necessary, not sufficient:** a database can ship a perfect oracle
+and still have every task collapse into one seam. That is measured (move 2), not
+assumed. `SKILL.md` carries the survey of what else clears the bar — SWE-smith,
+τ-bench, R2E-Gym — and the disqualifiers, in the order they bite.
+
+**How far this generalises, stated plainly:** the survey is a survey, not a set
+of results. **This method has been run end to end on exactly one substrate.** The
+reach claimed is the admission test's, not a measured one: *any database clearing
+all four requirements should work, and one has.* A second substrate is the
+cheapest way to falsify that, and nobody has done it.
+
+## The instantiation: AppWorld
+
+AppWorld clears all four: 9 real apps, 457 APIs, 732 tasks, and a programmatic
+state-based oracle with **no LLM in it** that also catches side effects. The
+constraint added: the Main gets **zero APIs** and can only delegate to
+app-specialist sub-agents, each bound to one app and blind to the task.
+
+| | source | designed here? |
+|---|---|---|
+| task, ground truth, oracle, environment | AppWorld | **no** |
+| access / information / topology / budget constraints | this repo | yes — and none of them can reach the judge |
+
+## The headline: what the instantiation measured
+
+What follows prices *this substrate's knobs*, not the method. Read it as move 4
+running on move 3's output — and note that the method's verdict on its own
+tasks is the least flattering number here.
 
 Three tasks, one seed each, Main = gpt-5.6-sol, specialists = gpt-4.1.
 `sweep/appworld_knobs_v5.json`. Do-nothing = 0.333.
@@ -59,23 +126,49 @@ find `like_transaction`, so they could not act, so the Main scored the floor no
 matter how well it coordinated. [`WRITEUP.md`](WRITEUP.md) §7 is that story;
 the numbers above are the re-measurement.
 
-**What this is:** a working forge, 6 rendered Harbor tasks, 3 with verified
-passing solutions, and an honest and unfinished measurement. By its own validity
-rule (`cli judge`), **1 of the 6 shipped cells is usable RL data** — the rest
-either tie the control or bottom out.
-**What it is not:** a demonstrated curriculum. Three tasks at one seed cannot
-price a 0.056 effect. The next run is seeds, not scale.
+**What this is:** a method, plus one substrate carried end to end — a working
+forge, 6 rendered Harbor tasks, 3 with verified passing solutions, and an honest
+and unfinished measurement.
+
+**On "good quality", which is the claim to be careful about.** The method does
+not promise good tasks. It promises tasks whose quality is **decidable**, and
+then reports the verdict against itself: by its own acceptance rule
+(`cli judge`), **1 of the 6 shipped cells is usable RL data** — the rest either
+tie the control or bottom out. That 1-in-6 is the method working, not the method
+failing. A forge without move 4 cannot tell a task that teaches coordination from
+one that is unsolvable, one that is trivial, or one whose harness is broken; all
+four print a number, and v1 shipped a dimension at reward 1.0 on 12 of 12 runs
+because nothing here was watching. The yield is an output. Quality is measured,
+never asserted.
+
+**What it is not:** a demonstrated curriculum, and not a method demonstrated on
+more than one substrate. Three tasks at one seed cannot price a 0.056 effect. The
+next run is seeds, not scale.
 
 ## Layout
 
 | | |
 |---|---|
-| `forge/appworld/` | the pipeline: `select` (roster from the task) · `partition` (constraints) · `runtime` (Main + specialists) · `sandbox` (what specialist code may touch) · `reference` (the solutions) · `validity` (which rendered cells are usable RL data) · `harbor` (packaging) · `cli` |
+| `forge/appworld/` | the pipeline: `select` (roster from the task) · `seams` (cross-app information gate) · `partition` (constraints) · `runtime` (Main + specialists) · `sandbox` (what specialist code may touch) · `reference` (the solutions) · `validity` (which rendered cells are usable RL data) · `harbor` (packaging) · `cli` |
 | `forge/maf/` | the earlier from-scratch forge; `parallel-scheduling` ships, two dimensions are quarantined (below) |
 | `tasks/` | rendered Harbor tasks |
 | `sweep/` | measurement evidence — one file per claim |
 | `scripts/` | the probes that produced it |
-| `skills/` | the method, and the failure modes it was built from |
+| `skills/` | **the method** — canonical, substrate-independent, and the failure modes it was built from |
+
+### Porting this to another substrate
+
+`forge/appworld/` is one instantiation, and it is worth knowing which files carry
+the method and which are AppWorld glue, because only the second column is thrown
+away:
+
+| file | ports? |
+|---|---|
+| `validity.py` | **the method.** Floor, control, sandwich rule, yield. Needs only a score, a floor and a control — nothing AppWorld |
+| `partition.py` | **the method.** The four constraint families, none of which can reach a judge |
+| `seams.py` · `select.py` | **the rule ports, the regex does not.** "The roster is what the reference solution touches" is substrate-independent; `apis\.(\w+)\.(\w+)\(` is not. So is the strict filter — every substrate has infrastructure that masquerades as a collaborator |
+| `runtime.py` · `sandbox.py` · `container/` | **glue.** Main + specialists, what model-written code may touch, the sidecar boundary. Reimplemented per substrate |
+| `reference.py` · `harbor.py` · `cli.py` | **glue.** Solutions, packaging, entry points |
 
 Every number in the write-up names the file that produced it:
 
@@ -88,6 +181,7 @@ Every number in the write-up names the file that produced it:
 | `appworld_injection.json` | can a brief make a specialist leak the reward token? |
 | `appworld_oracle.json` | do the shipped solutions actually pass? |
 | `appworld_span.json` | which of AppWorld's 147 tasks can carry a partition? |
+| `appworld_seams.json` | which multi-app tasks actually move a fact across apps? |
 | `tom_degeneracy.json` | v1's `theory-of-mind`: 12 of 12 runs at reward 1.0, zero gradient |
 | `appworld_confound.json` | was the drop the partition, or the weaker specialist model? |
 | `appworld_rate_limit_cost.json` | what does a rollout cost under a TPM ceiling? |
@@ -147,8 +241,9 @@ python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v5.js
 **The pipeline:**
 
 ```bash
-# which of AppWorld's tasks are genuinely multi-app (we never choose the roster)
+# derive task-determined rosters, then require information to cross between them
 python -m forge.appworld.cli measure --out sweep/appworld_span.json
+python -m forge.appworld.cli seams --out sweep/appworld_seams.json
 
 # render Harbor tasks: 3 AppWorld tasks x 2 shipped configurations
 python -m forge.appworld.cli render --n 3 --out tasks

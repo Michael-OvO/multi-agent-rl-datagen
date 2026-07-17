@@ -35,7 +35,7 @@ same arithmetic as an *observation*, and `Yield.measured` says which you have.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 
@@ -55,6 +55,7 @@ class Verdict(str, Enum):
     DEGENERATE = "degenerate"  # score <= floor -- no signal above doing nothing
     NO_BITE = "no-bite"  # score >= control -- the constraint changed nothing
     CONTROL_FAILED = "control-failed"  # the control is on the floor: unmeasurable
+    NO_VARIANCE = "no-variance"  # every replicate scored the same: no advantage
 
 
 def is_control(config: str) -> bool:
@@ -119,15 +120,65 @@ class Judgement:
         return self.verdict is not Verdict.CONTROL_FAILED
 
 
+def judge_cell(scores: list[float], control: float, floor: float) -> Verdict:
+    """Classify a (task, config) *cell* from its replicates.
+
+    This is the verdict that matters for RL data, because the unit of data is the
+    task instance, not the rollout: you sample K rollouts of one prompt and the
+    gradient comes from how they *differ*. A cell whose replicates all score the
+    same has no advantage to give, whatever that score is.
+
+    That last case is `theory-of-mind` wearing a different number. v1's dimension
+    scored 1.0 on 12 of 12 -- reward everywhere, variance nowhere, gradient zero
+    (WRITEUP.md section 1). Five replicates all landing on 0.833 are the same
+    object: comfortably inside the sandwich, and worth nothing. One seed cannot
+    express this at all -- a single point has no variance by construction -- which
+    is why `SEEDS_FOR_YIELD` exists, and why a 1-seed sweep measures no yield.
+    """
+    if control <= floor:
+        return Verdict.CONTROL_FAILED
+    if max(scores) <= floor:
+        return Verdict.DEGENERATE  # never rises above doing nothing
+    if min(scores) >= control:
+        return Verdict.NO_BITE  # always ties the ceiling
+    if len(scores) >= 2 and len(set(scores)) == 1:
+        return Verdict.NO_VARIANCE  # zero advantage; see above
+    return Verdict.VALID
+
+
+@dataclass(frozen=True)
+class Cell:
+    """One (task, config) pair and every replicate of it."""
+
+    task_id: str
+    config: str
+    scores: tuple[float, ...]
+    control: float
+    floor: float
+    verdict: Verdict
+
+    @property
+    def usable(self) -> bool:
+        return self.verdict is Verdict.VALID
+
+    @property
+    def measurable(self) -> bool:
+        return self.verdict is not Verdict.CONTROL_FAILED
+
+    @property
+    def seeds(self) -> int:
+        return len(self.scores)
+
+
 @dataclass(frozen=True)
 class Yield:
     """How many of a config's measurable cells are worth training on."""
 
     config: str
-    valid: int
+    valid: int  #: usable *cells*, not rollouts: the unit of RL data is the prompt
     total: int  #: measurable cells only -- see `unmeasurable`
     unmeasurable: int  #: cells whose control failed; not the knob's fault
-    seeds: int  #: seeds in the config's *weakest* cell
+    seeds: int  #: replicates in the config's *weakest* cell
 
     @property
     def rate(self) -> float:
@@ -192,29 +243,62 @@ def judge_rows(rows: list[dict], floor: float) -> list[Judgement]:
     return out
 
 
-def yield_by_config(judgements: list[Judgement]) -> dict[str, Yield]:
-    """Yield per config, keyed by config name.
+def judge_cells(rows: list[dict], floor: float) -> list[Cell]:
+    """Group a sweep into (task, config) cells and judge each from its replicates.
+
+    `judge_rows` scores rollouts, which is the right unit for a table a human
+    reads. This is the right unit for a *yield*: the thing you would put in a
+    training set is the prompt, and its worth is a property of the spread across
+    the rollouts you sample from it.
+    """
+    controls = control_by_task(rows)
+    scores: dict[tuple[str, str], list[float]] = defaultdict(list)
+    for r in rows:
+        if is_control(r["config"]) or not is_measurement(r):
+            continue
+        task = r["task_id"]
+        if task not in controls:
+            raise ValueError(
+                f"task {task!r} has no control rollout that ran, so its "
+                f"config {r['config']!r} has no ceiling to be read against"
+            )
+        scores[(task, r["config"])].append(r["partial"])
+
+    return [
+        Cell(
+            task_id=task,
+            config=config,
+            scores=tuple(vals),
+            control=controls[task],
+            floor=floor,
+            verdict=judge_cell(vals, controls[task], floor),
+        )
+        for (task, config), vals in sorted(scores.items())
+    ]
+
+
+def yield_by_config(cells: list[Cell]) -> dict[str, Yield]:
+    """Yield per config: usable cells over measurable cells.
 
     Cells whose control failed are reported separately rather than counted as
     failures: blaming a knob for a base task nobody can solve is exactly the
     write-up this module exists to prevent.
     """
-    cells: dict[str, list[Judgement]] = defaultdict(list)
-    for j in judgements:
-        cells[j.config].append(j)
+    grouped: dict[str, list[Cell]] = defaultdict(list)
+    for c in cells:
+        grouped[c.config].append(c)
 
     out = {}
-    for config, js in cells.items():
-        measurable = [j for j in js if j.measurable]
-        # The weakest cell governs: a config with one 9-seed task and one
-        # 1-seed task has not been measured at 5 seeds, and an average would
-        # say it had.
-        per_task = Counter(j.task_id for j in js)
+    for config, cs in grouped.items():
+        measurable = [c for c in cs if c.measurable]
         out[config] = Yield(
             config=config,
-            valid=sum(j.usable for j in measurable),
+            valid=sum(c.usable for c in measurable),
             total=len(measurable),
-            unmeasurable=len(js) - len(measurable),
-            seeds=min(per_task.values()) if per_task else 0,
+            unmeasurable=len(cs) - len(measurable),
+            # The weakest cell governs: a config with one 9-replicate task and
+            # one 1-replicate task has not been measured at 5, and an average
+            # would say it had.
+            seeds=min((c.seeds for c in cs), default=0),
         )
     return out

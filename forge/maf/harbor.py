@@ -63,7 +63,25 @@ def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
 # Static dimensions (single-shot artifact, e.g. scheduling)
 # --------------------------------------------------------------------------- #
 def _write_static(dim, instance, pub, gt, task_dir) -> dict:
+    # The scenario is written twice, on purpose, and the copies are identical.
+    #
+    #   environment/task.json -> COPYed into the agent's image at /app. This is
+    #       the agent's statement of the problem. It must be readable, and /app
+    #       is the agent's WORKDIR, so it is also writable. That is fine for a
+    #       statement and fatal for a grading input.
+    #   tests/scenario.json   -> what the verifier grades against. Harbor
+    #       uploads tests/ only at verification time, so the agent phase never
+    #       sees this path, let alone writes it.
+    #
+    # Pointing `scenario_path` at /app was a live reward hack: `verify_entry`
+    # re-executes the submitted schedule against the scenario it loads, so an
+    # agent that rewrote /app/task.json into a one-subtask triviality got its
+    # makespan scored against the *real* `_opt_makespan` from /tests. Measured
+    # 2026-07-17: reward 1.0, makespan 7 against opt 10, nothing solved. The
+    # verifier re-executing the submission is a real defence -- it just has to
+    # re-execute it against a problem the agent does not hold the pen on.
     (task_dir / "environment" / "task.json").write_text(json.dumps(pub, indent=2))
+    (task_dir / "tests" / "scenario.json").write_text(json.dumps(pub, indent=2))
     (task_dir / "tests" / "ground_truth.json").write_text(json.dumps(gt))
     (task_dir / "environment" / "Dockerfile").write_text(
         _DOCKER_BASE + "COPY task.json /app/task.json\n"
@@ -75,7 +93,7 @@ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
     )
     return {
         "interactive": False,
-        "scenario_path": "/app/task.json",
+        "scenario_path": "/tests/scenario.json",
         "ground_truth_path": "/tests/ground_truth.json",
         "submission_path": f"/app/{dim.SUBMISSION_FILE}",
     }
@@ -146,8 +164,12 @@ def _copy_runtime(dim, lib_dir: Path, include_cli: bool = False):
     import forge.maf.core as core_mod
 
     lib_dir.mkdir(parents=True, exist_ok=True)
+    if core_mod.__file__ is None:
+        raise RuntimeError("forge.maf.core has no source file")
     lib_dir.joinpath("maf_core.py").write_text(Path(core_mod.__file__).read_text())
     mod = importlib.import_module(type(dim).__module__)
+    if mod.__file__ is None:
+        raise RuntimeError(f"{type(dim).__module__} has no source file")
     src = Path(mod.__file__).read_text()
     src = src.replace("from forge.maf.core import", "from maf_core import")
     lib_dir.joinpath("maf_dim.py").write_text(src)

@@ -9,12 +9,42 @@ is named next to it. Where something is unmeasured or wrong, it says so.
 
 ## The short version
 
-I built a forge that turns AppWorld's single-agent tasks into multi-agent
-orchestration tasks by **constraining the agent's access to the world, and never
-touching the judge**.
+**The deliverable is a method, not a dataset and not an AppWorld wrapper.** It
+turns an agentic task database that was never meant for multi-agent work into
+multi-agent RL tasks, by **constraining the agent's access to the world and never
+touching the judge** — and it measures which of the tasks it produces are worth
+training on.
+
+The whole of it is four moves. Only one is construction:
+
+```
+1. ADMIT      does the database qualify? four requirements (§3)
+                          -> task, ground truth, environment, judge: all free
+2. MINE       which tasks does the reference solution prove are multi-seam?
+                          -> the roster comes from the task, never from me (§3.4)
+3. CONSTRAIN  access / information / topology / budget
+                          -> the multi-agent structure, and the ONLY thing I built
+4. ACCEPT     floor < score < control, per cell
+                          -> which renders are usable RL data, measured (§4)
+```
+
+**AppWorld is the substrate I ran it on, not the point.** It is an argument to
+the method: it clears admission, so the method applies. Nothing in the four moves
+is AppWorld-shaped, and §3 names the requirements precisely enough that you can
+check another database against them without asking me. What I cannot tell you is
+whether a second substrate works, because **I ran exactly one** (§6).
 
 The reason that is *the* design rather than *a* design is that I built the obvious
 thing first, and it was silently worthless (§1).
+
+**On "quality", which is the word to distrust.** The method does not promise good
+tasks. It promises tasks whose quality is *decidable*, and then reports the
+verdict against itself: **1 of the 6 cells I shipped is usable RL data** (§4).
+That is the method working. Move 4 is the difference between a forge and a
+generator, because a generator cannot tell four things apart — the task is
+unsolvable, the constraint never bit, the harness is broken, or the coordination
+was really learned. All four print a number. §1 is what happens when nobody is
+watching that.
 
 **Then I measured it, and the headline was a harness bug.** This repo previously
 reported the partition dropping the score `1.000 → 0.333`. That 0.333 is exactly
@@ -149,9 +179,43 @@ I take the principle and change the perturbation axis:
 
 > **SWE-smith breaks the world. I blind the agent.**
 
-**Substrate:** AppWorld — 9 apps, 457 APIs, 732 tasks, `pip install appworld`,
-and a **programmatic state-based oracle with no LLM in it** that also catches side
-effects. I verified it end-to-end before building anything: a hand-written
+The rest of SWE-smith generalises too, and I take that as well: its Fail-to-Pass
+rule — a candidate perturbation counts iff the repo's existing tests go red — is
+an acceptance test that costs no judge. A graded oracle turns the flip into a
+sandwich, and that is §4's validity rule.
+
+### What the method asks of a database, before AppWorld is mentioned
+
+The method is not a wrapper around AppWorld, and the honest way to show that is to
+state the admission test **without naming a substrate**, then let one qualify. Four
+requirements, in priority order:
+
+| requirement | why, and what breaks without it |
+|---|---|
+| **a verifier you did not write** | free, and already validated by somebody else — that is the whole of its value. Without it, §1 happens to you |
+| **real, executable, installable** | not a description of a world. If you cannot `pip install` or `docker pull` it, you will end up building it, and then you designed it |
+| **a reference solution per task** | derives the roster *and* proves solvability. Without it you guess which tasks qualify, so you pad |
+| **seams** | an action surface that divides along role boundaries — apps, services, repos, teams. No seams, no partition, no matter how you prompt it |
+
+**Admission is necessary and not sufficient.** A database can ship a perfect
+oracle and still have every task collapse into a single seam, which is why move 2
+is a measurement rather than an assumption. The seams are also where the choice of
+substrate stops being free: SWE-smith has the best oracle on the list, and its
+seams are code modules, so a partition there produces a SWE task with extra
+agents rather than an orchestration task.
+
+Which parts of what follows are the method, and which are this substrate's glue:
+
+| | ports to any admitted database | AppWorld-specific |
+|---|---|---|
+| **the rule** | the roster is what the reference solution touches; infrastructure never counts as a collaborator | `apis\.(\w+)\.(\w+)\(`, and that `supervisor.complete_task` is the thing to exclude |
+| **the constraints** | access · information · topology · budget, none able to reach the judge | that a "seam" is an app and a specialist is bound to one |
+| **the acceptance rule** | `floor < score < control`; yield reported, not assumed | that the floor is 2/6 and the control is OPEN |
+| **the boundary** | the agent under test must have no filesystem path to the judge | the sidecar, `team`, and what AppWorld's `SafetyGuard` fails to cover (§7.3) |
+
+**Substrate:** AppWorld clears all four — 9 apps, 457 APIs, 732 tasks,
+`pip install appworld`, and a **programmatic state-based oracle with no LLM in
+it** that also catches side effects. I verified it end-to-end before building anything: a hand-written
 solution to `82e2fac_1` reached `success=True`, 2 passes, 0 failures — an early
 manual check, and **its log did not survive**. The durable version of the same
 check is `sweep/appworld_oracle.json`: the shipped reference solutions reach
@@ -219,7 +283,7 @@ Two pass for free, so the **do-nothing floor is 2/6 = 0.333** — measured, no L
 `scripts/appworld_donothing_probe.py` → `sweep/appworld_donothing.json`, 0.333 on
 all three shipped tasks. **Keep that number.** It is the whole of §7.
 
-### 3.4 The anti-toy rule, and the 65% it rejected
+### 3.4 The anti-toy rules, and the 73.5% they rejected
 
 **Rule 1: the task decides the partition. I never do.** A task's specialists are
 the apps its ground truth actually touches. No padding.
@@ -228,6 +292,7 @@ the apps its ground truth actually touches. No padding.
 |---|---|
 | naive — count every app the GT touches | **147 / 147 (100%)** |
 | strict — drop `supervisor.complete_task` | **51 / 147 (34.7%)** |
+| information seam — a fact must cross between apps | **39 / 147 (26.5%)** |
 
 `supervisor` is called in all 147 tasks and **every call is `complete_task`** —
 the submit channel. It carries no information between apps. Counting it turns 96
@@ -235,7 +300,17 @@ single-app puzzles into "multi-agent" tasks with a decorative second specialist
 that would pass every check. The naive number is the one that would have looked
 better in this write-up.
 
-**Rule 2: every knob must move the score against the OPEN control, or it is
+The stricter gate matters after the submit channel is gone: 12 of those 51 tasks
+touch two real apps but never move a fact between them. They can train parallel
+dispatch, not the information-bearing coordination this method claims. The
+`seams` command measures that distinction and `render` refuses rows outside it.
+
+**Rule 2: the two selection measurements must agree.** `measure` records each
+task's roster; `seams` records its cross-app data flow. `render` joins them by
+task id and refuses duplicates, missing rows, or roster drift rather than quietly
+shrinking or inflating the pool.
+
+**Rule 3: every knob must move the score against the OPEN control, or it is
 decoration.** The ablation is free: `OPEN` is the same task, the same oracle, the
 partition off. §6 is that rule being applied to my own headline knob, and the
 knob losing.
@@ -244,9 +319,9 @@ knob losing.
 
 ## 4. What is built
 
-- **Pipeline:** `forge/appworld/` — `select` · `partition` · `runtime` ·
-  `sandbox` · `reference` · `validity` · `harbor` · `cli` (`measure` / `render` /
-  `judge`) · `container/`.
+- **Pipeline:** `forge/appworld/` — `select` · `seams` · `partition` · `runtime` ·
+  `sandbox` · `reference` · `validity` · `harbor` · `cli` (`measure` / `seams` /
+  `render` / `judge`) · `container/`.
 - **The validity rule:** `forge/appworld/validity.py` — a rendered cell is usable
   RL data only if `floor < score < control`. At or below the floor it carries no
   more signal than doing nothing; at or above the control the knob never bit.
@@ -389,7 +464,7 @@ with the container.
 ### What I would do next, and it is not scale
 
 Three tasks at one seed, one task family. The ladder is suggestive and unpriced.
-Before rendering the other 96 variants (§8), the next run is **seeds, not scale**:
+Before rendering the other 72 variants (§8), the next run is **seeds, not scale**:
 5 seeds × these 3 tasks × `open`/`star-docs`/`star-names`, which is enough to put
 an interval on 0.056 and on 0.167 and find out whether the first one survives.
 
@@ -399,6 +474,27 @@ separate from the control, and `star-names` will.**
 ---
 
 ## 6. What is not established
+
+**The generality is argued, not demonstrated. This is the largest gap in the
+document, and it is the one the framing invites.** I claim a method that applies
+to any agentic task database clearing §3's admission test. I have run it on
+**one**. Every substrate-independence claim above is therefore of the form *"no
+step of this needs AppWorld"* — an argument from the construction, checkable by
+reading it — and none is of the form *"it worked elsewhere"*. Those are different
+kinds of sentence, and §1 is a monument to what happens when the first gets
+reported as the second.
+
+What is genuinely load-bearing and unproven: that a substrate can clear all four
+requirements and *still* yield nothing, because admission does not measure seam
+depth. AppWorld itself nearly demonstrates this — 96 of its 147 ground-truth
+tasks are single-app puzzles (§3.4) — and I have no second database to say
+whether 34.7% survival is typical, lucky, or bad. The cheapest falsification is
+one afternoon: run move 2 against SWE-smith or τ-bench and publish the seam
+distribution. **The skill cites a `funcy` module-deletion measurement suggesting
+exactly this failure on a Python repo; that anecdote has no evidence file in this
+repo and is marked as uncited there.** It is a recollection wearing a
+measurement's clothes — §7.4's own category — and I am not going to let it do
+work here.
 
 **The evidence is thin.** Three tasks, one seed each, one task family
 (`2a163ab_*` — like the transactions on your feed involving a group only `phone`
@@ -607,7 +703,7 @@ minutes instead of a re-roll.
 | environment | free — `pip install` |
 | oracle | free — `evaluate()` |
 | task + ground truth | free — 732 tasks |
-| selection | seconds — regex over ground truth, automated |
+| selection | seconds — regex plus AST data-flow over ground truth, automated |
 | **specialist LLM calls** | **the bottleneck** |
 
 Measured: one partitioned rollout took **4.2 hours** (15,127s / 66 specialist
@@ -621,10 +717,10 @@ over speed, knowingly.
 A subtler bottleneck: **only tasks whose OPEN control succeeds can measure a
 knob**. That filter needs real rollouts; it cannot be derived by inspection.
 
-Available scale from what exists today: **51 tasks × 2 shipped configurations =
-102 variants**, plus 51 free controls — by reconfiguring real tasks, not inventing
+Available scale from what exists today: **39 tasks × 2 shipped configurations =
+78 variants**, plus 39 free controls — by reconfiguring real tasks, not inventing
 them. The knob space is 8 wide; six of those do not ship (`chain` is
-unimplemented, `delegation_budget` unmeasured), so **408 is a ceiling of work, not
+unimplemented, `delegation_budget` unmeasured), so **312 is a ceiling of work, not
 an inventory**.
 
 And on the evidence in §5, scaling this dimension is not the next thing to do.

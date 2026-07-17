@@ -16,6 +16,7 @@ from forge.appworld.partition import Constraints, Topology, Visibility
 from forge.appworld.runtime import (
     MAX_OUTPUT_CHARS,
     RunLog,
+    chat,
     execution_feedback,
     extract_code,
     run_main,
@@ -315,6 +316,30 @@ def test_a_refused_turn_binds_nothing_for_later_turns():
 
     assert log.blocked == 2, "both the smuggle and the use must be refused"
     assert world.executed == []
+
+
+def test_a_failed_turn_binds_nothing_for_later_turns():
+    class FailingWorld(FakeWorld):
+        def execute(self, code):
+            self.executed.append(code)
+            return "Execution failed. Traceback omitted."
+
+    client = ScriptedSpecialist([
+        "```python\nprofile = apis.venmo.show_profile()\n```",
+        "```python\nprint(profile)\n```",
+        "```python\nFINAL: gave up\n```",
+    ])
+    world = FailingWorld()
+    log = RunLog()
+    run_specialist(client, world, "venmo", "show my profile", log)
+
+    assert len(world.executed) == 1
+    assert log.blocked == 1, "a failed cell must not publish its assignments"
+
+
+def test_chat_rejects_a_zero_retry_budget():
+    with pytest.raises(ValueError, match="at least 1"):
+        chat(FakeClient([]), [], retries=0)
 
 
 def test_the_ledger_can_say_what_was_refused_not_only_how_many():

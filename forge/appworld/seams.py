@@ -22,10 +22,13 @@ same with a second app instead of a submit channel. Both flatter the number.
 
 **This is a heuristic, not a proof.** It is a forward taint pass with no aliasing
 and no interprocedural reasoning: it can miss a seam (taint laundered through a
-dict value, a `.append` into a list bound earlier) and so it *under*-reports. It
-cannot invent one -- every seam it reports names the two apps and the line -- so
-a task it accepts really does move a fact across. Read the number as a lower
-bound on how many tasks coordinate, which is the direction that does not flatter.
+dict value, a `.append` into a list bound earlier) and so it *under*-reports.
+Sibling branches are analyzed independently, so one branch cannot lend a value
+to another. Loop bodies do propagate taint: these are reference solutions over a
+fixed task state, and several valid solutions intentionally bind a value while
+searching a non-empty collection and consume it afterwards. Every reported seam
+still names the two apps and the consuming line. Read the number as a tested
+heuristic, not as a formally verified dependency graph.
 
 Three shapes in AppWorld's ground truth that a naive pass gets wrong, all three
 present in the shipped task family:
@@ -44,6 +47,7 @@ present in the shipped task family:
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from dataclasses import dataclass
 
 #: Apps that are never a coordination role, mirroring select.py.
@@ -123,6 +127,57 @@ def _calls_in(node: ast.AST) -> list[tuple[str, ast.Call]]:
     return out
 
 
+def _statement_expressions(stmt: ast.stmt) -> list[ast.AST]:
+    """Expressions owned by this statement, excluding nested statement bodies."""
+    if isinstance(stmt, ast.Expr):
+        return [stmt.value]
+    if isinstance(stmt, ast.Assign):
+        return [stmt.value]
+    if isinstance(stmt, ast.AnnAssign):
+        return [node for node in (stmt.annotation, stmt.value) if node is not None]
+    if isinstance(stmt, ast.AugAssign):
+        return [stmt.target, stmt.value]
+    if isinstance(stmt, (ast.For, ast.AsyncFor)):
+        return [stmt.iter]
+    if isinstance(stmt, (ast.While, ast.If)):
+        return [stmt.test]
+    if isinstance(stmt, (ast.With, ast.AsyncWith)):
+        return [item.context_expr for item in stmt.items]
+    if isinstance(stmt, ast.Assert):
+        return [node for node in (stmt.test, stmt.msg) if node is not None]
+    if isinstance(stmt, ast.Return):
+        return [stmt.value] if stmt.value is not None else []
+    if isinstance(stmt, ast.Raise):
+        return [node for node in (stmt.exc, stmt.cause) if node is not None]
+    return []
+
+
+def _copy_env(env: dict[str, set[str]]) -> dict[str, set[str]]:
+    return {name: set(apps) for name, apps in env.items()}
+
+
+def _join_envs(
+    base: dict[str, set[str]], branches: list[dict[str, set[str]]]
+) -> dict[str, set[str]]:
+    """Join possible taint after analyzing sibling branches independently.
+
+    This is a may-analysis over trusted reference solutions: if either branch can
+    bind a value from an app, a later consumer may depend on that app. The
+    branches are not allowed to borrow each other's bindings while they are
+    analyzed, which is the false-positive case this separation prevents.
+    """
+    if not branches:
+        return _copy_env(base)
+    out: dict[str, set[str]] = {}
+    names = set(base).union(*(set(branch) for branch in branches))
+    for name in names:
+        apps = set(base.get(name, set()))
+        for branch in branches:
+            apps |= branch.get(name, set())
+        out[name] = apps
+    return out
+
+
 def _walk(body: list[ast.stmt], env: dict[str, set[str]], guard: set[str],
           seams: list[Seam]) -> None:
     """Walk a statement list, accumulating guard taint from guard clauses."""
@@ -130,17 +185,25 @@ def _walk(body: list[ast.stmt], env: dict[str, set[str]], guard: set[str],
     for stmt in body:
         # A call's *arguments* carry taint directly; the guards in scope carry it
         # indirectly -- both mean the work in `app` needed a fact from elsewhere.
-        for app, call in _calls_in(stmt):
-            arg_apps: set[str] = set()
-            for a in list(call.args) + [k.value for k in call.keywords]:
-                arg_apps |= _taint(a, env)
-            for src in sorted(arg_apps - {app}):
-                seams.append(Seam(src, app, call.lineno, "argument"))
-            for src in sorted(guard - {app} - arg_apps):
-                seams.append(Seam(src, app, call.lineno, "guard"))
+        for expression in _statement_expressions(stmt):
+            for app, call in _calls_in(expression):
+                arg_apps: set[str] = set()
+                for argument in list(call.args) + [
+                    keyword.value for keyword in call.keywords
+                ]:
+                    arg_apps |= _taint(argument, env)
+                seams.extend(
+                    Seam(source, app, call.lineno, "argument")
+                    for source in sorted(arg_apps - {app})
+                )
+                seams.extend(
+                    Seam(source, app, call.lineno, "guard")
+                    for source in sorted(guard - {app} - arg_apps)
+                )
 
         if _is_guard_clause(stmt):
             # Everything after it in this block is conditional on the test.
+            assert isinstance(stmt, ast.If)
             guard |= _taint(stmt.test, env)
             continue
 
@@ -151,17 +214,48 @@ def _walk(body: list[ast.stmt], env: dict[str, set[str]], guard: set[str],
         elif isinstance(stmt, (ast.AugAssign, ast.AnnAssign)) and stmt.value:
             _bind(stmt.target, _taint(stmt.value, env), env)
         elif isinstance(stmt, ast.For):
-            _bind(stmt.target, _taint(stmt.iter, env), env)
-            _walk(stmt.body, env, guard, seams)
-            _walk(stmt.orelse, env, guard, seams)
+            body_env = _copy_env(env)
+            _bind(stmt.target, _taint(stmt.iter, env), body_env)
+            _walk(stmt.body, body_env, guard, seams)
+            _walk(stmt.orelse, body_env, guard, seams)
+            env.clear()
+            env.update(body_env)
         elif isinstance(stmt, ast.While):
-            _walk(stmt.body, env, guard | _taint(stmt.test, env), seams)
+            body_env = _copy_env(env)
+            _walk(stmt.body, body_env, guard | _taint(stmt.test, env), seams)
+            _walk(stmt.orelse, body_env, guard, seams)
+            env.clear()
+            env.update(body_env)
         elif isinstance(stmt, ast.If):
             inner = guard | _taint(stmt.test, env)
-            _walk(stmt.body, env, inner, seams)
-            _walk(stmt.orelse, env, inner, seams)
-        elif isinstance(stmt, (ast.With, ast.Try)):
-            _walk(getattr(stmt, "body", []), env, guard, seams)
+            body_env = _copy_env(env)
+            _walk(stmt.body, body_env, inner, seams)
+            else_env = _copy_env(env)
+            _walk(stmt.orelse, else_env, inner, seams)
+            joined = _join_envs(env, [body_env, else_env])
+            env.clear()
+            env.update(joined)
+        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            inner = _copy_env(env)
+            for item in stmt.items:
+                if item.optional_vars is not None:
+                    _bind(item.optional_vars, _taint(item.context_expr, env), inner)
+            _walk(stmt.body, inner, guard, seams)
+            env.clear()
+            env.update(inner)
+        elif isinstance(stmt, ast.Try):
+            body_env = _copy_env(env)
+            _walk(stmt.body, body_env, guard, seams)
+            _walk(stmt.orelse, body_env, guard, seams)
+            branches = [body_env]
+            for handler in stmt.handlers:
+                handler_env = _copy_env(env)
+                _walk(handler.body, handler_env, guard, seams)
+                branches.append(handler_env)
+            joined = _join_envs(env, branches)
+            _walk(stmt.finalbody, joined, guard, seams)
+            env.clear()
+            env.update(joined)
 
 
 def seams_of(solution_code: str) -> list[Seam]:
@@ -188,3 +282,47 @@ def seams_of(solution_code: str) -> list[Seam]:
 
 def has_information_seam(solution_code: str) -> bool:
     return bool(seams_of(solution_code))
+
+
+def information_seam_task_ids(
+    span_rows: list[dict], seam_rows: list[dict]
+) -> set[str]:
+    """Join roster and seam measurements, refusing drift or partial files.
+
+    The two files are intentionally separate evidence artifacts: one records
+    which apps a reference solution touches, the other records whether a fact
+    actually crosses between them. Rendering from their unchecked intersection
+    would let a stale or partial seam file silently shrink the candidate pool.
+    """
+    if any(not isinstance(row.get("task_id"), str) for row in span_rows):
+        raise ValueError("span measurement contains a row without a task_id")
+    if any(not isinstance(row.get("task_id"), str) for row in seam_rows):
+        raise ValueError("seam measurement contains a row without a task_id")
+
+    span_counts = Counter(row["task_id"] for row in span_rows)
+    seam_counts = Counter(row["task_id"] for row in seam_rows)
+    duplicate_span = sorted(task for task, count in span_counts.items() if count != 1)
+    duplicate_seams = sorted(task for task, count in seam_counts.items() if count != 1)
+    if duplicate_span or duplicate_seams:
+        raise ValueError(
+            "selection files contain duplicate task ids: "
+            f"span={duplicate_span[:3]}, seams={duplicate_seams[:3]}"
+        )
+
+    span_by_id = {row["task_id"]: row for row in span_rows}
+    seam_by_id = {row["task_id"]: row for row in seam_rows}
+    missing = sorted(set(span_by_id) - set(seam_by_id))
+    extra = sorted(set(seam_by_id) - set(span_by_id))
+    if missing or extra:
+        raise ValueError(
+            "selection files describe different task sets: "
+            f"missing from seams={missing[:3]}, extra in seams={extra[:3]}"
+        )
+
+    for task_id, span in span_by_id.items():
+        if span.get("roster") != seam_by_id[task_id].get("roster"):
+            raise ValueError(
+                f"{task_id}: roster differs between span and seam measurements; "
+                "rerun both commands before rendering"
+            )
+    return {task_id for task_id, row in seam_by_id.items() if row.get("seams")}

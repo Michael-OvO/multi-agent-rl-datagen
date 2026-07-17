@@ -43,6 +43,9 @@ _NO_TEMPERATURE: set[str] = set()
 
 
 def chat(client, messages: list[dict], model: str = DEFAULT_MODEL, retries: int = 6) -> str:
+    if retries < 1:
+        raise ValueError("retries must be at least 1")
+    last: Exception | None = None
     for attempt in range(retries):
         kwargs: dict = {"model": model, "messages": messages}
         if model not in _NO_TEMPERATURE:
@@ -51,6 +54,7 @@ def chat(client, messages: list[dict], model: str = DEFAULT_MODEL, retries: int 
             r = client.chat.completions.create(**kwargs)
             return r.choices[0].message.content or ""
         except Exception as e:
+            last = e
             msg = str(e).lower()
             if "temperature" in msg and "unsupported" in msg:
                 _NO_TEMPERATURE.add(model)  # retry immediately without it
@@ -58,7 +62,13 @@ def chat(client, messages: list[dict], model: str = DEFAULT_MODEL, retries: int 
             if not any(t in msg for t in _RETRYABLE) or attempt == retries - 1:
                 raise
             time.sleep(min(2**attempt + random.random(), 30))
-    raise RuntimeError("unreachable")
+    # Reachable: the temperature branch `continue`s without checking whether it
+    # is on the last attempt, so a temperature error there falls out of the loop.
+    # It used to raise RuntimeError("unreachable") and throw the real API error
+    # away -- in the one function whose comments exist because a swallowed error
+    # reported three rollouts as plausible scores.
+    assert last is not None
+    raise last
 
 
 def extract_code(text: str) -> str:
@@ -183,6 +193,21 @@ class RunLog:
     blocked_reasons: list[str] = field(default_factory=list)
 
 
+#: What the harness says when the agent never produced an answer. Named here,
+#: where they are emitted, because the sweep has to recognise them: anything not
+#: recognised is submitted to AppWorld as a literal answer, fails `assert answers
+#: match`, and scores the run as if the agent had answered wrongly rather than
+#: not at all.
+#:
+#: They were string literals re-typed in `scripts/appworld_knob_sweep.py`, and
+#: `NO_ANSWER` was missing from that copy. Only the OPEN control could emit it
+#: (it answers through `run_specialist`; every partitioned arm goes through
+#: `run_main`), so the one row that can silently depress the ceiling every knob
+#: is read against was the one row nothing covered.
+NO_ANSWER = "(no answer within turn limit)"   # run_specialist exhausted max_turns
+OUT_OF_STEPS = "(out of steps)"               # run_main exhausted its budget
+
+
 def run_specialist(
     client, world, app: str | Iterable[str], brief: str, log: RunLog,
     model: str = DEFAULT_MODEL, max_turns: int = 14,
@@ -221,12 +246,16 @@ def run_specialist(
             msgs.append({"role": "user", "content": f"Output:\nRefused: {refusal}"})
             continue
 
-        session |= bound_names(code)
         result = world.execute(code)
         log.specialist_turns += 1
+        # A failed cell may have stopped before any of its assignments. Carrying
+        # those names into the next turn would let a later load fall through to
+        # a same-named object in AppWorld's persistent namespace.
+        if not str(result).startswith("Execution failed."):
+            session |= bound_names(code)
         msgs.append({"role": "user",
                      "content": f"Output:\n{execution_feedback(result)}"})
-    return "(no answer within turn limit)"
+    return NO_ANSWER
 
 
 def _main_system(
@@ -342,4 +371,4 @@ def run_main(
         log.interactions.append(Interaction("main", who, brief, reply))
         msgs.append({"role": "user", "content": f"{who} reports: {reply}"})
 
-    return "(out of steps)"
+    return OUT_OF_STEPS
