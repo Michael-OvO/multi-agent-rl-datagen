@@ -39,7 +39,9 @@ thing first, and it was silently worthless (§1).
 
 **On "quality", which is the word to distrust.** The method does not promise good
 tasks. It promises tasks whose quality is *decidable*, and then reports the
-verdict against itself: **1 of the 6 cells I shipped is usable RL data** (§4).
+verdict against itself: **5 of the 6 cells I shipped are usable RL data** (§4),
+measured at five replicates per cell. It read 1 of 6 until the seeds landed, and
+the rule is what corrected it, not a better run — see §5.
 That is the method working. Move 4 is the difference between a forge and a
 generator, because a generator cannot tell four things apart — the task is
 unsolvable, the constraint never bit, the harness is broken, or the coordination
@@ -56,8 +58,8 @@ What is actually there, re-measured (§5), is smaller and more interesting:
 
 | | mean | |
 |---|---|---|
-| `open` — one agent, every API | **1.000** | the control |
-| `star-docs` — no APIs, may read its specialists' docs | **0.944** | the partition costs ~nothing |
+| `open` — one agent, every API | **1.000** | the control, on 15 of 15 rollouts |
+| `star-docs` — no APIs, may read its specialists' docs | **0.855** | the partition costs 0.145 |
 | `star-names` — no APIs, does not know what they can do | **0.445** | and this is not the knob either (§5) |
 
 **Taking a frontier model's tools away and making it delegate did not make the
@@ -325,9 +327,12 @@ knob losing.
 - **The validity rule:** `forge/appworld/validity.py` — a rendered cell is usable
   RL data only if `floor < score < control`. At or below the floor it carries no
   more signal than doing nothing; at or above the control the knob never bit.
-  `python -m forge.appworld.cli judge` runs it over a sweep. **It reports 1 of 6
-  shipped cells usable** — and says so as an *observation*, not a yield: one seed
-  per cell cannot separate "always bottoms out" from "got unlucky once".
+  `python -m forge.appworld.cli judge` runs it over a sweep. **It reports 5 of 6
+  shipped cells usable**, and now says so as a *yield* rather than an
+  observation: `SEEDS_FOR_YIELD = 5` is satisfied, so the rate separates "always
+  bottoms out" from "got unlucky once". At one seed per cell it reported 1 of 6
+  and labelled it *observed only*, which is the same rule refusing to overclaim
+  in the other direction (§5).
 - **Harbor tasks:** `python -m forge.appworld.cli render --n 3` → 6 tasks
   (3 AppWorld tasks × 2 shipped configurations).
 - **Reference solutions:** `forge/appworld/reference.py` records the
@@ -354,28 +359,37 @@ knob losing.
 
 ## 5. The measurement that matters
 
-**Three tasks** (`2a163ab_1`, `2a163ab_2`, `2a163ab_3`), one seed each. Main =
-gpt-5.6-sol, specialists = gpt-4.1, harness fixed (§7).
-`scripts/appworld_knob_sweep.py` → `sweep/appworld_knobs_v5.json`.
+**Three tasks** (`2a163ab_1`, `2a163ab_2`, `2a163ab_3`), **five seeds each** —
+15 rollouts per config. Main = gpt-5.6-sol, specialists = gpt-4.1, harness fixed
+(§7). `scripts/appworld_knob_sweep.py` → `sweep/_seed_1..5.json` →
+`scripts/merge_seeds.py` → `sweep/appworld_knobs_v5.json`.
 
-| config | mean | per task | delegations |
+| config | mean | per task (5 replicates each) | delegations |
 |---|---|---|---|
 | `open` — the control: one agent, every API | **1.000** | 1.0 · 1.0 · 1.0 | 0 |
-| `star-docs` — Main has no APIs, reads its specialists' real API catalogs | **0.944** | 1.0 · 1.0 · 0.833 | 3–5 |
-| `star-names` — Main has no APIs and does not know what they can do | **0.445** | 1.0 · 0.167 · 0.167 | 2 |
-| `chain-names` — unshipped, a fake signal (§6) | 0.278 | 0.333 · 0.333 · 0.167 | 9–12 |
+| `star-docs` — Main has no APIs, reads its specialists' real API catalogs | **0.855** | 0.833 · 0.833 · 0.900 | 2–10 |
+| `star-names` — Main has no APIs and does not know what they can do | **0.445** | 0.833 · 0.167 · 0.333 | 2 |
+| `chain-names` — unshipped, a fake signal (§6); 2 seeds | 0.250 | 0.250 · 0.333 · 0.167 | 9–12 |
 
 Read against the two fixed points: **do-nothing = 0.333** (§3.3), **control =
 1.000**. And read the next two subsections before reading the ladder, because
 neither knob means what the column suggests.
 
-### The partition costs 0.056, and the docs knob costs nothing at all
+### The partition costs 0.145, and one seed could not say so
 
-The access partition moves the mean by **0.056** — one task losing one
-requirement out of six — which three tasks at one seed cannot separate from
-noise. **Three of six partitioned rollouts scored the ceiling.** A frontier Main,
-stripped of every API and made to coordinate two specialists through a text
-channel, solves most of these tasks anyway.
+The access partition moves the mean by **0.145**. The previous version of this
+section reported 0.056 and said, correctly, that three tasks at one seed could
+not separate that from noise. The answer was seeds.
+
+At 15 rollouts the effect is no longer a mean difference to squint at: **the
+control scored 1.000 on every single one of its 15 rollouts, and `star-docs`
+landed below it on 10 of 15**, spread across 0.667–1.000. The ceiling has zero
+variance; the partitioned arm has plenty. That is the knob biting.
+
+It still is not a difficulty cliff. A frontier Main, stripped of every API and
+made to coordinate two specialists through a text channel, solves most of these
+tasks anyway — it just pays about one requirement in six for the privilege, and
+takes 2–10 delegations to do it.
 
 **Blinding a strong agent did not reliably make the task hard. It made it
 longer.** If the decomposition is shallow — ask A, tell B — a good Main just does
@@ -392,12 +406,26 @@ that it delegates **3–5 times instead of 2–3** and takes **201s instead of 1
 Showing a Main what its specialists can do makes it more talkative, not more
 correct.
 
+Those four numbers are all at **seed 1**, which is the only seed v3 has. The
+five-seed re-measurement re-prices the *partition* (§5) and does not re-price
+this: comparing v3's one draw against v5's five would confound the docs knob with
+the sample size, which is the mistake the rest of this section exists to avoid.
+The docs knob is unpriced, not free.
+
+The wall-clock numbers deserve the same caution and get it here rather than in a
+table: across the five seeds `star-docs` averaged 201s, 759s, 2006s, 482s and
+365s. That is a 10× spread on identical work, and it is the org TPM ceiling
+throttling the run — `runtime.py` treats 429s as routine for exactly this reason.
+Seconds measure the rate limit on the day, not the agent. The 5-seed mean of 763s
+is a fact about the queue and belongs in no argument about coordination.
+
 ### The `star-names` drop is the answer protocol, not the knob
 
-`0.944 → 0.445` looks like the visibility knob finally biting. It is not.
+`0.855 → 0.445` looks like the visibility knob finally biting. It is not.
 
-Two of the three `star-names` rollouts scored **0.167 — *below* the do-nothing
-floor of 0.333**. They got there by being honest: the Main failed to find the
+One of the three `star-names` tasks scores **0.167 on all five replicates —
+*below* the do-nothing floor of 0.333** — and a second sits there on four of
+five. They got there by being honest: the Main failed to find the
 transactions and said so — *"No Venmo transactions from yesterday involving your
 siblings were found"* — and AppWorld's `assert answers match` expects an action
 task's answer, which is `None`. Prose fails it. A Main that had falsely replied
@@ -421,15 +449,30 @@ other number is read against was a string prefix (§7.5).
 
 | config | usable | |
 |---|---|---|
-| `star-docs` | **1/3** | two cells tie the control; one bites |
-| `star-names` | **0/3** | one ties the control, two are below the floor |
-| `chain-names` | 0/3 | all degenerate |
+| `star-docs` | **3/3** | every cell spreads below the control across its 5 replicates |
+| `star-names` | **2/3** | one cell sits on 0.167 for all five |
+| `chain-names` | 0/3 | all degenerate (2 seeds; not a measured yield) |
 
-**1 of 6 shipped cells is usable RL data.** Note what this survived: between the
-v3 sweep and this one the `star-names` mean moved by 0.333 and the verdict did
-not move at all. A mean that swings by a third of the range while the answer to
-*"can you train on this?"* stays identical is the argument for scoring cells
-rather than averaging them.
+**5 of 6 shipped cells are usable RL data**, and at 5 replicates per cell that is
+a yield rather than an observation.
+
+**It read 1 of 6 one seed ago, and nothing about the tasks changed.** `star-docs`
+scored 1.000 on two of three tasks at seed 1, tying the control, so the cell rule
+called them NO_BITE and was right to: a cell that always ties its ceiling has
+nothing to teach. Four more draws showed those same cells landing at 0.667 and
+0.833, so `min < control` and they are VALID. The variance was there the whole
+time; one point cannot have variance, which is what `SEEDS_FOR_YIELD` says.
+
+So the rule caught its own under-reading before it caught anything else, and that
+is the more useful direction to see it work. A rule that only ever revises claims
+downward is a mood. This one moved the number **up** by 5× because the evidence
+said so, having refused to call the flattering-in-neither-direction 1-in-6 a
+yield in the first place.
+
+Note also what survived: between the v3 sweep and this one the `star-names` mean
+moved by 0.333 and its verdict did not move at all. A mean that swings by a third
+of the range while the answer to *"can you train on this?"* stays identical is
+the argument for scoring cells rather than averaging them.
 
 One seed per cell, so this is an observation and not a yield (`validity.py`).
 
@@ -461,15 +504,40 @@ thing this write-up previously called its most interesting result, and it is a
 better place to be than the previous two, because this time the instrument agrees
 with the container.
 
-### What I would do next, and it is not scale
+### The seed run happened, and it falsified me
 
-Three tasks at one seed, one task family. The ladder is suggestive and unpriced.
-Before rendering the other 72 variants (§8), the next run is **seeds, not scale**:
-5 seeds × these 3 tasks × `open`/`star-docs`/`star-names`, which is enough to put
-an interval on 0.056 and on 0.167 and find out whether the first one survives.
+The paragraph that stood here said: *"the next run is **seeds, not scale**: 5
+seeds × these 3 tasks × `open`/`star-docs`/`star-names`, which is enough to put
+an interval on 0.056 and on 0.167 and find out whether the first one survives."*
+It then pre-registered a prediction so the run could refute it:
 
-My expectation, stated before the run so it is falsifiable: **`star-docs` will not
-separate from the control, and `star-names` will.**
+> **`star-docs` will not separate from the control, and `star-names` will.**
+
+The run is in. **The first half is wrong.**
+
+`star-docs` separates. The control scored 1.000 on all 15 of its rollouts —
+zero variance — and `star-docs` landed below it on **10 of 15**, spread across
+0.667–1.000, for a mean of 0.855 and a cost of **0.145**. By the §4 rule its
+yield is **3/3**: every cell drops below the ceiling somewhere in its five
+replicates. The knob I expected to be decoration is the only one here whose bite
+is both measured and attributable to the constraint.
+
+The second half is right and worth little. `star-names` does separate (0.445),
+and §5.2 already established that its separation is the answer protocol paying
+for honesty rather than the visibility knob. Predicting that a broken reward
+protocol will move a score is not a prediction about coordination.
+
+What I got wrong is instructive rather than embarrassing, which is why the
+prediction was written down. At one seed `star-docs` tied the control on two of
+three tasks, and I read *"three of six partitioned rollouts scored the ceiling"*
+as evidence the partition was free. It was evidence of a small sample. The cell
+rule never agreed with me: it declined to call 1-in-6 a yield, because
+`SEEDS_FOR_YIELD` says one draw cannot tell "always ties" from "tied once".
+
+**So the next run is task families, not seeds and not scale.** Three tasks from
+one family (`2a163ab_*`) is the binding limit now: 0.145 is priced across seeds
+and unpriced across tasks. phone–simple_note and file_system–spotify are the
+cheapest falsification available, and nobody has run them.
 
 ---
 
@@ -496,11 +564,15 @@ repo and is marked as uncited there.** It is a recollection wearing a
 measurement's clothes — §7.4's own category — and I am not going to let it do
 work here.
 
-**The evidence is thin.** Three tasks, one seed each, one task family
-(`2a163ab_*` — like the transactions on your feed involving a group only `phone`
-can name). Everything in §5 is a direction, not an interval. What would change my
-mind: more seeds per cell, a second task family, and a Main weak enough that the
-control has somewhere to fall.
+**The evidence is thin, and it is thin in one dimension now rather than two.**
+Three tasks, five seeds each, **one task family** (`2a163ab_*` — like the
+transactions on your feed involving a group only `phone` can name). The seeds
+turned §5's headline from a direction into something with a spread behind it:
+0.145, with the control at 1.000 on 15 of 15 and `star-docs` below it on 10 of
+15. The task family did not move. So 0.145 is priced against sampling noise and
+not against task variation, and one family cannot tell "the partition costs
+0.145" from "this family costs 0.145". What would change my mind: a second task
+family, and a Main weak enough that the control has somewhere to fall.
 
 **No per-capability attribution, and this is a real gap against the brief.** The
 brief asks for failure modes and verification logic *per capability*. AppWorld's

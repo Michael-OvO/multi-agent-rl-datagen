@@ -315,16 +315,40 @@ def test_the_report_does_not_claim_an_unimplemented_operator_is_shipped(report):
     )
 
 
+def _yields() -> dict:
+    """Each shipped config's usable-cell count, computed from the sweep."""
+    from forge.appworld.validity import judge_cells, yield_by_config
+
+    rows = json.loads((_SWEEP / _SWEEP_FILE).read_text())
+    floors = {r["partial"] for r in json.loads(
+        (_SWEEP / "appworld_donothing.json").read_text())}
+    assert len(floors) == 1
+    return yield_by_config(judge_cells(rows, floors.pop()))
+
+
 @_reports
 def test_the_report_does_not_conclude_more_than_the_validity_rule_allows(report):
     """Section 4 builds the sandwich rule; sections 7-9 must not violate it.
 
-    star-names yields 0/3 usable cells against star-docs' 1/3, and its entire
-    mean drop is one cell on the floor -- the same verdict this report gives
-    chain and calls a fake signal. Concluding from the *mean* that role-opacity
-    is the better knob is the reading the rule disqualifies.
+    star-names yields fewer usable cells than star-docs, and the gap between
+    their *means* is a floored cell paying for an honest answer rather than a
+    harder task. Concluding from the mean that role-opacity is the better knob
+    is the reading the rule disqualifies -- and it stays disqualified at five
+    seeds, where star-docs reaches 3/3 and star-names 2/3.
     """
     text = report["path"].read_text()
+    ys = _yields()
+    docs, names = ys["star-docs-binf"], ys["star-names-binf"]
+
+    # The premise of the ban, asserted rather than assumed. If star-names ever
+    # overtakes star-docs the banned sentences below become *true* and this
+    # guard would be enforcing a stale conclusion -- which is the failure the
+    # whole module is about, wearing the guard's own clothes.
+    assert names.valid <= docs.valid, (
+        f"star-names ({names.valid}/{names.total}) now yields at least as much "
+        f"as star-docs ({docs.valid}/{docs.total}); the bans below no longer "
+        f"follow from the sweep and this test must be rewritten, not silenced"
+    )
 
     # Banned phrasings, each one a conclusion the sweep does not support. The
     # first version of this guard listed only the first, and the report went on
@@ -334,10 +358,32 @@ def test_the_report_does_not_conclude_more_than_the_validity_rule_allows(report)
     for banned in report["overclaims"]:
         assert banned not in text, (
             f"the report claims {banned!r}, which its own section 4 criterion "
-            f"rejects: star-names yields 0/3 usable cells against star-docs' 1/3"
+            f"rejects: star-names yields {names.valid}/{names.total} usable "
+            f"cells against star-docs' {docs.valid}/{docs.total}"
         )
-    assert report["insufficient"] in text and "0/3" in text, (
-        "the report must say what the sandwich rule says about star-names"
+
+    # The measured rate, stated in the report, derived here -- and anchored to
+    # the row that means it.
+    #
+    # `rate in text` is not good enough, and both ways it can fail have already
+    # happened in this file. It asserted the literal "0/3" and went on passing
+    # after star-names stopped being 0/3, because chain-names' row carries
+    # "0/3". Rewritten to compute the rate, it passed a mutation that removed
+    # star-names' number entirely -- because the task ids `2a163ab_1/2/3`
+    # contain the substring "2/3". A bare fraction is three characters; a
+    # 600-line report contains all of them somewhere. Requiring the rate on a
+    # line that also names the config is what makes this a check rather than a
+    # coincidence.
+    rate = f"{names.valid}/{names.total}"
+    stated = [ln for ln in text.splitlines()
+              if "star-names" in ln and rate in ln]
+    assert stated, (
+        f"no line of the report states star-names' yield ({rate}); the sandwich "
+        f"rule's verdict on the shipped visibility knob has to appear next to "
+        f"the knob"
+    )
+    assert report["insufficient"] in text, (
+        "the report must say the evidence is insufficient where it is"
     )
 
 

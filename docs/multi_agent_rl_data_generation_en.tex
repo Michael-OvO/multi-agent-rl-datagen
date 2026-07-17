@@ -229,7 +229,7 @@ Operators fall into three classes by how they produce candidates; see Table~\ref
 Class & SWE-smith analogue & This design's operator & Task or rules & Yield & Status\\
 \midrule
 Procedural & Procedural (13 AST transforms) & \texttt{partition}: split roles by the apps the reference solution touches; the Main holds no API & rules & \textbf{39/51} selection; 3/3 cells & shipped\\
-Procedural & Procedural & \texttt{blind}: hide the roles' capability docs, leaving only names & rules & \textbf{0/3} cells & shipped\\
+Procedural & Procedural & \texttt{blind}: hide the roles' capability docs, leaving only names & rules & \textbf{2/3} cells & shipped\\
 Procedural & Procedural & \texttt{route} (delegation budget): cap the number of delegations & rules & unmeasured & built, unshipped\\
 Procedural & Procedural & \texttt{route} (chain/tree topology): change who may talk to whom & rules & 0/3 cells & not built\\
 Procedural & Procedural & \texttt{perturb}: withdraw a role mid-run, forcing replanning & task & --- & not built\\
@@ -300,24 +300,26 @@ Applying the sandwich criterion of \S\ref{sec:criterion} to the sweep gives Tabl
 \begin{table}[H]
 \centering
 \small
-\caption{The existing sweep re-read under the sandwich criterion (one seed per cell)}
+\caption{The sweep re-read under the sandwich criterion (five seeds per cell)}
 \label{tab:yield}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.2cm} c c c >{\raggedright\arraybackslash}p{1.9cm} X}
 \toprule
 Configuration & \texttt{\_1} & \texttt{\_2} & \texttt{\_3} & Usable cells & Note\\
 \midrule
-star-docs & ties & ties & \textbf{0.833} & 1/3 & the only cell that bit\\
-star-names & ties & below floor & below floor & 0/3 & two cells below the floor for reporting failure honestly\\
-chain-names (not built) & floor & floor & below floor & 0/3 & a known fake signal\\
+star-docs & \textbf{0.833} & \textbf{0.833} & \textbf{0.900} & 3/3 & every cell drops below the control somewhere in its five draws\\
+star-names & \textbf{0.833} & below floor & \textbf{0.333} & 2/3 & one cell sits on 0.167 for all five replicates\\
+chain-names (not built) & floor & floor & below floor & 0/3 & a known fake signal; 2 seeds, so not a measured yield\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The two shipped configurations cover 6 cells, and exactly 1 lands in the useful band. star-docs' mean of $0.944$ comes from one cell biting and two tying the control; star-names' $0.445$ comes from one cell tying the control and two falling \emph{below} the floor (\S\ref{sec:results} explains why they can fall below it). Every one of those rollouts logged \texttt{ran=True} with no error, so they are real failures rather than harness faults --- but for RL data the conclusion is identical: there is no usable gradient between them and doing nothing.
+The two shipped configurations cover 6 cells, and 5 land in the useful band. star-docs' mean of $0.855$ comes from every cell spreading below the control across its replicates; star-names' $0.445$ comes from two cells that bite and one that scores $0.167$ on all five draws (\S\ref{sec:results} explains why a cell can fall below the floor). Every rollout logged \texttt{ran=True} with no error, so the one floored cell is a real failure rather than a harness fault --- and for RL data it is still unusable: there is no gradient between it and doing nothing.
 
-One observation deserves its own line: this table did not change between two versions of the sweep. In the previous sweep star-names averaged $0.778$; in this one it averages $0.445$ --- a gap of $0.333$, a full third of the range --- and the answer to ``which cells are trainable'' did not move by a single cell. A mean that swings by a third while the conclusion holds still is exactly the argument for judging cell by cell instead of averaging.
+This table read \textbf{1/3 and 0/3} one seed ago, and nothing about the tasks changed in between. At a single draw star-docs tied the control on \texttt{\_1} and \texttt{\_2}, so the rule called them \textsc{no-bite} --- correctly, on the evidence available: a cell that always ties its ceiling teaches nothing. Four more draws put those same cells at $0.667$ and $0.833$, so $\min < \text{control}$ and they are valid. The variance was always there; one point cannot exhibit variance, which is precisely what \code{SEEDS_FOR_YIELD} encodes. The correction runs \emph{upward}, and it is worth noticing that a criterion built to deflate a flattering number deflated an unflattering one just as readily.
 
-Finally, the scope of these numbers has to be stated: a single seed cannot measure yield. Validity is a property of the rollout distribution, not of one draw; one seed cannot separate ``this cell always bottoms out'' from ``this cell got unlucky once''. The table above is therefore an observation about the draws in hand, not an estimate of yield. Turning it into a yield needs more seeds, not more configurations.
+One observation deserves its own line: the verdicts did not change between two versions of the sweep, only between two sample sizes. In the previous sweep star-names averaged $0.778$; in this one it averages $0.445$ --- a gap of $0.333$, a full third of the range --- and the answer to ``which cells are trainable'' did not move by a single cell. A mean that swings by a third while the conclusion holds still is exactly the argument for judging cell by cell instead of averaging.
+
+Finally, the scope of these numbers. With five replicates in every shipped cell, \code{SEEDS_FOR_YIELD} is satisfied and the rates above are a yield rather than an observation about the draws in hand. What they are not is a yield for the \emph{method}: all three tasks come from one family, so 0.145 is priced against sampling noise and not against task variation. Turning this into a claim about the method needs more task families, not more seeds and not more configurations.
 
 \section{Runtime, Trajectory and Verification}
 
@@ -560,20 +562,20 @@ Task ID & User task & Required coordination\\
 \end{tabularx}
 \end{table}
 
-All three samples' Harbor reference solutions pass all 6 state checks for a reward of 1.0. We then compare three configurations on the same tasks: open as the unconstrained control; star-docs, which forces the Main to delegate but lets it read the roles' capabilities; and star-names, which further hides the capability docs and leaves only role names. The Main uses \texttt{gpt-5.6-sol} and the specialists \texttt{gpt-4.1}, with one seed per cell so far.
+All three samples' Harbor reference solutions pass all 6 state checks for a reward of 1.0. We then compare three configurations on the same tasks: open as the unconstrained control; star-docs, which forces the Main to delegate but lets it read the roles' capabilities; and star-names, which further hides the capability docs and leaves only role names. The Main uses \texttt{gpt-5.6-sol} and the specialists \texttt{gpt-4.1}, with five seeds per cell --- 15 rollouts per configuration.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Constraint ablation results}
+\caption{Constraint ablation results (3 tasks $\times$ 5 seeds = 15 rollouts per configuration)}
 \label{tab:results}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.65cm} c c c X}
 \toprule
-Configuration & Mean reward & Three tasks & Mean time/s & Meaning\\
+Configuration & Mean reward & Three tasks (5 draws each) & Below control & Meaning\\
 \midrule
-open & 1.000 & 1.000/1.000/1.000 & 30.2 & one agent holds every app\\
-star-docs & 0.944 & 1.000/1.000/0.833 & 200.8 & delegation forced; the roles' real API catalogue is readable\\
-star-names & 0.445 & 1.000/0.167/0.167 & 145.9 & delegation forced; role capabilities invisible\\
+open & 1.000 & 1.000/1.000/1.000 & 0/15 & one agent holds every app\\
+star-docs & 0.855 & 0.833/0.833/0.900 & \textbf{10/15} & delegation forced; the roles' real API catalogue is readable\\
+star-names & 0.445 & 0.833/0.167/0.333 & 12/15 & delegation forced; role capabilities invisible\\
 \midrule
 do-nothing & 0.333 & 0.333/0.333/0.333 & --- & no action taken, but the answer type is right\\
 \bottomrule
@@ -582,9 +584,9 @@ do-nothing & 0.333 & 0.333/0.333/0.333 & --- & no action taken, but the answer t
 
 Neither knob in this table is what its name says, so each needs taking apart.
 
-star-docs drops only 0.056 against open --- a strong model can reach the goal through a few delegations even without direct tools. More notable: the Main in this setting previously received the sentence ``their capabilities are listed above'' while \emph{nothing} was above it but two role names. The thing that actually served the catalogue was \texttt{team docs} in the delivered container, while the measurement went down a different in-process path (see \S\ref{sec:boundary}). After this round put the real API catalogues --- 2{,}838 and 5{,}444 characters --- in front of the Main, the score did not move at all: still 0.944. What moved was the delegation count, from 2--3 up to 3--5, and the time, from 100 s to 201 s. In other words, letting the Main see what the sub-agents can do bought more delegations and more latency, but no more success.
+star-docs drops 0.145 against open, and the five seeds are what made that sayable. The control scored 1.000 on \emph{every one} of its 15 rollouts --- zero variance --- while star-docs landed below it on 10 of 15, spread across $0.667$--$1.000$. A strong model still reaches the goal through a few delegations without direct tools; it simply pays about one requirement in six to do so. At one seed this figure read $0.056$ and the honest caveat was that three tasks at one draw could not separate it from noise. That caveat was right, and the answer was seeds rather than a louder claim. More notable: the Main in this setting previously received the sentence ``their capabilities are listed above'' while \emph{nothing} was above it but two role names. The thing that actually served the catalogue was \texttt{team docs} in the delivered container, while the measurement went down a different in-process path (see \S\ref{sec:boundary}). After this round put the real API catalogues --- 2{,}838 and 5{,}444 characters --- in front of the Main, the score did not move at all: still 0.944. What moved was the delegation count, from 2--3 up to 3--5, and the time, from 100 s to 201 s. In other words, letting the Main see what the sub-agents can do bought more delegations and more latency, but no more success. Those four figures are all at seed 1, the only seed the earlier sweep has: the five-seed run re-prices the \emph{partition}, not this comparison, and setting one draw against five would confound the docs knob with the sample size. The docs knob is unpriced, not free. Wall-clock deserves the same caution --- across the five seeds star-docs averaged 201\,s, 759\,s, 2006\,s, 482\,s and 365\,s, a tenfold spread on identical work, which is the organisation's TPM ceiling throttling the queue rather than the agent deliberating.
 
-star-names' $0.944\rightarrow0.445$ looks at last like visibility biting. It is not. Two of its three cells score $0.167$ --- below the 0.333 ``floor''. They got there like this: the Main failed to find the target transactions and \emph{honestly reported} that there were none matching, while AppWorld's \texttt{assert answers match} expects an action task's answer (\texttt{None}); prose does not match, so that requirement fails. Had the Main lied and claimed \texttt{completed}, it would have scored 0.333.
+star-names' $0.855\rightarrow0.445$ looks at last like visibility biting. It is not. One of its three cells scores $0.167$ on all five replicates --- below the 0.333 ``floor'' --- and a second sits there on four draws of five. They got there like this: the Main failed to find the target transactions and \emph{honestly reported} that there were none matching, while AppWorld's \texttt{assert answers match} expects an action task's answer (\texttt{None}); prose does not match, so that requirement fails. Had the Main lied and claimed \texttt{completed}, it would have scored 0.333.
 
 This does not have to be inferred from the sweep. It can be measured directly, with no model calls at all: open the same task, do nothing, vary only the submitted answer, and evaluate. \code{appworld_protocol_probe.py} does exactly that, with results in \code{sweep/appworld_protocol.json}.
 

@@ -1,7 +1,17 @@
 """Merge per-replicate sweep files into the one file the docs and tests read.
 
-    python -m scripts.merge_seeds sweep/appworld_knobs_v5.json sweep/_seed_*.json \
-        --out sweep/appworld_seeds.json
+    python -m scripts.merge_seeds sweep/_seed_*.json \
+        --out sweep/appworld_knobs_v5.json
+
+The output is `appworld_knobs_v5.json` because that is the file the write-up,
+the README and `test_docs_honesty._SWEEP_FILE` already cite. It defaulted to a
+new `appworld_seeds.json` instead, which nothing read -- so the seeds merged
+into a file no claim rested on, and the docs went on quoting the one-seed
+numbers. Two files holding the same measurement is the failure
+`_SWEEP_FILE`'s comment describes: the guard checks one, the prose cites the
+other, and the drift is invisible from both sides. `_seed_1.json` is v5's
+original single-seed content, kept as a part so the parts and the merge are
+the same kind of thing.
 
 `appworld_knob_sweep.py` writes one file per run because AppWorld's experiment
 directories collide if two runs share a name. The validity rule wants them
@@ -56,7 +66,8 @@ def merge(paths: list[Path]) -> list[dict]:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="scripts.merge_seeds")
     ap.add_argument("files", nargs="+", type=Path)
-    ap.add_argument("--out", type=Path, default=Path("sweep/appworld_seeds.json"))
+    ap.add_argument("--out", type=Path,
+                    default=Path("sweep/appworld_knobs_v5.json"))
     args = ap.parse_args(argv)
 
     rows = merge(args.files)

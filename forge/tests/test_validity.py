@@ -279,13 +279,19 @@ def test_every_task_in_the_sweep_has_a_control_to_be_read_against():
     assert {r["task_id"] for r in rows} == set(control_by_task(rows))
 
 
-def test_the_shipped_configs_yield_one_usable_cell_in_six():
-    """The measurement that motivated this module.
+def test_the_shipped_configs_yield_five_usable_cells_in_six():
+    """The measurement that motivated this module, at the seed count it asks for.
 
-    star-docs' mean of 0.944 is one task that bit and two that tied the control.
-    star-names' 0.445 is one cell tying the control and two *below* the floor --
-    the Main reported failure in prose and `assert answers match` wanted the
-    action answer. Neither is a difficulty gradient.
+    At one seed this read 1 of 6, and that number was never a yield -- it was
+    one draw per cell, which `SEEDS_FOR_YIELD` exists to refuse. star-docs tied
+    the control on two of three tasks and was called NO_BITE; at five seeds
+    those same cells spread (1.000 1.000 0.833 0.667 0.667), `min < control`,
+    and they are VALID. The variance was always there. One draw could not see
+    it, and the write-up spent two versions explaining a number that was an
+    artefact of the sample size.
+
+    So this is the rule vindicating itself rather than a better result arriving:
+    nothing about the tasks changed between 1 seed and 5.
 
     This asserts the arithmetic, not that the arithmetic is good news. If a
     later sweep moves these, update the numbers -- after checking the harness.
@@ -294,18 +300,30 @@ def test_the_shipped_configs_yield_one_usable_cell_in_six():
 
     shipped = {"star-docs-binf", "star-names-binf"}
     assert shipped <= set(ys), f"the shipped configs are not in the sweep: {set(ys)}"
-    assert (ys["star-docs-binf"].valid, ys["star-docs-binf"].total) == (1, 3)
-    assert (ys["star-names-binf"].valid, ys["star-names-binf"].total) == (0, 3)
+    assert (ys["star-docs-binf"].valid, ys["star-docs-binf"].total) == (3, 3)
+    assert (ys["star-names-binf"].valid, ys["star-names-binf"].total) == (2, 3)
 
     valid = sum(ys[c].valid for c in shipped)
     total = sum(ys[c].total for c in shipped)
-    assert (valid, total) == (1, 6)
+    assert (valid, total) == (5, 6)
 
 
-def test_star_names_signal_is_degenerate_cells_not_a_gradient():
-    """Guards the claim the write-up may not make: that star-names bites."""
-    js = [j for j in judge_rows(_sweep(), _floor()) if j.config == "star-names-binf"]
-    assert sorted(j.verdict.value for j in js) == ["degenerate", "degenerate", "no-bite"]
+def test_star_names_still_has_one_cell_that_never_leaves_the_floor():
+    """Guards the claim the write-up may not make: that star-names is a gradient.
+
+    Its yield improves to 2/3 at five seeds, and the reason it is not 3/3 is
+    unchanged -- 2a163ab_2 scores 0.167 on all five replicates, below the
+    do-nothing floor, because the Main reports failure in prose and `assert
+    answers match` wants the action answer. That is the protocol incentive in
+    WRITEUP.md section 5, not difficulty, and seeds do not launder it.
+    """
+    cells = [c for c in judge_cells(_sweep(), _floor())
+             if c.config == "star-names-binf"]
+    floored = [c for c in cells if c.verdict is Verdict.DEGENERATE]
+    assert len(floored) == 1, f"expected one floored cell, got {[c.task_id for c in floored]}"
+    assert set(floored[0].scores) == {0.167}, (
+        "the floored cell is no longer uniformly sub-floor; re-read section 5"
+    )
 
 
 def test_a_run_can_score_below_the_do_nothing_floor_and_still_be_judged():
@@ -329,11 +347,32 @@ def test_the_unshipped_chain_config_is_degenerate_everywhere():
     assert all(j.verdict is Verdict.DEGENERATE for j in js)
 
 
-def test_the_shipped_sweep_is_one_seed_and_therefore_measures_no_yield():
-    """The number above is an observation. Calling it a yield needs seeds."""
+def test_the_shipped_configs_carry_enough_seeds_to_call_their_rate_a_yield():
+    """This test used to assert the opposite, and that was the point of it.
+
+    It read `all(y.seeds == 1)` / `not any(y.measured)` -- a tripwire pinning
+    the sweep to one draw per cell, so that the day seeds arrived it would fail
+    and force the prose to move with them. It fired. The shipped configs are at
+    five replicates now, `SEEDS_FOR_YIELD` is satisfied, and `cli judge` prints
+    YIELD instead of "observed only".
+
+    chain is deliberately excluded: it stopped at two seeds because it was never
+    implemented, and `Yield.seeds` reports it honestly rather than averaging it
+    away. A config nobody finished is not a config whose yield is unmeasured.
+    """
     ys = yield_by_config(judge_cells(_sweep(), _floor()))
-    assert all(y.seeds == 1 for y in ys.values())
-    assert not any(y.measured for y in ys.values())
+
+    for config in ("star-docs-binf", "star-names-binf"):
+        assert ys[config].seeds >= SEEDS_FOR_YIELD, (
+            f"{config} has {ys[config].seeds} replicates in its weakest cell; "
+            f"below {SEEDS_FOR_YIELD} its rate is an observation, not a yield"
+        )
+        assert ys[config].measured
+
+    assert not ys["chain-names-binf"].measured, (
+        "chain reached five seeds; either it was implemented or the sweep is "
+        "spending rollouts on a config the repo calls unbuilt"
+    )
 
 
 def test_at_one_replicate_the_cell_rule_and_the_row_rule_agree():

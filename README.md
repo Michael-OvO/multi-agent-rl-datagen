@@ -98,27 +98,31 @@ What follows prices *this substrate's knobs*, not the method. Read it as move 4
 running on move 3's output — and note that the method's verdict on its own
 tasks is the least flattering number here.
 
-Three tasks, one seed each, Main = gpt-5.6-sol, specialists = gpt-4.1.
-`sweep/appworld_knobs_v5.json`. Do-nothing = 0.333.
+Three tasks, **five seeds each** (15 rollouts per config), Main = gpt-5.6-sol,
+specialists = gpt-4.1. `sweep/appworld_knobs_v5.json`. Do-nothing = 0.333.
 
 | config | mean | |
 |---|---|---|
-| `open` — one agent, every API | **1.000** | the control |
-| `star-docs` — no APIs, reads its specialists' real API catalogs | **0.944** | the partition costs ~nothing |
+| `open` — one agent, every API | **1.000** | the control, on 15 of 15 rollouts |
+| `star-docs` — no APIs, reads its specialists' real API catalogs | **0.855** | the partition costs 0.145 |
 | `star-names` — no APIs, does not know what they can do | **0.445** | but see below |
-| `chain-names` | 0.278 | unshipped: the topology is unimplemented |
+| `chain-names` | 0.250 | unshipped: the topology is unimplemented (2 seeds) |
 
-**Taking a frontier model's tools away and making it delegate did not make the
-task hard — it made it longer.** Three of six partitioned rollouts still scored
-the ceiling; `star-docs` costs **0.056**, which three tasks at one seed cannot
-separate from noise.
+**Taking a frontier model's tools away and making it delegate costs 0.145, and
+the seeds are what made that sayable.** The control scored 1.000 on *every one*
+of its 15 rollouts; `star-docs` landed below it on **10 of 15**, spread across
+0.667–1.000. At one seed this table read 0.944 and the honest caveat was that
+three tasks at one draw cannot separate 0.056 from noise. That caveat was
+correct, and the fix was seeds, not a bigger claim.
 
-**Do not read the `star-names` drop as the visibility knob.** Two of its three
-rollouts scored **0.167 — below the do-nothing floor** — because the Main honestly
-reported that it had found nothing, in prose, and AppWorld's `assert answers
-match` expects the action-task answer (`None`). Reporting failure costs 1/6 more
-than falsely claiming `completed`. That is a reward-hacking incentive in the
-protocol, not a difficulty gradient (`WRITEUP.md` §5).
+**Do not read the `star-names` drop as the visibility knob.** One of its three
+tasks scores **0.167 on all five replicates — below the do-nothing floor** —
+because the Main honestly reported that it had found nothing, in prose, and
+AppWorld's `assert answers match` expects the action-task answer (`None`).
+Reporting failure costs 1/6 more than falsely claiming `completed`. That is a
+reward-hacking incentive in the protocol, not a difficulty gradient
+(`WRITEUP.md` §5), and five seeds do not launder it: it is the same 0.167 every
+time.
 
 This repo previously reported `1.000 → 0.333` for the partition. That number was a
 truncated API catalog hiding the verb the task needed — the specialists could not
@@ -133,17 +137,28 @@ and unfinished measurement.
 **On "good quality", which is the claim to be careful about.** The method does
 not promise good tasks. It promises tasks whose quality is **decidable**, and
 then reports the verdict against itself: by its own acceptance rule
-(`cli judge`), **1 of the 6 shipped cells is usable RL data** — the rest either
-tie the control or bottom out. That 1-in-6 is the method working, not the method
-failing. A forge without move 4 cannot tell a task that teaches coordination from
-one that is unsolvable, one that is trivial, or one whose harness is broken; all
-four print a number, and v1 shipped a dimension at reward 1.0 on 12 of 12 runs
-because nothing here was watching. The yield is an output. Quality is measured,
-never asserted.
+(`cli judge`), **5 of the 6 shipped cells are usable RL data** — `star-docs` 3/3,
+`star-names` 2/3 — and at five replicates per cell that is a **measured yield**
+rather than an observation. A forge without move 4 cannot tell a task that
+teaches coordination from one that is unsolvable, one that is trivial, or one
+whose harness is broken; all four print a number, and v1 shipped a dimension at
+reward 1.0 on 12 of 12 runs because nothing here was watching. The yield is an
+output. Quality is measured, never asserted.
+
+**That number was 1 of 6 until the seeds landed, and the correction is the rule
+working rather than a result improving.** Nothing about the tasks changed.
+`star-docs` tied the control on two of three tasks at one seed, so the cell rule
+called it NO_BITE; at five seeds those same cells spread below the ceiling and
+became VALID. `validity.py` sets `SEEDS_FOR_YIELD = 5` and refuses to call one
+draw a yield precisely because a single point has no variance to read — so the
+repo spent two versions reporting a number its own rule labelled *observed
+only*. The failure mode this method exists to avoid is a metric nobody checked;
+under-reading your own result is the same error pointed the other way.
 
 **What it is not:** a demonstrated curriculum, and not a method demonstrated on
-more than one substrate. Three tasks at one seed cannot price a 0.056 effect. The
-next run is seeds, not scale.
+more than one substrate. Five seeds price the knob; **three tasks from one task
+family still cannot price the method**. The next run is task families, not
+scale.
 
 ## Layout
 

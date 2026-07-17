@@ -405,17 +405,26 @@ decoration. A knob that moves the score by breaking the task is worse.**
 
 Every one produced a number that looked like a measurement and was not.
 
-**The one that matters most: taking the tools away is not the hard part.**
-Measured, after every bug below was fixed (n=3, one seed):
+**The one that matters most: taking the tools away costs less than it looks, and
+one seed cannot tell you how much.** Measured after every bug below was fixed
+(n=3 tasks × 5 seeds = 15 rollouts per config):
 
-| | mean |
-|---|---|
-| one agent, every API (control) | 1.000 |
-| no APIs, reads its specialists' real API catalogs | 0.944 |
-| no APIs, **does not know what they can do** | 0.445 |
+| | mean | at 1 seed this read |
+|---|---|---|
+| one agent, every API (control) | 1.000 | 1.000 |
+| no APIs, reads its specialists' real API catalogs | 0.855 | 0.944 |
+| no APIs, **does not know what they can do** | 0.445 | 0.445 |
 
-Blinding a strong agent did not make the task hard — **it made it longer**. Three
-of six partitioned rollouts still hit the ceiling; the Main just asks A, tells B,
+The right-hand column is the lesson. At one seed the partition looked free
+(0.056, inside noise) and the yield read 1 usable cell in 6. At five seeds it
+costs **0.145**, the control never once left 1.000 across 15 rollouts, the
+partitioned arm fell below it on 10 of 15, and the yield is **5 in 6** —
+*measured* rather than observed. Nothing about the tasks changed. Cells that tie
+the control at one draw are indistinguishable from cells that tie it always, and
+the second kind is worthless while the first is the data you want.
+
+Blinding a strong agent still did not make the task *hard* — **it made it
+longer**. The Main just asks A, tells B,
 and is done. The `1.000 → 0.333` that made the partition look like it worked was
 a harness bug, and removing it removed the result.
 
