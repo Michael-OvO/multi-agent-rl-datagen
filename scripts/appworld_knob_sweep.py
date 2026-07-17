@@ -57,14 +57,29 @@ def _is_action_answer(answer: str) -> bool:
     return a in _ACTION_ANSWERS or a in _HARNESS_SENTINELS
 
 
-def _configs(roster: tuple[str, ...]) -> list[Constraints]:
-    """The control plus the configurations whose effect we are measuring."""
-    return [
+def _configs(roster: tuple[str, ...], only: set[str] | None = None) -> list[Constraints]:
+    """The control plus the configurations whose effect we are measuring.
+
+    `only` selects by label. The control is always included: a constrained score
+    with no ceiling to be read against is not a measurement (validity.py raises
+    on exactly that), so filtering it out would produce a file the judge refuses.
+    """
+    all_of = [
         control_for(roster),
         Constraints(roster=roster, topology=Topology.STAR, visibility=Visibility.DOCS),
         Constraints(roster=roster, topology=Topology.STAR, visibility=Visibility.NAMES),
         Constraints(roster=roster, topology=Topology.CHAIN, visibility=Visibility.NAMES),
     ]
+    if not only:
+        return all_of
+    keep = [c for c in all_of if c.label in only or c.main_has_apis]
+    unknown = only - {c.label for c in all_of}
+    if unknown:
+        raise SystemExit(
+            f"unknown config(s) {sorted(unknown)}; "
+            f"available: {sorted(c.label for c in all_of)}"
+        )
+    return keep
 
 
 def _run_open_control(client, world, task: str, roster, log: RunLog, model: str) -> str:
@@ -100,7 +115,7 @@ def _run_open_control(client, world, task: str, roster, log: RunLog, model: str)
 
 
 def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
-            main_model: str, sub_model: str) -> dict:
+            main_model: str, sub_model: str, seed: int = 1) -> dict:
     from appworld import AppWorld
 
     log = RunLog()
@@ -133,11 +148,13 @@ def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
                   else "apis.supervisor.complete_task(answer=None, status='success')")
         ev = w.evaluate().to_dict()
 
-    passes, failures = len(ev.get("passes", [])), len(ev.get("failures", []))
+    failed = [str(f) for f in ev.get("failures", [])]
+    passes, failures = len(ev.get("passes", [])), len(failed)
     total = passes + failures
     return {
         "task_id": task_id,
         "config": c.label,
+        "seed": seed,
         "main_model": main_model,
         "sub_model": sub_model,
         "roster": list(roster),
@@ -147,6 +164,12 @@ def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
         "partial": round(passes / total, 3) if total else 0.0,
         "passes": passes,
         "failures": failures,
+        # The names, not just the count -- the container has recorded these since
+        # WRITEUP.md section 7.4 ("log the names, not the counts") and the sweep
+        # did not, which is why the answer-protocol contamination went unseen:
+        # `partial=0.167` says one of six passed and cannot say that the one was
+        # `assert answers match`.
+        "failed": failed,
         "delegations": log.delegations,
         "specialist_turns": log.specialist_turns,
         "refusals": log.refusals,
@@ -163,6 +186,19 @@ def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tasks", type=int, default=3, help="how many tasks to sweep")
+    ap.add_argument(
+        "--configs", nargs="*", default=None, metavar="LABEL",
+        help="only these configs (the control is always included). Use to spend "
+             "replicates on what ships: `chain-names-binf` is unimplemented and "
+             "known degenerate, and re-confirming that costs the most wall clock "
+             "of any cell in the sweep.")
+    ap.add_argument(
+        "--seed", type=int, default=1,
+        help="replicate label, recorded on each row. There is no RNG to seed: the "
+             "variance under test is the Main's own sampling (gpt-5.x rejects "
+             "temperature=0 and runs at the default; specialists run at 0). "
+             "Validity is a property of the distribution over replicates, so one "
+             "of these measures nothing -- see forge/appworld/validity.py.")
     ap.add_argument("--span", type=Path, default=Path("sweep/appworld_span.json"))
     ap.add_argument("--out", type=Path, default=Path("sweep/appworld_knobs_v5.json"),
                     help="the file the docs and tests read; a new name here is a "
@@ -196,9 +232,9 @@ def main() -> None:
     rows: list[dict] = []
     for s in usable:
         roster = tuple(s["roster"])
-        for c in _configs(roster):
+        for c in _configs(roster, only=set(args.configs) if args.configs else None):
             row = run_one(client, s["task_id"], roster, c,
-                          args.main_model, args.sub_model)
+                          args.main_model, args.sub_model, seed=args.seed)
             rows.append(row)
             print(f"{row['task_id']:12} {row['config']:18} "
                   f"success={str(row['success']):5} partial={row['partial']:.2f} "
