@@ -7,6 +7,7 @@ design is supposed to exclude.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -63,11 +64,20 @@ def _wrap(text):
 
 
 class FakeWorld:
+    #: What a catalog looks like once it reaches a prompt. Distinct per app, and
+    #: not the app's bare name: asserting on the name cannot tell "the catalog is
+    #: in the prompt" from "the roster line is in the prompt", which is exactly
+    #: the confusion that let the DOCS arm ship unmeasured.
+    CATALOG_MARKER = "CATALOG-OF-{app}"
+
     def __init__(self):
         self.executed = []
 
     def execute(self, code):
         self.executed.append(code)
+        m = re.search(r"show_api_descriptions\(app_name='(\w+)'\)", code)
+        if m:
+            return self.CATALOG_MARKER.format(app=m.group(1))
         return "ok"
 
 
@@ -367,12 +377,51 @@ def test_malformed_output_is_corrected_not_crashed():
     assert any("Malformed" in s for s in client.seen)
 
 
+def _main_prompt(client) -> str:
+    """The system prompt the Main was actually sent, not one we rebuilt by hand.
+
+    Rebuilding it in the test is how the docs arm went unmeasured: the prompt
+    unit test passed the capability note in itself, so it could not see that
+    `run_main` never put anything above it. Note `client.seen` holds *user*
+    turns -- the predecessor of this helper read it, called it `system`, and
+    asserted only that it was non-empty.
+    """
+    mains = [s for s in client.systems if s.startswith("You are the Main coordinator")]
+    assert mains, "the Main was never called"
+    return mains[0]
+
+
 def test_names_only_visibility_withholds_capabilities_from_the_main():
     client = FakeClient(["DONE :: x"])
     run_main(client, FakeWorld(), "task",
              Constraints(roster=ROSTER, visibility=Visibility.NAMES), RunLog())
-    system = client.seen  # first call carries the system prompt in messages[0]
-    assert system  # sanity
+    prompt = _main_prompt(client)
+    assert "not what they can do" in prompt
+    assert FakeWorld.CATALOG_MARKER not in prompt, "names-only leaked a catalog"
+
+
+def test_docs_visibility_actually_puts_the_catalogs_in_front_of_the_main():
+    """The whole v3 sweep measured `visibility` with this side unimplemented.
+
+    The DOCS arm's note says "Their capabilities are listed above" while
+    `run_main` put nothing above it but the roster names, so the knob was one
+    sentence against another -- and the shipped container, which really does
+    serve catalogs over `team docs`, was never what the sweep ran. Asserting on
+    the note alone cannot catch that; only the catalog text can.
+    """
+    client = FakeClient(["DONE :: x"])
+    run_main(client, FakeWorld(), "task",
+             Constraints(roster=ROSTER, visibility=Visibility.DOCS), RunLog())
+    prompt = _main_prompt(client)
+    assert "Their capabilities are listed above." in prompt
+    for app in ROSTER:
+        assert FakeWorld.CATALOG_MARKER.format(app=app) in prompt, (
+            f"the DOCS arm promises {app}'s capabilities are listed and they are not"
+        )
+    # ... and the promise must sit *below* what it points at, or it is still false.
+    assert prompt.index(FakeWorld.CATALOG_MARKER.format(app=ROSTER[0])) < prompt.index(
+        "Their capabilities are listed above."
+    )
 
 
 def test_main_prompt_states_names_only_when_visibility_is_names():

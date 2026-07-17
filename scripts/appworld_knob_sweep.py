@@ -9,7 +9,7 @@ Reward is AppWorld's `evaluate()` -- programmatic, no LLM, and it checks side
 effects as well as completion. We do not compute it, we read it.
 
 Usage:
-    python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld.json
+    python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v5.json
 """
 
 from __future__ import annotations
@@ -22,16 +22,39 @@ import time
 from pathlib import Path
 
 from forge.appworld.partition import Constraints, Topology, Visibility, control_for
+from forge.appworld.reference import REFERENCE_PATHS
+from forge.appworld.select import MIN_ROSTER
 from forge.appworld.runtime import RunLog, run_main, run_specialist
 
 
-_ACTION_ANSWERS = ("completed", "complete", "done", "", "(out of steps)", "(error)")
+#: The protocol words the instruction asks for. Identical to the shipped
+#: sidecar's `container/server.py::_as_answer`, deliberately: a sweep that
+#: converts answers the container would not is a sweep measuring a different
+#: task than the one that ships. Pinned by forge/tests/test_knob_sweep.py.
+_ACTION_ANSWERS = ("completed", "complete", "done", "")
+
+#: The harness's own markers for "the agent never answered". They submit None
+#: for the same reason the do-nothing probe does -- a dead run's score should
+#: come from the world's state, not from a penalty for a string the agent never
+#: wrote. (Submitting these as prose fails `assert answers match` and drops a
+#: dead run to 1/6 = 0.167, the pre-fix floor, which no probe measures.)
+_HARNESS_SENTINELS = ("(out of steps)", "(error)")
 
 
 def _is_action_answer(answer: str) -> bool:
-    """True when the Main reported an action rather than a value."""
+    """True when the Main reported an action rather than a value.
+
+    This used to also match `("liked ", "unable", "no venmo")` -- phrasings read
+    off the one shipped task family. Measured: those prefixes fired on **every
+    open-control row and on nothing else**, because the control is the only arm
+    never told the answer protocol. They silently converted its prose to None
+    and lifted it from 0.833 to 1.000 -- and the control is the ceiling every
+    knob is read against. A heuristic that rescues only the reference point is
+    not a formatting convenience. The control is told the protocol now
+    (`_run_open_control`), so it can say `completed` like every other arm.
+    """
     a = str(answer).strip().lower()
-    return a in _ACTION_ANSWERS or a.startswith(("liked ", "unable", "no venmo"))
+    return a in _ACTION_ANSWERS or a in _HARNESS_SENTINELS
 
 
 def _configs(roster: tuple[str, ...]) -> list[Constraints]:
@@ -60,7 +83,19 @@ def _run_open_control(client, world, task: str, roster, log: RunLog, model: str)
     different jobs; conflating them also meant the sandbox read the whole joined
     string as one app name and refused the control every API it had.
     """
-    return run_specialist(client, world, tuple(roster), task, log, model=model,
+    # The control's FINAL line is submitted to AppWorld as the task's answer, so
+    # it needs the same answer protocol `run_main` gives the partitioned Main.
+    # Without it the control answers prose, `assert answers match` fails, and the
+    # control alone is capped at 0.833 -- which is how a string heuristic came to
+    # be holding up the ceiling every other number is read against.
+    brief = (
+        f"{task}\n\n"
+        "Your FINAL line is submitted as this task's answer. If the task asked "
+        "you to DO something rather than to report a value, your FINAL line must "
+        "be exactly `completed`. Otherwise it must be the value asked for and "
+        "nothing else."
+    )
+    return run_specialist(client, world, tuple(roster), brief, log, model=model,
                           max_turns=20)
 
 
@@ -129,7 +164,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tasks", type=int, default=3, help="how many tasks to sweep")
     ap.add_argument("--span", type=Path, default=Path("sweep/appworld_span.json"))
-    ap.add_argument("--out", type=Path, default=Path("sweep/appworld_knobs.json"))
+    ap.add_argument("--out", type=Path, default=Path("sweep/appworld_knobs_v5.json"),
+                    help="the file the docs and tests read; a new name here is a "
+                         "sweep nothing checks")
     ap.add_argument("--main-model", default="gpt-5.6-sol",
                     help="the model under test; must be strong enough that the "
                          "OPEN control can succeed, or knob effects are unmeasurable")
@@ -146,7 +183,13 @@ def main() -> None:
     client = OpenAI()
 
     spans = json.loads(args.span.read_text())
-    usable = [s for s in spans if len(s["roster"]) >= 2][: args.tasks]
+    # Same selection the renderer uses, or the sweep measures tasks that do not
+    # ship: MIN_ROSTER rather than a copy of the number, and reference-bearing
+    # tasks first (cli.cmd_render sorts the same way). These agreed by luck
+    # while --tasks was 3.
+    candidates = [s for s in spans if len(s["roster"]) >= MIN_ROSTER]
+    candidates.sort(key=lambda s: s["task_id"] not in REFERENCE_PATHS)
+    usable = candidates[: args.tasks]
     if not usable:
         raise SystemExit(f"no usable tasks in {args.span}")
 
