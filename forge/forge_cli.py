@@ -1,7 +1,15 @@
 """forge — generate verifiable multi-agent RL tasks in Harbor format.
 
+**This is v1, and it is kept as the retrospective, not as the method.** It
+designs the world *and* the judge, which is what WRITEUP.md section 1 is about:
+`theory-of-mind` scored 1.0 on 12 of 12 runs with zero gradient while every gate
+below stayed green. The current forge is `forge/appworld/` -- it designs
+constraints and inherits AppWorld's judge. Read WRITEUP.md section 1 before
+taking anything here as a recommendation.
+
 Every generated instance passes the CLEAN/VALID selfcheck battery before it is
-written; failures are logged and skipped. Usage:
+written; failures are logged and skipped -- and that sentence is exactly the
+problem: the battery was green for a dimension worth nothing. Usage:
 
     python -m forge.forge_cli gen --dim parallel-scheduling \
         --seed 0 --n 100 --difficulty medium --out tasks/

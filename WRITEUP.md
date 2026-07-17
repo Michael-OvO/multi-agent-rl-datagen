@@ -28,17 +28,20 @@ What is actually there, re-measured (§5), is smaller and more interesting:
 |---|---|---|
 | `open` — one agent, every API | **1.000** | the control |
 | `star-docs` — no APIs, may read its specialists' docs | **0.944** | the partition costs ~nothing |
-| `star-names` — no APIs, does not know what they can do | **0.778** | *this* is what costs |
+| `star-names` — no APIs, does not know what they can do | **0.445** | and this is not the knob either (§5) |
 
 **Taking a frontier model's tools away and making it delegate did not make the
-task hard — it made it longer.** Four of six partitioned rollouts still scored the
-ceiling. The knob that bites is not *having* to delegate, it is **not knowing who
-to delegate to** — and that knob had previously been measured as dead, while the
-command it depends on did not exist (§7).
+task hard — it made it longer.** Three of six partitioned rollouts still scored
+the ceiling. Giving the Main its specialists' real API catalogs moved the score by
+**nothing**, and moved the delegation count from 2–3 to 3–5. The `star-names`
+drop is not difficulty either: two of its rollouts scored *below* the do-nothing
+floor for **honestly reporting failure in prose**, where a false `completed`
+would have scored higher (§5).
 
 That is the whole write-up in one shape: **every number this repo has been proud
 of was a bug until it was checked.** §1 is that happening to a dimension I
-designed; §7 is it happening again to the one I built to avoid it.
+designed; §7 is it happening twice more to the one I built to avoid it — most
+recently to the sentence that gives the knob its name.
 
 > A badly chosen constraint makes a task too easy or too hard — **measurable**.
 > A badly designed oracle makes the reward measure the wrong thing — **invisible**.
@@ -63,11 +66,13 @@ Then I audited it.
 entry witness and told the agent to follow referrals — and following referrals
 costs exactly `q_opt`, the optimum. Obeying the instruction *was* optimal play.
 Measured: gpt-5.6 and gpt-4.1 both scored `asks == q_opt` on **12 of 12** runs at
-every difficulty. Reward 1.0 everywhere. Zero variance → zero advantage → **zero
+every difficulty — `sweep/tom_degeneracy.json` (3 difficulties x 2 seeds x 2
+models; every cell 1.0). Reward 1.0 everywhere. Zero variance → zero advantage → **zero
 gradient**. The dimension was worth exactly nothing for RL, and every gate passed
 while that was true.
 
-**Four exploits scored 1.0**, all executed for real, not inferred:
+**Four exploits scored 1.0**, executed rather than inferred — with one caveat
+recorded below the table:
 
 | exploit | what it did |
 |---|---|
@@ -75,6 +80,15 @@ while that was true.
 | forged transcript | fabricate 1 fake query → reward 1.0 with zero real work |
 | shipped oracle | `import maf_dim; run_policy(inst, maf_dim.ORACLE)` |
 | **seed brute-force** | the generator shipped in the image and is seed-deterministic → regenerate the instance, read the private keys → **defeats `/tests` isolation on every dimension** |
+
+Three of the four are pinned by regression tests in
+`forge/tests/test_adversarial.py`. **The forged transcript is not.** It does not
+apply to `parallel-scheduling` — that submission is a schedule the verifier
+re-executes, so forging it means solving it — and the interactive dimensions it
+*did* apply to are the two now quarantined. Its regression test was deferred to
+the sidecar and never written. Named here rather than quietly dropped, because a
+gap that only the source file admits to is the same species of thing as the rest
+of this section.
 
 The root cause was a principle the design doc stated as a *virtue*: "single source
 of truth — the dimension module is copied into the task so the in-container
@@ -117,7 +131,7 @@ So this forge targets the first column, and **pressures** the second without
 claiming to isolate it: a specialist that is briefed badly does the wrong work,
 and the state check catches the wrong work for free. That is communication
 quality graded without an LLM judge — but only as a *contribution* to a
-state-checkable outcome, never attributed on its own (§8).
+state-checkable outcome, never attributed on its own (§6).
 
 **Curriculum order falls out of the same split**: decomposition before
 orchestration before scheduling, because each needs the previous one's output to
@@ -138,7 +152,13 @@ I take the principle and change the perturbation axis:
 **Substrate:** AppWorld — 9 apps, 457 APIs, 732 tasks, `pip install appworld`,
 and a **programmatic state-based oracle with no LLM in it** that also catches side
 effects. I verified it end-to-end before building anything: a hand-written
-solution to `82e2fac_1` reached `success=True`, 2 passes, 0 failures.
+solution to `82e2fac_1` reached `success=True`, 2 passes, 0 failures — an early
+manual check, and **its log did not survive**. The durable version of the same
+check is `sweep/appworld_oracle.json`: the shipped reference solutions reach
+`success=True` with 6/6 requirements, in-container. If you are repeating this
+method on another substrate, that is the artefact to produce — seeing the oracle
+say yes with your own eyes is the step everything downstream rests on, so it
+should leave a file behind.
 
 **What I add:** the Main gets **zero API access**. It can only
 `team ask <specialist> "<request>"`. Each specialist is a real LLM bound to one
@@ -168,7 +188,7 @@ environment that can be quietly broken in ways a state check cannot see.
 
 The Main's image contains exactly one file: a ~60-line HTTP client (`team`).
 AppWorld, the specialists, the ground truth and `evaluate()` live in a **sidecar**
-the Main reaches over three verbs. "The Main has no API access" is therefore a
+the Main reaches over four verbs (`roster`, `docs`, `ask`, `done`). "The Main has no API access" is therefore a
 fact about what is on disk.
 
 This is a direct consequence of §1: v1 shipped its generator into the agent's
@@ -207,7 +227,7 @@ the apps its ground truth actually touches. No padding.
 | filter | usable |
 |---|---|
 | naive — count every app the GT touches | **147 / 147 (100%)** |
-| strict — drop `supervisor.complete_task` | **51 / 147 (34%)** |
+| strict — drop `supervisor.complete_task` | **51 / 147 (34.7%)** |
 
 `supervisor` is called in all 147 tasks and **every call is `complete_task`** —
 the submit channel. It carries no information between apps. Counting it turns 96
@@ -225,14 +245,22 @@ knob losing.
 ## 4. What is built
 
 - **Pipeline:** `forge/appworld/` — `select` · `partition` · `runtime` ·
-  `sandbox` · `reference` · `harbor` · `cli` (`measure` / `render`) ·
-  `container/`.
+  `sandbox` · `reference` · `validity` · `harbor` · `cli` (`measure` / `render` /
+  `judge`) · `container/`.
+- **The validity rule:** `forge/appworld/validity.py` — a rendered cell is usable
+  RL data only if `floor < score < control`. At or below the floor it carries no
+  more signal than doing nothing; at or above the control the knob never bit.
+  `python -m forge.appworld.cli judge` runs it over a sweep. **It reports 1 of 6
+  shipped cells usable** — and says so as an *observation*, not a yield: one seed
+  per cell cannot separate "always bottoms out" from "got unlucky once".
 - **Harbor tasks:** `python -m forge.appworld.cli render --n 3` → 6 tasks
   (3 AppWorld tasks × 2 shipped configurations).
 - **Reference solutions:** `forge/appworld/reference.py` records the
   decomposition a competent Main would find; `solve.sh` replays it through
-  `team`. **3/3 reach `success=True`, 6/6**, verified in-container against Harbor
-  0.18 — `sweep/appworld_oracle.json`. The specialists are LLMs, so this oracle
+  `team`. All six render a `solve.sh`; the **three `star-docs` tasks** were run
+  in-container against Harbor 0.18 and reach `success=True` with 6/6 requirements
+  each — `sweep/appworld_oracle.json`. **The `star-names` arm's solutions are
+  unverified.** The specialists are LLMs, so this oracle
   is **probabilistic**: it needs `OPENAI_API_KEY` at verification time and costs
   tokens.
 - **Skill:** `skills/constraint-forged-multi-agent-tasks/SKILL.md` — the
@@ -253,59 +281,115 @@ knob losing.
 
 **Three tasks** (`2a163ab_1`, `2a163ab_2`, `2a163ab_3`), one seed each. Main =
 gpt-5.6-sol, specialists = gpt-4.1, harness fixed (§7).
-`scripts/appworld_knob_sweep.py` → `sweep/appworld_knobs_v3.json`.
+`scripts/appworld_knob_sweep.py` → `sweep/appworld_knobs_v5.json`.
 
 | config | mean | per task | delegations |
 |---|---|---|---|
 | `open` — the control: one agent, every API | **1.000** | 1.0 · 1.0 · 1.0 | 0 |
-| `star-docs` — Main has no APIs, may read its specialists' docs | **0.944** | 1.0 · 0.833 · 1.0 | 2–3 |
-| `star-names` — Main has no APIs and does not know what they can do | **0.778** | 1.0 · 1.0 · 0.333 | 2–4 |
-| `chain-names` — unshipped, a fake signal (§6) | 0.333 | 0.333 · 0.333 · 0.333 | 12 |
+| `star-docs` — Main has no APIs, reads its specialists' real API catalogs | **0.944** | 1.0 · 1.0 · 0.833 | 3–5 |
+| `star-names` — Main has no APIs and does not know what they can do | **0.445** | 1.0 · 0.167 · 0.167 | 2 |
+| `chain-names` — unshipped, a fake signal (§6) | 0.278 | 0.333 · 0.333 · 0.167 | 9–12 |
 
-Read against the two fixed points: **do-nothing floor = 0.333** (§3.3), **control
-= 1.000**.
+Read against the two fixed points: **do-nothing = 0.333** (§3.3), **control =
+1.000**. And read the next two subsections before reading the ladder, because
+neither knob means what the column suggests.
 
-### The knobs order correctly, and the effect is small
+### The partition costs 0.056, and the docs knob costs nothing at all
 
-`1.000 > 0.944 > 0.778` is the first monotone ladder this repo has produced that
-is not a harness artefact — and there is **variance**, which is precisely what v1
-never had (§1): `star-docs` came back `[1.0, 0.833, 1.0]`, `star-names`
-`[1.0, 1.0, 0.333]`. Non-degenerate cells, in the right order.
-
-That is the good news, and it is thin. **Four of the six partitioned rollouts
-scored the ceiling.** A frontier Main, stripped of every API and made to
-coordinate two specialists through a text channel, solves most of these tasks in
-two delegations. The access partition on its own moves the mean by **0.056** —
-one task losing one requirement out of six — which three tasks at one seed cannot
-separate from noise.
+The access partition moves the mean by **0.056** — one task losing one
+requirement out of six — which three tasks at one seed cannot separate from
+noise. **Three of six partitioned rollouts scored the ceiling.** A frontier Main,
+stripped of every API and made to coordinate two specialists through a text
+channel, solves most of these tasks anyway.
 
 **Blinding a strong agent did not reliably make the task hard. It made it
 longer.** If the decomposition is shallow — ask A, tell B — a good Main just does
 it. That is the honest headline, and it is the thing I would want to know before
 building this again.
 
-### The knob that bites is the one previously measured as dead
+`star-docs` is the sharper version of the same lesson. Until this sweep, its
+Main was handed the sentence *"Their capabilities are listed above"* with nothing
+above it but the two role names: the arm named for documentation had none, and
+the shipped container — which really does serve catalogs over `team docs` — was
+never what the sweep ran (§7.5). Now that the Main is given the real 2,838- and
+5,444-character catalogs, the score is **unchanged at 0.944**. What changed is
+that it delegates **3–5 times instead of 2–3** and takes **201s instead of 100s**.
+Showing a Main what its specialists can do makes it more talkative, not more
+correct.
 
-`visibility` costs **0.167** (0.944 → 0.778), more than the partition itself, and
-it is the only knob that drove a task to the floor.
+### The `star-names` drop is the answer protocol, not the knob
 
-It was previously written up as having **no score effect at all** — while the
-`team docs <name>` command its entire premise depends on **did not exist**. The
-instruction told the Main to run it; the client answered `unknown command`. So the
-knob was being measured with one of its two sides unimplemented, and the reading
-"no effect" was an artefact of that (§7). With the command implemented, taking
-away the Main's knowledge of *what its specialists can do* is what actually
-costs it.
+`0.944 → 0.445` looks like the visibility knob finally biting. It is not.
 
-That is the shape of a real result: the difficulty is not in *having* to delegate,
-it is in **not knowing who to delegate to**. Which is theory-of-mind pressure —
-the capability §2 says has no free oracle — arriving through a constraint and
-getting graded by a state check anyway.
+Two of the three `star-names` rollouts scored **0.167 — *below* the do-nothing
+floor of 0.333**. They got there by being honest: the Main failed to find the
+transactions and said so — *"No Venmo transactions from yesterday involving your
+siblings were found"* — and AppWorld's `assert answers match` expects an action
+task's answer, which is `None`. Prose fails it. A Main that had falsely replied
+`completed` would have scored 0.333.
+
+**The reward pays 1/6 for lying.** That is not a knob and not a difficulty
+gradient; it is an incentive built into the protocol's collision with the oracle,
+and it argues for a curriculum that never rewards a false completion claim before
+it argues for anything about visibility.
+
+It was invisible until this sweep because the previous one had a heuristic that
+converted `"No Venmo..."`, `"Unable..."` and `"Liked N..."` to `None` before
+submitting — three prefixes read off this one task family. They fired on **every
+open-control row and nothing else**, because the control was the only arm never
+told the answer protocol; they lifted it from 0.833 to 1.000. The ceiling every
+other number is read against was a string prefix (§7.5).
+
+### What the validity rule says about all of it
+
+`python -m forge.appworld.cli judge --sweep sweep/appworld_knobs_v5.json`:
+
+| config | usable | |
+|---|---|---|
+| `star-docs` | **1/3** | two cells tie the control; one bites |
+| `star-names` | **0/3** | one ties the control, two are below the floor |
+| `chain-names` | 0/3 | all degenerate |
+
+**1 of 6 shipped cells is usable RL data.** Note what this survived: between the
+v3 sweep and this one the `star-names` mean moved by 0.333 and the verdict did
+not move at all. A mean that swings by a third of the range while the answer to
+*"can you train on this?"* stays identical is the argument for scoring cells
+rather than averaging them.
+
+One seed per cell, so this is an observation and not a yield (`validity.py`).
+
+### Why `visibility` has now been mismeasured three different ways
+
+It was previously written up as having **no score effect at all**. The cause was
+the floor, not the knob: in both earlier sweeps *every* partitioned config sat on
+it — `0.167 ×3` before the answer-type fix, `0.333 ×2` after — and a knob cannot
+show an effect between two runs that are both bottomed out (§7.1). The catalog
+truncation was pinning them there.
+
+A separate bug had the same premise and never touched these numbers: the
+`team docs <name>` command **did not exist** in the container, while the shipped
+instruction told the Main to run it. That broke the *shipped task*; the sweep
+runs `runtime.run_main` in-process and never invokes `team` at all. Two bugs, one
+knob, and only one of them was ever in a number — which is exactly the confusion
+that made me check.
+
+Then this sweep found the third: the `docs` side was never implemented in the
+path being measured, so the "0.167 cost" reported here until today was one prompt
+sentence against another, one of which was false (§7.5). With the catalogs
+actually present, the docs side costs **nothing**.
+
+So `visibility` has been measured three times and has never once been measured:
+first through a floor, then against an unimplemented arm, and now — with both
+arms real — its apparent 0.5 turns out to be the answer protocol paying for
+honesty. **I do not know what this knob does.** That is the current state of the
+thing this write-up previously called its most interesting result, and it is a
+better place to be than the previous two, because this time the instrument agrees
+with the container.
 
 ### What I would do next, and it is not scale
 
 Three tasks at one seed, one task family. The ladder is suggestive and unpriced.
-Before rendering another 99 variants (§8), the next run is **seeds, not scale**:
+Before rendering the other 96 variants (§8), the next run is **seeds, not scale**:
 5 seeds × these 3 tasks × `open`/`star-docs`/`star-names`, which is enough to put
 an interval on 0.056 and on 0.167 and find out whether the first one survives.
 
@@ -387,15 +471,16 @@ without `print`. So the specialist's first action returned nothing, every time.
 Measured — `2a163ab_1`, phone specialist, *"List the full names of all of my
 roommates"*:
 
-| | result |
-|---|---|
-| before | *"I could not list your roommates' full names because I could not access the available phone APIs"* |
-| after | *"Anthony Harrison, Anita Burch, and Nicholas Weber"* — 10 turns |
+| | result | evidence |
+|---|---|---|
+| before | *"I could not list your roommates' full names because I could not access the available phone APIs"* | recalled from a run whose log is not in this repo — **uncited** |
+| after | *"Anthony Harrison, Anita Burch, and Nicholas Weber"* | `sweep/appworld_oracle.json` |
 
-Evidence: `sweep/appworld_api_catalog.json`
-(`scripts/appworld_catalog_probe.py`). The cap is now pinned by a test against
-the measured catalog size, truncation announces itself, and the prompt's own
-examples print.
+Evidence for the cap itself: `sweep/appworld_api_catalog.json`
+(`scripts/appworld_catalog_probe.py`) — it records catalog sizes and the APIs the
+old cap deleted, and holds no transcripts. The cap is now pinned by a test
+against the measured catalog size, truncation announces itself, and the prompt's
+own examples print.
 
 **The tell was in the ledger the whole time**, in plain English — *"I could not
 access the available phone APIs"* — in every row, for two days, while the number
@@ -463,10 +548,15 @@ API proxy, or an execution process that never holds a secret.
 
 Every one of these produced a number that looked like a measurement:
 
-- **Floor effect.** The first sweep used gpt-4.1 as the Main: control *and*
-  partitioned runs scored 0.17. It read as "the knob does nothing". The control
-  was already failing. A knob's effect is unmeasurable when the control is on the
-  floor.
+- **Floor effect.** A knob's effect is unmeasurable when the control is already
+  failing: both arms bottom out, and it reads as "the knob does nothing". I had
+  written this up as a specific early sweep with a weaker Main. Checking it for
+  this pass: **no committed file shows it** — every sweep in this repo's history
+  ran `gpt-5.6-sol` as the Main, and none ever measured the control on the floor.
+  So the anecdote was a recollection wearing a measurement's clothes, in the list
+  of things that look like measurements and are not. The lesson is real and is
+  now a branch instead of a memory: `validity.py`'s `CONTROL_FAILED` refuses to
+  score any cell whose control is on the floor, rather than blaming the knob.
 - **A silent harness bug producing the same number.** gpt-5.x rejects
   `temperature=0`. Every call 400'd, an `except` swallowed it, and rows reported
   the untouched world's score — identical to genuinely-failing runs. Only
@@ -502,9 +592,11 @@ minutes instead of a re-roll.
 
 Measured: one partitioned rollout took **4.2 hours** (15,127s / 66 specialist
 turns ≈ 229s per turn), almost all of it sleeping in 429 backoff against a 30k
-TPM ceiling. An account limit rather than an inherent cost — and the fix in §7
-made it worse, because a specialist that can see its whole API catalog spends
-more tokens per turn than one that cannot. Correctness over speed, knowingly.
+TPM ceiling — `sweep/appworld_rate_limit_cost.json`, the pre-cap sweep, whose
+next two rows are 6,795s and 6,704s. An account limit rather than an inherent
+cost — and the fix in §7 made it worse, because a specialist that can see its
+whole API catalog spends more tokens per turn than one that cannot. Correctness
+over speed, knowingly.
 
 A subtler bottleneck: **only tasks whose OPEN control succeeds can measure a
 knob**. That filter needs real rollouts; it cannot be derived by inspection.

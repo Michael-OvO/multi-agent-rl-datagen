@@ -229,7 +229,9 @@ def run_specialist(
     return "(no answer within turn limit)"
 
 
-def _main_system(constraints: Constraints, capability_note: str) -> str:
+def _main_system(
+    constraints: Constraints, capability_note: str, catalogs: dict[str, str] | None = None
+) -> str:
     if constraints.topology is Topology.CHAIN:
         routing = (
             f"You may delegate ONLY to {constraints.roster[0]}. Specialists hand off "
@@ -237,6 +239,20 @@ def _main_system(constraints: Constraints, capability_note: str) -> str:
         )
     else:
         routing = "You may delegate to: " + ", ".join(constraints.roster)
+
+    # The DOCS arm's note says "listed above", so something has to be above it.
+    # It said that for the whole of the v3 sweep with nothing above it but the
+    # names -- so `visibility` was measured as one sentence against another, one
+    # of which was false, and the shipped container (which really does serve
+    # catalogs over `team docs`) was never what the sweep ran. Never truncate
+    # these: a 2500-char cap on the *specialist's* catalog is what deleted
+    # `like_transaction` and produced the 0.333 that got written up as
+    # difficulty (see MAX_OUTPUT_CHARS).
+    listing = ""
+    if catalogs:
+        listing = "\n\nYour specialists' API catalogs:\n\n" + "\n\n".join(
+            f"--- {app} ---\n{cat}" for app, cat in catalogs.items()
+        )
 
     budget = (
         "You have unlimited delegations."
@@ -247,7 +263,7 @@ def _main_system(constraints: Constraints, capability_note: str) -> str:
     return f"""You are the Main coordinator. You have NO tools and NO API access. \
 You cannot touch any app yourself. Everything must be done by a specialist.
 
-{routing}
+{routing}{listing}
 {capability_note}
 {budget}
 
@@ -272,13 +288,25 @@ def run_main(
     model: str = DEFAULT_MODEL, sub_model: str | None = None, max_steps: int = 12,
 ) -> str:
     """Run the Main. Returns its final answer string."""
+    names_only = constraints.visibility is Visibility.NAMES
     note = (
         "You know only their names, not what they can do. Ask them if you need to know."
-        if constraints.visibility is Visibility.NAMES
+        if names_only
         else "Their capabilities are listed above."
     )
+    # Fetched the same way the shipped sidecar's /roster does it, so that the
+    # in-process sweep and the container measure the same configuration.
+    catalogs = (
+        None
+        if names_only
+        else {
+            app: world.execute(
+                f"print(apis.api_docs.show_api_descriptions(app_name={app!r}))")
+            for app in constraints.roster
+        }
+    )
     msgs = [
-        {"role": "system", "content": _main_system(constraints, note)},
+        {"role": "system", "content": _main_system(constraints, note, catalogs)},
         {"role": "user", "content": f"Task from your supervisor:\n{task}"},
     ]
 

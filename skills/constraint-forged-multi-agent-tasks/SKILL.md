@@ -107,7 +107,7 @@ artifact with a checker already attached.*
 | library | oracle | verdict |
 |---|---|---|
 | **AppWorld** — 9 apps, 457 APIs, 732 tasks | state-based unit tests, **no LLM**, checks side effects | **use this** — seams are the apps |
-| **SWE-smith** — 50k tasks, 128 repos, 250+ images | the repo's own pytest | strong oracle, but the seams are code modules → the task turns into SWE, not orchestration |
+| **SWE-smith** — 50k tasks, 128 repos | the repo's own pytest | strong oracle, but the seams are code modules → the task turns into SWE, not orchestration |
 | **SWE-Gym / R2E-Gym** — 2.4k / 8.1k tasks | repo tests | same as above |
 | **τ-bench / τ²-bench** | terminal DB state | good oracle; seams are thin (one domain API) |
 | **MultiAgentBench** — has star/chain/tree topologies | **milestone KPIs, LLM-judged** | **disqualified** — no free oracle, which is the one thing you cannot supply yourself |
@@ -173,7 +173,7 @@ appears in **all 147** ground-truth tasks:
 | filter | usable |
 |---|---|
 | naive — count every seam the GT touches | 147 / 147 (**100%**) |
-| strict — drop the submit channel | **51 / 147 (34%)** |
+| strict — drop the submit channel | **51 / 147 (34.7%)** |
 
 100% is the number that would have gone in the write-up. It would have shipped 96
 single-seam puzzles with a decorative second agent — each passing every check and
@@ -315,19 +315,28 @@ Measured, after every bug below was fixed (n=3, one seed):
 | | mean |
 |---|---|
 | one agent, every API (control) | 1.000 |
-| no APIs, may read its specialists' docs | 0.944 |
-| no APIs, **does not know what they can do** | 0.778 |
+| no APIs, reads its specialists' real API catalogs | 0.944 |
+| no APIs, **does not know what they can do** | 0.445 |
 
-Blinding a strong agent did not make the task hard — **it made it longer**. Four
+Blinding a strong agent did not make the task hard — **it made it longer**. Three
 of six partitioned rollouts still hit the ceiling; the Main just asks A, tells B,
-and is done in two delegations. The `1.000 → 0.333` that made the partition look
-like it worked was a harness bug, and removing it removed the result.
+and is done. The `1.000 → 0.333` that made the partition look like it worked was
+a harness bug, and removing it removed the result.
 
-**The difficulty is not in *having* to delegate. It is in not knowing who to
-delegate to.** That knob cost twice what the partition did — and it had previously
-been measured as having *no effect*, because the command it depends on was never
-implemented (below). Design for the information constraint, not the access
-constraint; access is the packaging.
+**The information constraint is still the one to design for** — access is the
+packaging — but be warned by how this repo's own attempt to measure it went. The
+`0.445` above is *not* the knob biting: two of those three rollouts scored below
+the do-nothing floor because the Main honestly reported failure in prose and the
+oracle wanted the action answer (`None`). **The reward paid 1/6 for lying.** And
+the `docs` arm it is compared against had, until the last sweep, no docs at all —
+the sweep ran an in-process path that never showed the Main a catalog, while the
+shipped container served real ones. Two arms, one measured against the wrong
+thing and the other measuring protocol compliance.
+
+So: after three attempts this repo cannot tell you what its own headline knob
+does. **Measure the knob's two arms against each other in the path that ships,
+and check that a failed run cannot score worse than a silent one.** Both of those
+are one afternoon and neither was done here until they were forced.
 
 Before building the pipeline, name the *irreducible* difficulty and check that a
 strong model actually fails at it. "The control succeeds and the partitioned run
@@ -335,7 +344,9 @@ does not" is the whole product.
 
 **Zero variance is a smell, not a triumph.** A 12-row sweep came back
 `open=0.833 (min=max)`, `every partitioned config=0.167 (min=max)`. It read as a
-clean result. It hid two bugs.
+clean result. It hid two bugs. (`0.167 = 1/6` was the floor *before* the
+answer-type fix; the same floor is `2/6 = 0.333` after it. Two numbers, one
+floor, and the fix that moved it is why the next bullet says 0.333.)
 
 **Compare every score against the do-nothing agent, and do it in code.** An agent
 that performs no action at all scores whatever the free requirements are worth —
@@ -377,8 +388,31 @@ agent tried and failed"* from *"the agent never ran"*.
 
 **Check what you actually changed.** A drop of 0.83→0.17 was attributed to the
 partition while the specialists had *also* been downgraded to a weaker model. Two
-variables moved. The confound had to be tested (it lost) — but it was nearly
-shipped.
+variables moved. The confound had to be tested (it lost — re-running with the
+specialists upgraded still scored 0.167; `sweep/appworld_confound.json`) — but it
+was nearly shipped.
+
+**Measure the arm you ship, not the one that is convenient to run.** The fastest
+harness is in-process; the thing you deliver is a container. Ours diverged twice
+and both times the in-process version was the flattering one. (a) `star-docs`
+told its Main *"their capabilities are listed above"* with nothing above it but
+two role names, while the container served real catalogs over `team docs` — so
+the documentation knob was measured with its documentation side unimplemented,
+for every sweep this repo ever published. (b) The sweep converted three prose
+phrasings to the action answer before submitting; the container converted none.
+Those prefixes fired on **every control row and nothing else** — the control
+being the only arm never told the answer protocol — and lifted it from 0.833 to
+1.000. **A heuristic that rescues only your reference point is not a formatting
+convenience.** Write a test that renders both paths and diffs them.
+
+**Check that failing cannot score worse than not trying.** An agent that did the
+work and reported it honestly scored **0.167**; an agent that did nothing and
+said `completed` scored **0.333**. AppWorld's `assert answers match` wants an
+action task's answer (`None`), so prose fails it — and the do-nothing baseline,
+which submits `None`, clears a bar the honest failure does not. **The reward paid
+1/6 for lying**, and no gate saw it, because every gate compares scores to the
+floor and this was *under* the floor. The floor is not a floor: it is the score
+of an agent that answers correctly and does nothing.
 
 **If the partitioned score exactly equals the do-nothing score, suspect your
 harness before you conclude the task is hard.**

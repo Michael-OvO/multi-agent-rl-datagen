@@ -245,8 +245,12 @@ def write_task(
     pkg = env / "maf_appworld"
     pkg.mkdir(exist_ok=True)
     _pkg_src = Path(__file__).parent
-    for mod in ("__init__.py", "partition.py", "runtime.py", "sandbox.py",
-                "select.py"):
+    # Only what the sidecar imports. `select.py` used to be copied here and is
+    # not: it is the module that parses a task's ground-truth solution, and
+    # nothing in the container imports it. Harmless (the sidecar holds the
+    # ground truth anyway) but it invites the reviewer's obvious question, and
+    # the answer "it was in the loop by accident" is not one worth giving.
+    for mod in ("__init__.py", "partition.py", "runtime.py", "sandbox.py"):
         (pkg / mod).write_text((_pkg_src / mod).read_text())
 
     # The token lives in tests/, which Harbor uploads only at verification time,

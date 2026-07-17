@@ -87,16 +87,32 @@ def test_constraints_are_frozen():
 def test_chain_is_not_shipped_until_the_handoff_exists():
     """CHAIN's difficulty signal is fake until a specialist can actually hand off.
 
-    Measured 2026-07-15: chain scored 0.167 on all three tasks with deleg=12 --
-    exactly max_steps -- and answer='(out of steps)' every time. The Main can
-    reach only roster[0]; `allowed_targets(<specialist>)` returns the next hop
-    and nothing calls it. So the task is unsolvable and its score reflects the
-    step cap, not the topology.
+    The Main can reach only roster[0]; `allowed_targets(<specialist>)` returns
+    the next hop and nothing calls it. So the task is unsolvable and its score
+    reflects the step cap, not the topology.
 
     A knob that moves the score by breaking the task is worse than decoration.
     Ship it when the handoff is implemented AND measured.
+
+    The docstring used to recite the measurement and nothing checked it -- so it
+    kept saying 0.167 and `deleg=12 every time` long after the sweep said
+    otherwise. It asserts against the sweep now.
     """
+    import json
+    from pathlib import Path
+
     from forge.appworld.cli import SHIPPED_CONFIGS
+
+    rows = [r for r in json.loads(
+        (Path(__file__).resolve().parents[2] / "sweep" /
+         "appworld_knobs_v5.json").read_text())
+        if r["config"].startswith("chain")]
+    assert rows, "no chain rows in the sweep; drop this test with the config"
+    floor = 0.333
+    assert all(r["partial"] <= floor for r in rows), (
+        f"chain now scores above the floor ({[r['partial'] for r in rows]}); "
+        f"if the handoff was implemented, re-measure and reconsider shipping it"
+    )
 
     assert all(t is not Topology.CHAIN for t, _, _ in SHIPPED_CONFIGS)
 

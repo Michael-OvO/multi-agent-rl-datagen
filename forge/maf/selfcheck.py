@@ -1,5 +1,11 @@
 """The CLEAN/VALID gate battery (WRITEUP.md §1).
 
+**Kept as evidence, not as a tool.** This battery passed every check on a
+`theory-of-mind` dimension that scored 1.0 on 12 of 12 runs -- zero variance,
+zero gradient, worthless for RL (`sweep/tom_degeneracy.json`). Gates you design
+agree with the mistakes you designed. That is why the current forge inherits
+AppWorld's judge instead of gating its own.
+
 Run in-process at generation time — no Docker, no LLM tokens. An instance ships
 only if every check passes. CLEAN = the reward has no noise; VALID = the reward
 gap is caused by the target skill, and not by the instruction handing the agent
