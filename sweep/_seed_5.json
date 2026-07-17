@@ -1,0 +1,234 @@
+[
+ {
+  "task_id": "2a163ab_1",
+  "config": "open-docs-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": true,
+  "partial": 1.0,
+  "passes": 6,
+  "failures": 0,
+  "failed": [],
+  "delegations": 0,
+  "specialist_turns": 6,
+  "refusals": 0,
+  "answer": "completed",
+  "error": null,
+  "ran": true,
+  "seconds": 29.3
+ },
+ {
+  "task_id": "2a163ab_1",
+  "config": "star-docs-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": false,
+  "partial": 0.667,
+  "passes": 4,
+  "failures": 2,
+  "failed": [
+   "{'requirement': 'assert answers match.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert answers match.\\n    \"\"\"\\n):\\n    test.answer(predicted_answer, ground_truth_answer)\\n```\\n----------\\nAssertionError:\\n\\'no venmo social-feed transactions from today involved your roommates, so none were liked.\\'\\n==\\n\\'null\\'', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert set of all new transaction likes (obtained via models.changed_records)\\nis identical to set of private_data.recent_relative_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert set of all new transaction likes (obtained via models.changed_records)\\n    is identical to set of private_data.recent_relative_transaction_ids.\\n    \"\"\"\\n):\\n    added_transaction_likes, _, _ = models.changed_records(\"venmo.TransactionLike\")\\n    liked_transaction_ids = set_of(added_transaction_likes, \"transaction_id\")\\n```\\n----------\\nAssertionError:  {1245, 7294} == {7294, 8219, 1245, 8230}\\n\\nIn right but not left:\\n[8219, 8230]', 'label': 'no_op_fail'}"
+  ],
+  "delegations": 10,
+  "specialist_turns": 114,
+  "refusals": 0,
+  "answer": "No Venmo social-feed transactions from today involved your roommates, so none were liked.",
+  "error": null,
+  "ran": true,
+  "seconds": 803.2
+ },
+ {
+  "task_id": "2a163ab_1",
+  "config": "star-names-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": false,
+  "partial": 0.167,
+  "passes": 1,
+  "failures": 5,
+  "failed": [
+   "{'requirement': 'assert answers match.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert answers match.\\n    \"\"\"\\n):\\n    test.answer(predicted_answer, ground_truth_answer)\\n```\\n----------\\nAssertionError:\\n\\'no venmo transactions from today involving your roommates were found.\\'\\n==\\n\\'null\\'', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert model changes match venmo.Transaction, venmo.TransactionLike', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert model changes match venmo.Transaction, venmo.TransactionLike\\n    \"\"\"\\n):\\n    changed_model_names = models.changed_model_names()\\n    test.case(\\n        changed_model_names,\\n```\\n----------\\nAssertionError:  set() == {\\'venmo.TransactionLike\\', \\'venmo.Transaction\\'}\\n\\nIn right but not left:\\n[\\'venmo.TransactionLike\\', \\'venmo.Transaction\\']', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert set of all new transaction likes (obtained via models.changed_records)\\nis identical to set of private_data.recent_relative_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert set of all new transaction likes (obtained via models.changed_records)\\n    is identical to set of private_data.recent_relative_transaction_ids.\\n    \"\"\"\\n):\\n    added_transaction_likes, _, _ = models.changed_records(\"venmo.TransactionLike\")\\n    liked_transaction_ids = set_of(added_transaction_likes, \"transaction_id\")\\n```\\n----------\\nAssertionError:  set() == {7294, 8219, 1245, 8230}\\n\\nIn right but not left:\\n[7294, 8219, 1245, 8230]', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert all newly liked transaction_ids are in private_data.recent_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert all newly liked transaction_ids are in private_data.recent_transaction_ids.\\n    \"\"\"\\n):\\n    test.case(\\n        liked_transaction_ids,\\n        \"all in\",\\n```\\n----------\\nAssertionError: The left modifier is \\'all\\' with allow_left_empty=False, but left operand is empty.', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert all newly liked transaction_ids are in private_data.relative_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert all newly liked transaction_ids are in private_data.relative_transaction_ids.\\n    \"\"\"\\n):\\n    test.case(\\n        liked_transaction_ids,\\n        \"all in\",\\n```\\n----------\\nAssertionError: The left modifier is \\'all\\' with allow_left_empty=False, but left operand is empty.', 'label': 'no_op_fail'}"
+  ],
+  "delegations": 2,
+  "specialist_turns": 24,
+  "refusals": 0,
+  "answer": "No Venmo transactions from today involving your roommates were found.",
+  "error": null,
+  "ran": true,
+  "seconds": 162.9
+ },
+ {
+  "task_id": "2a163ab_2",
+  "config": "open-docs-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": true,
+  "partial": 1.0,
+  "passes": 6,
+  "failures": 0,
+  "failed": [],
+  "delegations": 0,
+  "specialist_turns": 7,
+  "refusals": 0,
+  "answer": "completed",
+  "error": null,
+  "ran": true,
+  "seconds": 22.7
+ },
+ {
+  "task_id": "2a163ab_2",
+  "config": "star-docs-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": false,
+  "partial": 0.833,
+  "passes": 5,
+  "failures": 1,
+  "failed": [
+   "{'requirement': 'assert answers match.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert answers match.\\n    \"\"\"\\n):\\n    test.answer(predicted_answer, ground_truth_answer)\\n```\\n----------\\nAssertionError:  \\'liked all 8 matching transactions.\\' == \\'null\\'', 'label': 'no_op_fail'}"
+  ],
+  "delegations": 4,
+  "specialist_turns": 30,
+  "refusals": 1,
+  "answer": "Liked all 8 matching transactions.",
+  "error": null,
+  "ran": true,
+  "seconds": 159.6
+ },
+ {
+  "task_id": "2a163ab_2",
+  "config": "star-names-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": false,
+  "partial": 0.167,
+  "passes": 1,
+  "failures": 5,
+  "failed": [
+   "{'requirement': 'assert answers match.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert answers match.\\n    \"\"\"\\n):\\n    test.answer(predicted_answer, ground_truth_answer)\\n```\\n----------\\nAssertionError:\\n\\'no venmo social feed transactions from yesterday involved your siblings, so there was nothing to like.\\'\\n==\\n\\'null\\'', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert model changes match venmo.Transaction, venmo.TransactionLike', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert model changes match venmo.Transaction, venmo.TransactionLike\\n    \"\"\"\\n):\\n    changed_model_names = models.changed_model_names()\\n    test.case(\\n        changed_model_names,\\n```\\n----------\\nAssertionError:  set() == {\\'venmo.TransactionLike\\', \\'venmo.Transaction\\'}\\n\\nIn right but not left:\\n[\\'venmo.TransactionLike\\', \\'venmo.Transaction\\']', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert set of all new transaction likes (obtained via models.changed_records)\\nis identical to set of private_data.recent_relative_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert set of all new transaction likes (obtained via models.changed_records)\\n    is identical to set of private_data.recent_relative_transaction_ids.\\n    \"\"\"\\n):\\n    added_transaction_likes, _, _ = models.changed_records(\"venmo.TransactionLike\")\\n    liked_transaction_ids = set_of(added_transaction_likes, \"transaction_id\")\\n```\\n----------\\nAssertionError:  set() == {3299, 5224, 4243, 8223, 8218, 8220, 6909, 5215}\\n\\nIn right but not left:\\n[3299, 5224, 4243, 8223, 8218, 8220, 6909, 5215]', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert all newly liked transaction_ids are in private_data.recent_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert all newly liked transaction_ids are in private_data.recent_transaction_ids.\\n    \"\"\"\\n):\\n    test.case(\\n        liked_transaction_ids,\\n        \"all in\",\\n```\\n----------\\nAssertionError: The left modifier is \\'all\\' with allow_left_empty=False, but left operand is empty.', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert all newly liked transaction_ids are in private_data.relative_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert all newly liked transaction_ids are in private_data.relative_transaction_ids.\\n    \"\"\"\\n):\\n    test.case(\\n        liked_transaction_ids,\\n        \"all in\",\\n```\\n----------\\nAssertionError: The left modifier is \\'all\\' with allow_left_empty=False, but left operand is empty.', 'label': 'no_op_fail'}"
+  ],
+  "delegations": 2,
+  "specialist_turns": 22,
+  "refusals": 0,
+  "answer": "No Venmo social feed transactions from yesterday involved your siblings, so there was nothing to like.",
+  "error": null,
+  "ran": true,
+  "seconds": 142.2
+ },
+ {
+  "task_id": "2a163ab_3",
+  "config": "open-docs-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": true,
+  "partial": 1.0,
+  "passes": 6,
+  "failures": 0,
+  "failed": [],
+  "delegations": 0,
+  "specialist_turns": 7,
+  "refusals": 0,
+  "answer": "completed",
+  "error": null,
+  "ran": true,
+  "seconds": 27.8
+ },
+ {
+  "task_id": "2a163ab_3",
+  "config": "star-docs-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": false,
+  "partial": 0.833,
+  "passes": 5,
+  "failures": 1,
+  "failed": [
+   "{'requirement': 'assert answers match.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert answers match.\\n    \"\"\"\\n):\\n    test.answer(predicted_answer, ground_truth_answer)\\n```\\n----------\\nAssertionError:\\n\\'liked all 14 matching venmo transactions from yesterday or today involving your coworkers.\\'\\n==\\n\\'null\\'', 'label': 'no_op_fail'}"
+  ],
+  "delegations": 4,
+  "specialist_turns": 29,
+  "refusals": 0,
+  "answer": "Liked all 14 matching Venmo transactions from yesterday or today involving your coworkers.",
+  "error": null,
+  "ran": true,
+  "seconds": 133.0
+ },
+ {
+  "task_id": "2a163ab_3",
+  "config": "star-names-binf",
+  "seed": 5,
+  "main_model": "gpt-5.6-sol",
+  "sub_model": "gpt-4.1",
+  "roster": [
+   "phone",
+   "venmo"
+  ],
+  "success": false,
+  "partial": 0.167,
+  "passes": 1,
+  "failures": 5,
+  "failed": [
+   "{'requirement': 'assert answers match.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert answers match.\\n    \"\"\"\\n):\\n    test.answer(predicted_answer, ground_truth_answer)\\n```\\n----------\\nAssertionError:\\n\\'no venmo social-feed transactions from yesterday or today involved the identified coworkers, so there was nothing to like.\\'\\n==\\n\\'null\\'', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert model changes match venmo.Transaction, venmo.TransactionLike', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert model changes match venmo.Transaction, venmo.TransactionLike\\n    \"\"\"\\n):\\n    changed_model_names = models.changed_model_names()\\n    test.case(\\n        changed_model_names,\\n```\\n----------\\nAssertionError:  set() == {\\'venmo.TransactionLike\\', \\'venmo.Transaction\\'}\\n\\nIn right but not left:\\n[\\'venmo.TransactionLike\\', \\'venmo.Transaction\\']', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert set of all new transaction likes (obtained via models.changed_records)\\nis identical to set of private_data.recent_relative_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert set of all new transaction likes (obtained via models.changed_records)\\n    is identical to set of private_data.recent_relative_transaction_ids.\\n    \"\"\"\\n):\\n    added_transaction_likes, _, _ = models.changed_records(\"venmo.TransactionLike\")\\n    liked_transaction_ids = set_of(added_transaction_likes, \"transaction_id\")\\n```\\n----------\\nAssertionError:\\nset()\\n==\\n{8225, 8226, 8218, 484, 8229, 7334, 3299, 2699, 5326, 4751, 8015, 3156, 1749, 8026, 8219}\\n\\nIn right but not left:\\n[8225, 8226, 8218, 484, 8229, 7334, 3299, 2699, 5326, 4751, 8015, 3156, 1749, 8026, 8219]', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert all newly liked transaction_ids are in private_data.recent_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert all newly liked transaction_ids are in private_data.recent_transaction_ids.\\n    \"\"\"\\n):\\n    test.case(\\n        liked_transaction_ids,\\n        \"all in\",\\n```\\n----------\\nAssertionError: The left modifier is \\'all\\' with allow_left_empty=False, but left operand is empty.', 'label': 'no_op_fail'}",
+   "{'requirement': 'assert all newly liked transaction_ids are in private_data.relative_transaction_ids.', 'trace': '```python\\nwith test(\\n    \"\"\"\\n    assert all newly liked transaction_ids are in private_data.relative_transaction_ids.\\n    \"\"\"\\n):\\n    test.case(\\n        liked_transaction_ids,\\n        \"all in\",\\n```\\n----------\\nAssertionError: The left modifier is \\'all\\' with allow_left_empty=False, but left operand is empty.', 'label': 'no_op_fail'}"
+  ],
+  "delegations": 4,
+  "specialist_turns": 39,
+  "refusals": 0,
+  "answer": "No Venmo social-feed transactions from yesterday or today involved the identified coworkers, so there was nothing to like.",
+  "error": null,
+  "ran": true,
+  "seconds": 222.5
+ }
+]

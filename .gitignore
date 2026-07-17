@@ -27,11 +27,16 @@ tmp/
 # Eval sweep intermediates (regenerable via scripts; job logs are large)
 sweep/instances/
 sweep/runs/
-# Per-replicate sweep output. `appworld_knob_sweep.py` writes one file per run
-# (AppWorld's experiment dirs collide if two runs share a name); the merged
-# result is what the docs cite, so the parts are intermediates. Underscore-
-# prefixed to stay off the `sweep/appworld_*.json` evidence convention.
-sweep/_seed_*.json
+
+# sweep/_seed_*.json is NOT ignored, and the reasoning that ignored it is worth
+# keeping. They look like intermediates -- underscore-prefixed, off the
+# `appworld_*.json` evidence convention, "regenerable via scripts" like
+# everything above. They are not. Every other file in sweep/ comes from a
+# deterministic probe: `appworld_donothing.json` re-emits byte-identically on
+# demand. These are LLM rollouts. They cost real money, they cannot be
+# reproduced, and they are the only evidence that any yield here was measured
+# rather than observed. Classified by filename convention, they were one
+# `git clean -xdf` from gone.
 
 # AppWorld dataset (183M, re-fetch with: appworld download data)
 appworld_data/
