@@ -189,11 +189,11 @@ Every number in the write-up names the file that produced it:
 ## Setup
 
 ```bash
-uv sync                          # appworld==0.1.3.post1, openai==2.16.0, pytest
+uv sync --locked                 # runtime + pytest, Ruff, and Pyright
 uv run appworld install          # unpacks the app source
 uv run appworld download data    # the 183MB dataset -> ./data
 cp .env.example .env             # then put your OPENAI_API_KEY in it
-uv tool install harbor           # 0.18.0 -- runs the tasks; not a project dep
+uv tool install 'harbor==0.18.0' # runs the tasks; not a project dependency
 ```
 
 Harbor is a **tool**, not a library dependency: nothing in `forge/` imports it,
@@ -210,8 +210,14 @@ same AppWorld the shipped task runs. `forge/tests/test_environment.py` fails if
 they drift.
 
 ```bash
-uv run pytest        # the count is whatever the command prints
+uv run pytest
+uv run ruff check forge scripts
+uv run pyright
 ```
+
+Building the optional PDFs also requires `latexmk` and XeLaTeX on `PATH`
+(MacTeX supplies both on macOS); run `bash scripts/build_report.sh` after those
+system tools are installed.
 
 ## Quickstart
 
@@ -221,9 +227,9 @@ fastest way to understand what this actually does:
 ```bash
 set -a && . ./.env && set +a                          # OPENAI_API_KEY
 
-python -m scripts.watch_episode --config star-docs    # the partition
-python -m scripts.watch_episode --config open         # the control
-python -m scripts.watch_episode --config star-names   # the knob that bites
+uv run python -m scripts.watch_episode --config star-docs    # the partition
+uv run python -m scripts.watch_episode --config open         # the control
+uv run python -m scripts.watch_episode --config star-names   # the knob that bites
 ```
 
 It prints the Main's briefs, each specialist's code, the sandbox's verdict on
@@ -232,21 +238,21 @@ that code, what AppWorld printed back, and the score against the floor.
 **The measurements** (each writes its evidence file):
 
 ```bash
-python -m scripts.appworld_donothing_probe    # where is the floor?      (no LLM)
-python -m scripts.appworld_catalog_probe      # what did truncation kill? (no LLM)
-python -m scripts.appworld_injection_probe    # can a brief leak the token? (no LLM)
-python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v5.json
+uv run python -m scripts.appworld_donothing_probe    # where is the floor?      (no LLM)
+uv run python -m scripts.appworld_catalog_probe      # what did truncation kill? (no LLM)
+uv run python -m scripts.appworld_injection_probe    # can a brief leak the token? (no LLM)
+uv run python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v5.json
 ```
 
 **The pipeline:**
 
 ```bash
 # derive task-determined rosters, then require information to cross between them
-python -m forge.appworld.cli measure --out sweep/appworld_span.json
-python -m forge.appworld.cli seams --out sweep/appworld_seams.json
+uv run python -m forge.appworld.cli measure --out sweep/appworld_span.json
+uv run python -m forge.appworld.cli seams --out sweep/appworld_seams.json
 
 # render Harbor tasks: 3 AppWorld tasks x 2 shipped configurations
-python -m forge.appworld.cli render --n 3 --out tasks
+uv run python -m forge.appworld.cli render --n 3 --out tasks
 ```
 
 **In containers** (the real deliverable — first build is ~30 min, then ~2 min):
@@ -264,7 +270,7 @@ harbor run --path tasks/appworld-star-names-binf-2a163ab_1 \
 Read the result — `breakdown.json` is the interesting one, not `reward.txt`:
 
 ```bash
-python -m json.tool jobs/mine/*/appworld-*/verifier/breakdown.json
+uv run python -m json.tool jobs/mine/*/appworld-*/verifier/breakdown.json
 ```
 
 | field | what it tells you |
@@ -302,7 +308,9 @@ looks like when it is measuring nothing.
 ## Tests
 
 ```bash
-python -m pytest        # the count is whatever the command prints
+uv run pytest
+uv run ruff check forge scripts
+uv run pyright
 ```
 
 The two xfails are deliberate: the quarantined dimensions failing their gate — the

@@ -1,8 +1,8 @@
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 
 from forge.maf.dimensions.scheduling import DIM
 from forge.maf.harbor import write_task

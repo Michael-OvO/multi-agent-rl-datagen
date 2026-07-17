@@ -4,6 +4,8 @@ The one that matters most: no knob may reach the judge. Everything here changes
 who can act; nothing here changes what counts as done.
 """
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from forge.appworld.partition import (
@@ -80,7 +82,7 @@ def test_labels_are_distinct_per_configuration():
 def test_constraints_are_frozen():
     # A task's configuration must not drift after rendering.
     c = Constraints(roster=ROSTER)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         c.topology = Topology.OPEN  # type: ignore[misc]
 
 

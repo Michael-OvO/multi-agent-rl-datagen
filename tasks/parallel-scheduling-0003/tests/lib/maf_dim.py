@@ -222,11 +222,11 @@ def _check_schedule(submission, subs, workers):
                 return False, None
     # no worker runs two tasks at once
     by_worker: dict[str, list] = {}
-    for tid, (w, start, end) in seen.items():
+    for w, start, end in seen.values():
         by_worker.setdefault(w, []).append((start, end))
     for iv in by_worker.values():
         iv.sort()
-        for a, b in zip(iv, iv[1:]):
+        for a, b in zip(iv, iv[1:], strict=False):
             if a[1] > b[0]:
                 return False, None
     makespan = max(end for _, _, end in seen.values())

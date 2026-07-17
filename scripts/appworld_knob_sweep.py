@@ -21,8 +21,6 @@ from pathlib import Path
 
 from forge.appworld.partition import Constraints, Topology, Visibility, control_for
 from forge.appworld.reference import REFERENCE_PATHS
-from forge.appworld.seams import information_seam_task_ids
-from forge.appworld.select import MIN_ROSTER
 from forge.appworld.runtime import (
     NO_ANSWER,
     OUT_OF_STEPS,
@@ -30,7 +28,8 @@ from forge.appworld.runtime import (
     run_main,
     run_specialist,
 )
-
+from forge.appworld.seams import information_seam_task_ids
+from forge.appworld.select import MIN_ROSTER
 
 #: The protocol words the instruction asks for. Identical to the shipped
 #: sidecar's `container/server.py::_as_answer`, deliberately: a sweep that
