@@ -92,9 +92,25 @@ artifact with a checker already attached.*
 
 #### The four requirements, in priority order
 
-1. **A programmatic oracle with no LLM in it.** State-based, ideally
-   side-effect-aware. **Non-negotiable.** An LLM judge is another oracle you
-   designed, with the added property that you cannot grep it for the bug.
+1. **An oracle you did not design.** State-based, ideally side-effect-aware.
+   Free, and already validated by somebody else -- that is the whole of its
+   value. Strongly prefer a substrate that has one.
+
+   This used to read "a programmatic oracle with **no LLM in it**,
+   non-negotiable," and cited this repo's v1 as the evidence. **The evidence does
+   not support it.** The `theory-of-mind` dimension that died had no LLM in it at
+   all: its reward was one line of hand-written arithmetic,
+   `quality = min(1, q_opt/asks)`, and it was worthless because the instruction
+   stated its own optimal algorithm, so obeying it was optimal play -- 1.0 on 12
+   of 12, zero variance. What that indicts is an **unmeasured** oracle, not a
+   language model. An LLM judge is a designed oracle, and it is *not* unauditable
+   -- sample its verdicts against human labels and you have precision and recall.
+   The v1 division was never measured that way, which is exactly why it stayed
+   green.
+
+   The rule that survives contact with the evidence: **inherit where you can;
+   where you must design -- LLM, AST, or arithmetic -- measure its error rate
+   before you trust it.**
 2. **Real, executable, installable.** Not a description of a world. If you cannot
    `pip install` or `docker pull` it, you will end up building it.
 3. **Ground truth for at least a train split**, so you can *measure* which tasks
@@ -110,7 +126,7 @@ artifact with a checker already attached.*
 | **SWE-smith** — 50k tasks, 128 repos | the repo's own pytest | strong oracle, but the seams are code modules → the task turns into SWE, not orchestration |
 | **SWE-Gym / R2E-Gym** — 2.4k / 8.1k tasks | repo tests | same as above |
 | **τ-bench / τ²-bench** | terminal DB state | good oracle; seams are thin (one domain API) |
-| **MultiAgentBench** — has star/chain/tree topologies | **milestone KPIs, LLM-judged** | **disqualified** — no free oracle, which is the one thing you cannot supply yourself |
+| **MultiAgentBench** — has star/chain/tree topologies | **milestone KPIs, LLM-judged** | **costly** — its oracle is one you would have to validate before trusting, and that study is the expense a free oracle spares you. Not forbidden; priced. |
 | orchestration-trace corpora | — | **do not exist.** The survey says causal credit "is not identifiable from realized on-policy traces alone" and ships a JSON schema instead of data |
 
 The last row is the important one. **There is no multi-agent trace + environment
@@ -120,8 +136,13 @@ judges.
 
 #### Disqualifiers, in the order they will bite
 
-- **The judge is an LLM or a rubric** → you are designing the oracle again, only
-  now it is unauditable. Walk away.
+- **The judge is an LLM or a rubric, and nobody has measured it** → you are
+  designing the oracle again and calling the design a description. Not
+  disqualifying by itself: measure it against human labels, publish precision and
+  recall, and it becomes a tool like any other. Disqualifying if you will not.
+  (Costed honestly, that validation study is usually more expensive than finding
+  a substrate that ships a free oracle -- which is why the free one is still the
+  first thing to look for.)
 - **No ground truth** → you cannot measure which tasks qualify, so you will guess,
   so you will pad.
 - **One seam** → nothing to partition. A single-API environment cannot carry

@@ -122,7 +122,7 @@ which matter most — along **which have a free oracle**.
 | | capabilities | oracle |
 |---|---|---|
 | **state-checkable** | task decomposition, orchestration, role assignment, dependency identification, parallel scheduling | the world's own final state — free |
-| **transcript-judged** | theory of mind, communication quality, replanning, long-horizon coherence | somebody has to grade the *reasoning* — and that somebody would be me |
+| **transcript-judged** | theory of mind, communication quality, replanning, long-horizon coherence | somebody has to grade the *reasoning*. That somebody can be a teacher model — but its accuracy is then a thing I have to measure, and that study is the cost the first column does not charge |
 
 v1 tried to build oracles for the second column. That is where every failure in
 §1 came from.
@@ -410,10 +410,30 @@ control has somewhere to fall.
 brief asks for failure modes and verification logic *per capability*. AppWorld's
 state check is one number for the whole episode: a failure could be
 decomposition, briefing, or mind-modelling, and nothing here separates them. §2
-is honest about why — the transcript-judged capabilities have no free oracle, and
-building one is exactly what produced §1. But "we did not build it because
-building it is the trap" is an argument, not a deliverable. Isolating them needs
-probes this does not have.
+is honest about why — the transcript-judged capabilities have no free oracle. But
+"we did not build it because building it is the trap" is an argument, not a
+deliverable, and on inspection it is not even a good argument.
+
+**§1 does not indict teacher models; it indicts unmeasured ones.** The
+`theory-of-mind` dimension that died had no LLM anywhere in it. Its reward was
+`quality = min(1, q_opt/asks)` — hand-written arithmetic — and it was worthless
+because the instruction stated its own optimal algorithm, not because a model
+graded it. What made that invisible was that nobody measured whether the reward
+discriminated. A teacher model reading the ledger and attributing a failure to
+decomposition, routing or briefing is a designed oracle too, and unlike a
+division it can be checked: sample its verdicts against human labels and report
+precision and recall.
+
+So the honest position is that per-capability attribution is **affordable, and I
+did not pay for it** — the validation study is the cost, and it is real. The
+route I would take: keep the terminal state check as the only training reward,
+use a teacher model for diagnosis and curriculum only, and measure its agreement
+before letting it near a gradient. That ordering is what §1 actually argues for.
+
+This applies to my own work with no discount: `seams.py` decides which 39 of 51
+tasks coordinate, and it is a designed classifier whose error rate I have not
+measured either. It is not safer for being an AST pass rather than a model — it
+is unvalidated in exactly the way `q_opt/asks` was, and merely greppable.
 
 **`chain` is unimplemented and its score is a fake signal.** It scores with
 `deleg = 12` — exactly `max_steps` — and `answer='(out of steps)'` every time.

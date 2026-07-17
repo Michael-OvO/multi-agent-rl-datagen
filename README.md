@@ -14,9 +14,11 @@ at `output/pdf/multi_agent_rl_data_generation_zh.pdf` (build it with
 ## The idea in one paragraph
 
 Multi-agent capability data has no free oracle: judging coordination means
-simulating the other agents, and then **you** design the reward — which is exactly
-how this repo's first attempt produced a `theory-of-mind` dimension that scored
-1.0 on 12 of 12 runs while measuring instruction-following. So this forge does not
+simulating the other agents, and then **you** design the reward — which is how
+this repo's first attempt produced a `theory-of-mind` dimension that scored 1.0
+on 12 of 12 runs while measuring instruction-following. (That reward was one line
+of arithmetic, not a model. The lesson is about oracles nobody measured, not
+about LLM judges — see [`WRITEUP.md`](WRITEUP.md) §6.) So this forge does not
 build tasks, environments, or verifiers. It takes AppWorld — 9 real apps, 457
 APIs, 732 tasks, and a programmatic state-based oracle with no LLM in it — and
 **constrains the agent's access to it**: the Main gets zero APIs and can only
