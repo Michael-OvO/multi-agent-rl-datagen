@@ -26,6 +26,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from forge.abilities import yield_by_ability
 from forge.appworld.harbor import write_task
 from forge.appworld.partition import Constraints, Topology, Visibility
 from forge.appworld.reference import REFERENCE_PATHS
@@ -236,6 +237,23 @@ def cmd_judge(args: argparse.Namespace) -> None:
             f"{config:<18}{f'{y.valid}/{y.total}':>13}{y.rate:>8.0%}{y.seeds:>6}"
             f"  {note}{unmeasurable}"
         )
+
+    # The same cells through the ability lens: one bucket per trainable
+    # ability (forge/abilities.py). Star cells only -- chain rows are a
+    # topology experiment and land in no bucket.
+    by_ability = yield_by_ability(cells)
+    if by_ability:
+        print(f"\n{'ability':<22}{'usable cells':>13}{'rate':>8}{'reps':>6}  ")
+        print("-" * 78)
+        for ability, y in sorted(by_ability.items(), key=lambda kv: kv[0].value):
+            note = (
+                "YIELD" if y.measured
+                else f"observed only ({y.seeds} replicate/cell)"
+            )
+            print(
+                f"{ability.value:<22}{f'{y.valid}/{y.total}':>13}{y.rate:>8.0%}"
+                f"{y.seeds:>6}  {note}"
+            )
 
 
 def main(argv: list[str] | None = None) -> None:

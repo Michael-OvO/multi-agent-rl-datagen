@@ -61,6 +61,13 @@ def test_the_control_has_no_ability():
     assert ability_of("open-docs-binf") is None
 
 
+def test_chain_cells_price_no_ability():
+    # A non-star partition turns the topology knob *and* whatever else is set:
+    # two knobs, so it prices no single ability. It is a topology experiment.
+    assert ability_of("chain-names-binf") is None
+    assert ability_of("chain-docs-b2") is None
+
+
 def test_unparseable_labels_raise():
     with pytest.raises(ValueError):
         ability_of("not-a-config")
@@ -97,3 +104,33 @@ def test_yield_by_ability_groups_and_counts_valid_cells():
 def test_yield_by_ability_ignores_control_cells():
     cells = [_cell("open-docs-binf", (1.0, 1.0, 1.0, 1.0, 1.0))]
     assert yield_by_ability(cells) == {}
+
+
+def test_v5_sweep_ability_yield_matches_the_readme():
+    """The committed evidence, re-read through the ability lens.
+
+    README reports star-docs 3/3 and star-names 2/3 at five seeds. Tagged by
+    ability that is context-transfer 3/3 and discovery 2/3 -- and chain rows,
+    a topology experiment, must not pollute either bucket.
+    """
+    import json
+    from pathlib import Path
+
+    from forge.appworld.validity import judge_cells
+
+    root = Path(__file__).parent.parent.parent
+    rows = json.loads((root / "sweep/appworld_knobs_v5.json").read_text())
+    floors = {
+        r["partial"]
+        for r in json.loads((root / "sweep/appworld_donothing.json").read_text())
+    }
+    assert len(floors) == 1
+    cells = judge_cells(rows, floors.pop())
+
+    y = yield_by_ability(cells)
+    assert y[Ability.CONTEXT_TRANSFER].valid == 3
+    assert y[Ability.CONTEXT_TRANSFER].total == 3
+    assert y[Ability.DISCOVERY].valid == 2
+    assert y[Ability.DISCOVERY].total == 3
+    assert y[Ability.CONTEXT_TRANSFER].measured
+    assert y[Ability.DISCOVERY].measured

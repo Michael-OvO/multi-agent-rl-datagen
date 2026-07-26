@@ -73,10 +73,14 @@ def ability_of(config: str) -> Ability | None:
     """Which ability a config label prices. None for the control.
 
     Labels are `partition.Constraints.label`: `<topology>-<visibility>-b<budget>`.
-    Precedence when a label has two knobs turned (never rendered by
-    `config_for`, but sweeps are data and data drifts): a finite budget wins,
-    because a budget binds harder than missing docs and the cell must land in
-    exactly one bucket.
+    Non-star partitions (chain, and any future tree) also return None: a
+    changed topology is a turned knob on top of whatever else the label sets,
+    so the cell is a topology experiment, not a priced ability --
+    sweep/appworld_knobs_v5.json's chain rows must not pollute the discovery
+    bucket. Precedence when a *star* label still has two knobs turned (never
+    rendered by `config_for`, but sweeps are data and data drifts): a finite
+    budget wins, because a budget binds harder than missing docs and the cell
+    must land in exactly one bucket.
     """
     parts = config.split("-")
     if (
@@ -87,6 +91,8 @@ def ability_of(config: str) -> Ability | None:
     ):
         raise ValueError(f"not a constraint label: {config!r}")
     if is_control(config):
+        return None
+    if parts[0] != Topology.STAR.value:
         return None
     if parts[2] != "binf":
         return Ability.DELEGATION_ECONOMY

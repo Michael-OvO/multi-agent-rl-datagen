@@ -92,6 +92,34 @@ plus this probe as the permanent regression test. Any future substrate or
 task family where `honest-*` scores below the do-nothing floor fails
 admission.
 
+## Measured: the rendered grid (`sweep/gaia2_cells.json`)
+
+The 17 seamful scenarios render into **68 cells** — the shared control plus
+one cell per ability per scenario, the one-knob rule enforced by
+construction (`forge/gaia2/render.py`). What the structure mining
+(`forge/gaia2/structure.py`) says about them, against AppWorld's shipped
+family:
+
+| | AppWorld family (shipped) | Gaia2 seamful (rendered) |
+|---|---|---|
+| roster size | 2 | **3–7** (median 5–6) |
+| gold writes / reference calls | short scripts | **5–16 writes** |
+| forced sequencing (DAG depth) | shallow | **2–4** |
+| parallel width | 2 | **2–12** |
+
+These are longer-horizon, wider tasks: a star Main gets up to 12
+parallelizable gold writes in one fan-out, and the delegation-economy
+budget (roster size) now binds against a real cost surface rather than a
+2-specialist toy.
+
+**The ability lens is wired into acceptance:** `cli judge` now reports
+yield per ability on top of yield per config. Re-reading the committed v5
+sweep through it: **capability-discovery 2/3 (67%), context-transfer 3/3
+(100%), both at five seeds — measured YIELD** — and chain rows land in no
+bucket, because a changed topology is a second turned knob
+(`test_v5_sweep_ability_yield_matches_the_readme` pins this against the
+evidence files).
+
 ## What this iteration does *not* claim
 
 No Gaia2 cell has been rendered, rolled out, or judged — admission is
@@ -107,6 +135,7 @@ scenarios, against Gaia2's own write-action verifier.
 | file | question it answers |
 |---|---|
 | `sweep/gaia2_mini_admission.json` | which Gaia2 mini scenarios can carry a partition, and where the facts cross |
+| `sweep/gaia2_cells.json` | the rendered grid: 68 ability-tagged cell specs with roster, seams, and DAG structure |
 | `sweep/appworld_honesty.json` | what truthful failure costs, per task, per reporting channel |
 | `forge/tests/test_abilities.py` | one ability = one knob; tagging precedence; yield bucketing |
 | `forge/tests/test_gaia2_mine.py` | the provenance rules, including the two ways a value is *not* a seam |

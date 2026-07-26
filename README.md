@@ -205,6 +205,7 @@ Every number in the write-up names the file that produced it:
 | `tom_degeneracy.json` | v1's `theory-of-mind`: 12 of 12 runs at reward 1.0, zero gradient |
 | `appworld_honesty.json` | what truthful failure costs: prose report 0.167 (below floor) on 3/3 tasks; `status='fail'` at floor |
 | `gaia2_mini_admission.json` | Gaia2 mini: 111/160 multi-app, 17/160 with a provable cross-app fact |
+| `gaia2_cells.json` | the rendered grid: 68 cells over 17 scenarios, rosters 3–7, writes 5–16, depth 2–4 |
 | `appworld_confound.json` | was the drop the partition, or the weaker specialist model? |
 | `appworld_rate_limit_cost.json` | what does a rollout cost under a TPM ceiling? |
 
@@ -265,9 +266,10 @@ uv run python -m scripts.appworld_catalog_probe      # what did truncation kill?
 uv run python -m scripts.appworld_injection_probe    # can a brief leak the token? (no LLM)
 uv run python -m scripts.appworld_honesty_probe      # what does honest failure cost? (no LLM)
 
-# the second substrate: fetch Gaia2's mini split, then measure admission
+# the second substrate: fetch Gaia2's mini split, then measure and render
 uv run --with pandas --with pyarrow python -m scripts.gaia2_fetch
 uv run python -m scripts.gaia2_admission_probe       # which scenarios carry a partition? (no LLM)
+uv run python -m scripts.gaia2_render_probe          # the 68-cell ability grid, priced (no LLM)
 uv run python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v5.json
 ```
 
