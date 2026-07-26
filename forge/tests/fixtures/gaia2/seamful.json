@@ -1,0 +1,91 @@
+{
+  "metadata": {
+    "definition": {
+      "scenario_id": "fixture_seamful",
+      "duration": null,
+      "start_time": 1728975600.0,
+      "hints": [],
+      "tags": ["Fixture"]
+    }
+  },
+  "apps": [
+    {
+      "name": "AgentUserInterface",
+      "class_name": "AgentUserInterface",
+      "app_state": {"messages": []}
+    },
+    {
+      "name": "Contacts",
+      "class_name": "ContactsApp",
+      "app_state": {
+        "contacts": {
+          "c0ffee1234567890": {
+            "contact_id": "c0ffee1234567890",
+            "first_name": "Erik",
+            "last_name": "Lund",
+            "email": "erik.lund@example.se",
+            "relationship": "landlord"
+          }
+        }
+      }
+    },
+    {
+      "name": "Emails",
+      "class_name": "EmailClientApp",
+      "app_state": {"folders": {"INBOX": {"emails": []}}}
+    }
+  ],
+  "events": [
+    {
+      "class_name": "Event",
+      "event_type": "USER",
+      "event_time": 1728975600.0,
+      "event_id": "Event-USER-fixture-1",
+      "dependencies": [],
+      "event_relative_time": 0.0,
+      "action": {
+        "action_id": "AgentUserInterface.send_message_to_agent-fixture",
+        "app": "AgentUserInterface",
+        "function": "send_message_to_agent",
+        "operation_type": "READ",
+        "args": [
+          {
+            "name": "content",
+            "value": "Email my landlord about the kitchen leak and ask for a repair date.",
+            "value_type": "str"
+          }
+        ]
+      },
+      "metadata": null
+    },
+    {
+      "class_name": "OracleEvent",
+      "event_type": "AGENT",
+      "event_time": 1728975601.0,
+      "event_id": "OracleEvent-AGENT-fixture-1",
+      "dependencies": ["Event-USER-fixture-1"],
+      "event_relative_time": 1.0,
+      "action": {
+        "action_id": "",
+        "app": "Emails",
+        "function": "send_email",
+        "operation_type": null,
+        "args": [
+          {
+            "name": "recipients",
+            "value": "erik.lund@example.se",
+            "value_type": "str"
+          },
+          {
+            "name": "subject",
+            "value": "Kitchen leak repair",
+            "value_type": "str"
+          }
+        ]
+      },
+      "metadata": null
+    }
+  ],
+  "version": "fixture",
+  "augmentation": null
+}

@@ -7,7 +7,10 @@ produces are worth training on. Instantiated here on
 [Harbor](https://www.harborframework.com) format.
 
 **Start here:** [`WRITEUP.md`](WRITEUP.md) — what was built, what was measured,
-and what it turned out to measure. The method itself is
+and what it turned out to measure. **Latest iteration:**
+[`docs/iteration_three_abilities.md`](docs/iteration_three_abilities.md) — the
+capability taxonomy consolidated to three trainable abilities, a second
+substrate (Gaia2) admitted and mined, and the honesty penalty measured. The method itself is
 [`skills/constraint-forged-multi-agent-tasks/SKILL.md`](skills/constraint-forged-multi-agent-tasks/SKILL.md),
 which is the canonical statement and the one to read if you are repeating this on
 a different substrate. Polished reports are available in
@@ -165,6 +168,8 @@ scale.
 | | |
 |---|---|
 | `forge/appworld/` | the pipeline: `select` (roster from the task) · `seams` (cross-app information gate) · `partition` (constraints) · `runtime` (Main + specialists) · `sandbox` (what specialist code may touch) · `reference` (the solutions) · `validity` (which rendered cells are usable RL data) · `harbor` (packaging) · `cli` |
+| `forge/abilities.py` | the three trainable abilities (discovery, context transfer, delegation economy), each pinned to one constraint knob; yield per ability |
+| `forge/gaia2/` | second substrate, mining only: rosters and information seams from Gaia2 gold write actions via state provenance |
 | `forge/maf/` | the earlier from-scratch forge; `parallel-scheduling` ships, two dimensions are quarantined (below) |
 | `tasks/` | rendered Harbor tasks |
 | `sweep/` | measurement evidence — one file per claim |
@@ -198,6 +203,8 @@ Every number in the write-up names the file that produced it:
 | `appworld_span.json` | which of AppWorld's 147 tasks can carry a partition? |
 | `appworld_seams.json` | which multi-app tasks actually move a fact across apps? |
 | `tom_degeneracy.json` | v1's `theory-of-mind`: 12 of 12 runs at reward 1.0, zero gradient |
+| `appworld_honesty.json` | what truthful failure costs: prose report 0.167 (below floor) on 3/3 tasks; `status='fail'` at floor |
+| `gaia2_mini_admission.json` | Gaia2 mini: 111/160 multi-app, 17/160 with a provable cross-app fact |
 | `appworld_confound.json` | was the drop the partition, or the weaker specialist model? |
 | `appworld_rate_limit_cost.json` | what does a rollout cost under a TPM ceiling? |
 
@@ -256,6 +263,11 @@ that code, what AppWorld printed back, and the score against the floor.
 uv run python -m scripts.appworld_donothing_probe    # where is the floor?      (no LLM)
 uv run python -m scripts.appworld_catalog_probe      # what did truncation kill? (no LLM)
 uv run python -m scripts.appworld_injection_probe    # can a brief leak the token? (no LLM)
+uv run python -m scripts.appworld_honesty_probe      # what does honest failure cost? (no LLM)
+
+# the second substrate: fetch Gaia2's mini split, then measure admission
+uv run --with pandas --with pyarrow python -m scripts.gaia2_fetch
+uv run python -m scripts.gaia2_admission_probe       # which scenarios carry a partition? (no LLM)
 uv run python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v5.json
 ```
 

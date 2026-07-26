@@ -1,0 +1,98 @@
+{
+  "metadata": {
+    "definition": {
+      "scenario_id": "fixture_operation",
+      "duration": null,
+      "start_time": 1728975600.0,
+      "hints": [],
+      "tags": ["Fixture"]
+    }
+  },
+  "apps": [
+    {
+      "name": "AgentUserInterface",
+      "class_name": "AgentUserInterface",
+      "app_state": {"messages": []}
+    },
+    {
+      "name": "Calendar",
+      "class_name": "CalendarApp",
+      "app_state": {"events": {}}
+    },
+    {
+      "name": "Shopping",
+      "class_name": "ShoppingApp",
+      "app_state": {"orders": {}}
+    }
+  ],
+  "events": [
+    {
+      "class_name": "Event",
+      "event_type": "USER",
+      "event_time": 1728975600.0,
+      "event_id": "Event-USER-fixture-3",
+      "dependencies": [],
+      "event_relative_time": 0.0,
+      "action": {
+        "action_id": "AgentUserInterface.send_message_to_agent-fixture",
+        "app": "AgentUserInterface",
+        "function": "send_message_to_agent",
+        "operation_type": "READ",
+        "args": [
+          {
+            "name": "content",
+            "value": "Add a dentist appointment on Friday at 10am and order a new toothbrush-head-2000 from my shopping list.",
+            "value_type": "str"
+          }
+        ]
+      },
+      "metadata": null
+    },
+    {
+      "class_name": "OracleEvent",
+      "event_type": "AGENT",
+      "event_time": 1728975601.0,
+      "event_id": "OracleEvent-AGENT-fixture-3a",
+      "dependencies": ["Event-USER-fixture-3"],
+      "event_relative_time": 1.0,
+      "action": {
+        "action_id": "",
+        "app": "Calendar",
+        "function": "add_calendar_event",
+        "operation_type": null,
+        "args": [
+          {
+            "name": "title",
+            "value": "dentist appointment",
+            "value_type": "str"
+          }
+        ]
+      },
+      "metadata": null
+    },
+    {
+      "class_name": "OracleEvent",
+      "event_type": "AGENT",
+      "event_time": 1728975602.0,
+      "event_id": "OracleEvent-AGENT-fixture-3b",
+      "dependencies": ["Event-USER-fixture-3"],
+      "event_relative_time": 2.0,
+      "action": {
+        "action_id": "",
+        "app": "Shopping",
+        "function": "add_to_cart",
+        "operation_type": null,
+        "args": [
+          {
+            "name": "item_id",
+            "value": "toothbrush-head-2000",
+            "value_type": "str"
+          }
+        ]
+      },
+      "metadata": null
+    }
+  ],
+  "version": "fixture",
+  "augmentation": null
+}

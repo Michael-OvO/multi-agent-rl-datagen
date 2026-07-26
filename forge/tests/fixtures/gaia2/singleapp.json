@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "definition": {
+      "scenario_id": "fixture_singleapp",
+      "duration": null,
+      "start_time": 1728975600.0,
+      "hints": [],
+      "tags": ["Fixture"]
+    }
+  },
+  "apps": [
+    {
+      "name": "AgentUserInterface",
+      "class_name": "AgentUserInterface",
+      "app_state": {"messages": []}
+    },
+    {
+      "name": "RentAFlat",
+      "class_name": "RentAFlatApp",
+      "app_state": {
+        "saved": {
+          "aae6d8011d49417390f7cdc050c4e39a": {
+            "apartment_id": "aae6d8011d49417390f7cdc050c4e39a",
+            "city": "Stockholm",
+            "price": 1500
+          }
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "class_name": "Event",
+      "event_type": "USER",
+      "event_time": 1728975600.0,
+      "event_id": "Event-USER-fixture-2",
+      "dependencies": [],
+      "event_relative_time": 0.0,
+      "action": {
+        "action_id": "AgentUserInterface.send_message_to_agent-fixture",
+        "app": "AgentUserInterface",
+        "function": "send_message_to_agent",
+        "operation_type": "READ",
+        "args": [
+          {
+            "name": "content",
+            "value": "Remove every saved apartment outside my price range.",
+            "value_type": "str"
+          }
+        ]
+      },
+      "metadata": null
+    },
+    {
+      "class_name": "OracleEvent",
+      "event_type": "AGENT",
+      "event_time": 1728975601.0,
+      "event_id": "OracleEvent-AGENT-fixture-2",
+      "dependencies": ["Event-USER-fixture-2"],
+      "event_relative_time": 1.0,
+      "action": {
+        "action_id": "",
+        "app": "RentAFlat",
+        "function": "remove_saved_apartment",
+        "operation_type": null,
+        "args": [
+          {
+            "name": "apartment_id",
+            "value": "aae6d8011d49417390f7cdc050c4e39a",
+            "value_type": "str"
+          }
+        ]
+      },
+      "metadata": null
+    }
+  ],
+  "version": "fixture",
+  "augmentation": null
+}
