@@ -14,19 +14,30 @@ download is skipped when the files are already there.
 
 from __future__ import annotations
 
+import argparse
 import json
 import urllib.request
 from pathlib import Path
 
-URL = (
-    "https://huggingface.co/datasets/meta-agents-research-environments/gaia2/"
-    "resolve/main/mini/validation-00000-of-00001.parquet"
-)
-PARQUET = Path("gaia2_data/gaia2_mini.parquet")
-OUT_DIR = Path("gaia2_data/mini")
+#: The dataset's parquet folders. `mini` is the 160-scenario balanced subset;
+#: the five capability splits are the full validation set.
+SPLITS = ("mini", "adaptability", "ambiguity", "execution", "search", "time")
+
+
+def _url(split: str) -> str:
+    return (
+        "https://huggingface.co/datasets/meta-agents-research-environments/gaia2/"
+        f"resolve/main/{split}/validation-00000-of-00001.parquet"
+    )
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--split", choices=SPLITS, default="mini")
+    args = parser.parse_args()
+    split = args.split
+    parquet = Path(f"gaia2_data/gaia2_{split}.parquet")
+    out_dir = Path(f"gaia2_data/{split}")
     try:
         import pandas as pd  # pyright: ignore[reportMissingImports]
     except ImportError:
@@ -35,14 +46,15 @@ def main() -> None:
             "  uv run --with pandas --with pyarrow python -m scripts.gaia2_fetch"
         ) from None
 
-    PARQUET.parent.mkdir(parents=True, exist_ok=True)
-    if not PARQUET.exists():
-        print(f"downloading {URL}")
-        urllib.request.urlretrieve(URL, PARQUET)  # noqa: S310 -- fixed https URL
-    print(f"parquet: {PARQUET} ({PARQUET.stat().st_size / 1e6:.1f} MB)")
+    parquet.parent.mkdir(parents=True, exist_ok=True)
+    if not parquet.exists():
+        url = _url(split)
+        print(f"downloading {url}")
+        urllib.request.urlretrieve(url, parquet)  # noqa: S310 -- fixed https URL
+    print(f"parquet: {parquet} ({parquet.stat().st_size / 1e6:.1f} MB)")
 
-    df = pd.read_parquet(PARQUET)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    df = pd.read_parquet(parquet)
+    out_dir.mkdir(parents=True, exist_ok=True)
     written = 0
     for _, row in df.iterrows():
         scenario = json.loads(row["data"])
@@ -51,12 +63,15 @@ def main() -> None:
         scenario["_gaia2"] = {
             "id": row["id"],
             "scenario_id": row["scenario_id"],
-            "category": row["category"],
+            # `mini` carries a category column; the five capability splits
+            # drop it because the split name *is* the category.
+            "category": row["category"] if "category" in df.columns else split,
+            "split": split,
         }
-        out = OUT_DIR / f"{row['scenario_id']}.json"
+        out = out_dir / f"{row['scenario_id']}.json"
         out.write_text(json.dumps(scenario))
         written += 1
-    print(f"wrote {written} scenarios to {OUT_DIR}/")
+    print(f"wrote {written} scenarios to {out_dir}/")
 
 
 if __name__ == "__main__":

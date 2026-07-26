@@ -151,10 +151,10 @@ def main() -> None:
             answer = run_main(OpenAI(), world, instruction, constraints, log,
                               model=args.main_model, sub_model=args.sub_model)
 
-        world.execute(
-            "apis.supervisor.complete_task(answer=None, status='success')"
-            if answer.strip().lower() in ("completed", "complete", "done", "")
-            else f"apis.supervisor.complete_task(answer={answer!r}, status='success')")
+        # One mapping for all three call sites -- surrender through
+        # status='fail', the completed-set through answer=None. See
+        # forge/appworld/runtime.py:submission_code for the measured why.
+        world.execute(runtime.submission_code(answer))
 
         ev = world.evaluate().to_dict()
 

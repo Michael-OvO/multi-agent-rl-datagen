@@ -15,22 +15,27 @@ summary. Deterministic: re-emits byte-identically from the same data.
 
 from __future__ import annotations
 
+import argparse
 import json
 from collections import Counter
 from pathlib import Path
 
 from forge.gaia2.mine import admit
 
-IN_DIR = Path("gaia2_data/mini")
-OUT = Path("sweep/gaia2_mini_admission.json")
-
 
 def main() -> None:
-    paths = sorted(IN_DIR.glob("*.json"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--split", default="mini")
+    args = parser.parse_args()
+    in_dir = Path(f"gaia2_data/{args.split}")
+    out = Path(f"sweep/gaia2_{args.split}_admission.json")
+
+    paths = sorted(in_dir.glob("*.json"))
     if not paths:
         raise SystemExit(
-            f"no scenarios in {IN_DIR}. Run:\n"
-            "  uv run --with pandas --with pyarrow python -m scripts.gaia2_fetch"
+            f"no scenarios in {in_dir}. Run:\n"
+            f"  uv run --with pandas --with pyarrow python -m scripts.gaia2_fetch"
+            f" --split {args.split}"
         )
 
     rows = []
@@ -57,8 +62,8 @@ def main() -> None:
             }
         )
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(rows, indent=1))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rows, indent=1))
 
     total = len(rows)
     usable = sum(r["usable"] for r in rows)
@@ -83,7 +88,7 @@ def main() -> None:
     print("top seam edges:")
     for (src, dst), n in pairs.most_common(8):
         print(f"  {src} -> {dst}: {n}")
-    print(f"\nwrote {OUT}")
+    print(f"\nwrote {out}")
 
 
 if __name__ == "__main__":

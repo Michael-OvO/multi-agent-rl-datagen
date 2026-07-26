@@ -186,6 +186,13 @@ def _complete_call(answer: str) -> str:
     None path, and the one case it did fire on (a Main answering the literal
     string "None") was one it got wrong.
     """
+    from forge.appworld.runtime import gave_up
+
+    if gave_up(answer):
+        # The honest channel: sweep/appworld_honesty.json prices prose
+        # surrender at 0.167 (below the do-nothing floor) and status='fail'
+        # at the floor. Routing FAIL through prose would pay the Main to lie.
+        return "apis.supervisor.complete_task(status='fail')"
     return f"apis.supervisor.complete_task(answer={_as_answer(answer)!r}, status='success')"
 
 

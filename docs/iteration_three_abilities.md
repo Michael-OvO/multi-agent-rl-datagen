@@ -120,6 +120,46 @@ bucket, because a changed topology is a second turned knob
 (`test_v5_sweep_ability_yield_matches_the_readme` pins this against the
 evidence files).
 
+## Built: the honest-failure channel (the trap, closed at the protocol layer)
+
+The probe made the trap measurable; this round closes it where the method
+allows — the protocol, never the judge. The Main's contract now includes a
+surrender verb (`FAIL :: <reason>`, `forge/appworld/runtime.py`), `run_main`
+returns it instead of nagging it as malformed, and one shared
+`submission_code()` routes every surrender sentinel (`FAIL`, out-of-steps,
+no-answer) through `complete_task(status='fail')` — the channel the honesty
+probe prices at exactly the floor. All three submission sites (knob sweep,
+sidecar server, watch_episode) now use it; error rows keep their prose so a
+crash never masquerades as graceful failure. The committed Harbor tasks were
+re-rendered so the shipped runtime is the measured runtime — the drift gate
+(`test_committed_tasks_match_the_generator`) is what forced that, which is
+the gate working. `forge/tests/test_honest_failure.py` pins the whole
+channel.
+
+**What this changes for RL data:** before, an honest Main was paid 1/6 less
+than a lying one; now honesty and doing-nothing price identically, and the
+oracle's side-effect checks still separate real work from claims. The lie
+incentive is gone from every cell this forge renders going forward.
+
+## Measured: the `adaptability` split (`sweep/gaia2_adaptability_admission.json`)
+
+The full 160-scenario split behind mini's best category, fetched and mined:
+
+| measure | mini (160) | adaptability (160) |
+|---|---|---|
+| usable (roster ≥ 2) | 111 (69%) | **158 (99%)** |
+| seamful | 17 (11%) | **30 (19%)** |
+
+Overlap with mini's seamful set: 10 scenarios, so the corpus now holds **37
+unique seamful scenarios → 148 rendered cells**
+(`sweep/gaia2_cells.json` + `sweep/gaia2_cells_adaptability.json`), rosters
+2–7, writes 5–16, depth 1–4, width up to 12. Same dominant seam edges
+(Contacts/InternalContacts → Cabs/Messages), which suggests the provenance
+rule is finding a real structural property of the ARE apps, not noise. Four
+splits remain unfetched (`ambiguity`, `execution`, `search`, `time` — the
+full versions); `scripts/gaia2_fetch.py --split <name>` now takes any of
+them.
+
 ## What this iteration does *not* claim
 
 No Gaia2 cell has been rendered, rolled out, or judged — admission is
@@ -135,7 +175,10 @@ scenarios, against Gaia2's own write-action verifier.
 | file | question it answers |
 |---|---|
 | `sweep/gaia2_mini_admission.json` | which Gaia2 mini scenarios can carry a partition, and where the facts cross |
-| `sweep/gaia2_cells.json` | the rendered grid: 68 ability-tagged cell specs with roster, seams, and DAG structure |
+| `sweep/gaia2_cells.json` | the rendered mini grid: 68 ability-tagged cell specs with roster, seams, and DAG structure |
+| `sweep/gaia2_adaptability_admission.json` | the full adaptability split: 158/160 multi-app, 30/160 seamful |
+| `sweep/gaia2_cells_adaptability.json` | 120 more rendered cells from the adaptability split |
+| `forge/tests/test_honest_failure.py` | the FAIL verb, the surrender predicate, and the status='fail' routing |
 | `sweep/appworld_honesty.json` | what truthful failure costs, per task, per reporting channel |
 | `forge/tests/test_abilities.py` | one ability = one knob; tagging precedence; yield bucketing |
 | `forge/tests/test_gaia2_mine.py` | the provenance rules, including the two ways a value is *not* a seam |

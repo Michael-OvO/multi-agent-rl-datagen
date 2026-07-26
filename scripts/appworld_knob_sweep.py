@@ -27,6 +27,10 @@ from forge.appworld.runtime import (
     RunLog,
     run_main,
     run_specialist,
+    submission_code,
+)
+from forge.appworld.runtime import (
+    gave_up as runtime_gave_up,
 )
 from forge.appworld.seams import information_seam_task_ids
 from forge.appworld.select import MIN_ROSTER
@@ -150,17 +154,21 @@ def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
             # partial score -- which is indistinguishable from a real result.
             print(f"  !! {task_id} {c.label}: {error}", flush=True)
 
-        # AppWorld expects the task's answer type. Action tasks ("like all the
-        # transactions") return None in their GT; submitting prose fails the
-        # `assert answers match` requirement and caps them at 5/6 = 0.833.
-        # Measured: same work, prose -> 0.833; None -> 1.000, success=True.
-        submitted = None if _is_action_answer(answer) else answer
-        # `%r` of None is already "None", so the else-branch this used to carry
-        # produced a byte-identical string and never ran. It also parsed only by
-        # precedence accident: `%` binds tighter than the conditional, so it read
-        # as though the format applied to the whole ternary.
-        w.execute("apis.supervisor.complete_task(answer=%r, status='success')"
-                  % (submitted,))
+        # Surrender goes through status='fail' -- the channel the honesty
+        # probe prices at the floor. A truthful report submitted as prose is
+        # 0.167 < floor on every shipped task (sweep/appworld_honesty.json),
+        # which pays the Main to lie; error rows keep their prose so a crash
+        # never masquerades as a graceful failure.
+        if error is None and runtime_gave_up(answer):
+            w.execute(submission_code(answer))
+        else:
+            # AppWorld expects the task's answer type. Action tasks ("like all
+            # the transactions") return None in their GT; submitting prose
+            # fails the `assert answers match` requirement and caps them at
+            # 5/6 = 0.833. Measured: same work, prose -> 0.833; None -> 1.000.
+            submitted = None if _is_action_answer(answer) else answer
+            w.execute("apis.supervisor.complete_task(answer=%r, status='success')"
+                      % (submitted,))
         ev = w.evaluate().to_dict()
 
     failed = [str(f) for f in ev.get("failures", [])]
