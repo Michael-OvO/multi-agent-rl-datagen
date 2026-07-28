@@ -215,6 +215,24 @@ def test_the_overview_computes_every_headline_number(viewer_html):
                 "malformed", "blocked", "errors", "worst"):
         assert f"{key}:" in body or f"{key} =" in body, (
             f"runStats() does not compute {key}")
+    # Guards a screenshot cannot show:
+    assert "total ?" in body, (
+        "rate must not divide by zero on an empty run set")
+    assert "b.total - a.total" in body, (
+        "worst must break ties toward the scenario with more runs")
+
+
+def test_the_signal_counters_do_not_double_report(viewer_html):
+    """A malformed line is a protocol fault, not also a tool fault.
+
+    Both counters walk the same events, so without an explicit exclusion the
+    same call feeds the "malformed" chip and the "faulted" chip, and two
+    chips a reader reads as disjoint silently overlap.
+    """
+    fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", viewer_html, re.S)
+    assert fn, "countErrors() is missing"
+    assert '!== "malformed"' in fn.group(1), (
+        "countErrors must exclude malformed, which countMalformed reports")
 
 
 def test_exactly_one_hero_figure(viewer_css):

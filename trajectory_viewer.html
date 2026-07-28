@@ -501,14 +501,15 @@ function countMalformed(d) {
   return n;
 }
 
-/* Every counter in one pass, so the tiles and the signals line can never
-   disagree about what the same runs contain. */
+/* A malformed line is a protocol fault and has its own counter; counting it
+   here too would make the two signal chips overlap while reading as disjoint. */
 function countErrors(d) {
+  const faulted = s => s && s !== "ok" && s !== "malformed";
   let n = 0;
   for (const e of d.events || []) {
-    if (e.type === "call" && e.status && e.status !== "ok") n++;
+    if (e.type === "call" && faulted(e.status)) n++;
     if (e.type === "delegation")
-      for (const c of e.calls || []) if (c.status && c.status !== "ok") n++;
+      for (const c of e.calls || []) if (faulted(c.status)) n++;
   }
   return n;
 }
