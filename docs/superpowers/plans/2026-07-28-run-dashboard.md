@@ -28,6 +28,7 @@ These apply to **every** task. Copy them into your working memory before startin
 - **Exactly one hero figure per view** (the ≥48px number). It is the Runs success rate. Everything else is a normal stat tile.
 - **`tabular-nums` in table columns only.** Stat-tile values and the hero figure use default proportional figures.
 - **Run the full test file after every task**, not just the new test: `uv run pytest forge/tests/test_viewer.py -v`.
+- **A test that asserts a string is ABSENT must search `viewer_source(viewer_html)`, never `viewer_html`.** That helper (added in Task 0) strips the embedded JSON snapshot, which carries arbitrary prose lifted from run transcripts and will otherwise produce false hits. Tests asserting a string is *present* may use either.
 
 ## File Structure
 
@@ -917,9 +918,14 @@ Append to `forge/tests/test_viewer.py`:
 
 ```python
 def test_academic_captions_are_gone(viewer_html):
-    """No reader of a dashboard counts tables by number."""
-    assert not re.search(r"<b>Table \d+:</b>", viewer_html)
-    assert 'class="tcap"' not in viewer_html
+    """No reader of a dashboard counts tables by number.
+
+    Searches the hand-written source: a judge's rationale in the embedded
+    snapshot can contain the words this test forbids.
+    """
+    source = viewer_source(viewer_html)
+    assert not re.search(r"<b>Table \d+:</b>", source)
+    assert 'class="tcap"' not in source
 
 
 def test_the_grid_ships_a_legend(viewer_html):
@@ -1604,9 +1610,14 @@ Append to `forge/tests/test_viewer.py`:
 
 ```python
 def test_no_view_still_wears_the_paper_costume(viewer_html):
-    """One surface, one design: no leftovers from the evidence-page era."""
+    """One surface, one design: no leftovers from the evidence-page era.
+
+    Searches the hand-written source: "Table 3:" and its kin can occur inside
+    a run's transcript text, which lives in the embedded snapshot.
+    """
+    source = viewer_source(viewer_html)
     for relic in ('class="draftline"', 'class="colophon"', "Table 3:", "Table 4:"):
-        assert relic not in viewer_html, f"{relic} survived the redesign"
+        assert relic not in source, f"{relic} survived the redesign"
 
 
 def test_shipped_task_runs_get_an_overview_too(viewer_html):
