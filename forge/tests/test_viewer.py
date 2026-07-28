@@ -205,3 +205,36 @@ def test_the_dagger_footnote_is_gone(viewer_html):
     """Soft-judged runs get a readable tag, not a symbol you must decode."""
     assert '<span class="dag">' not in viewer_source(viewer_html)
     assert "soft judge" in viewer_html
+
+
+def test_the_overview_computes_every_headline_number(viewer_html):
+    stats = re.search(r"function runStats\(eps\) \{(.*?)\n\}", viewer_html, re.S)
+    assert stats, "runStats() is missing"
+    body = stats.group(1)
+    for key in ("total", "passed", "failed", "rate", "models",
+                "malformed", "blocked", "errors", "worst"):
+        assert f"{key}:" in body or f"{key} =" in body, (
+            f"runStats() does not compute {key}")
+
+
+def test_exactly_one_hero_figure(viewer_css):
+    """The dashboard leads with one number, not four competing ones."""
+    hero = re.search(r"\.tile\.hero \.val \{(.*?)\}", viewer_css, re.S)
+    assert hero, ".tile.hero .val rule is missing"
+    size = re.search(r"font-size:\s*(\d+)px", hero.group(1))
+    assert size and int(size.group(1)) >= 48, (
+        "the hero figure is the one number a dashboard leads with: >=48px")
+
+
+def test_signals_are_clickable_filters(viewer_html):
+    assert "let issueFilter = null" in viewer_html
+    assert 'data-issue=' in viewer_html
+
+
+def test_stat_tiles_do_not_use_tabular_figures(viewer_css):
+    """Tabular figures pad every digit to a zero's width -- loose at 48px."""
+    tile = re.search(r"\.tile \.val \{(.*?)\}", viewer_css, re.S)
+    assert tile, ".tile .val rule is missing"
+    assert "tabular-nums" not in tile.group(1)
+    assert "font-variant-numeric: normal" in tile.group(1), (
+        "the body sets tabular-nums globally; tiles must opt out")
