@@ -527,7 +527,7 @@ def test_verdict_badges_pair_every_color_with_an_icon_and_a_word(viewer_html):
 
 def test_the_dagger_footnote_is_gone(viewer_html):
     """Soft-judged runs get a readable tag, not a symbol you must decode."""
-    assert '<span class="dag">' not in viewer_html
+    assert '<span class="dag">' not in viewer_source(viewer_html)
     assert "soft judge" in viewer_html
 ```
 
