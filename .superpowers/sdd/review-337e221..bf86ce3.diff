@@ -1,0 +1,332 @@
+# Review package: 337e221ea26d..HEAD
+
+## Commits
+bf86ce3 fix(isolation): ship the dimension module to tests/, not the agent image
+
+## Files changed
+ docs/DESIGN.md                    |  5 ++++-
+ forge/maf/core.py                 |  3 ++-
+ forge/maf/harbor.py               | 23 +++++++++++++++--------
+ forge/maf/runtime/verify_entry.py |  2 +-
+ forge/tests/test_harbor.py        | 22 +++++++++++++---------
+ forge/tests/test_leak_audit.py    | 25 ++++++++++++++++++-------
+ 6 files changed, 53 insertions(+), 27 deletions(-)
+
+## Diff
+diff --git a/docs/DESIGN.md b/docs/DESIGN.md
+index f4650b0..1cb9fa0 100644
+--- a/docs/DESIGN.md
++++ b/docs/DESIGN.md
+@@ -264,21 +264,24 @@ boilerplate, not the capability). Mitigation:
+ ```
+ task-dir/
+ ├── task.toml            # [environment] our image; [verifier] continuous reward; timeouts
+ ├── instruction.md       # "You are the Main agent; goal = X." Describe the goal, not steps.
+ ├── environment/
+ │   ├── Dockerfile       # python:3.11-slim + copy env server + scenario
+ │   ├── scenario.json    # this instance (seed-generated): DAG / roster / private info / GT
+ │   └── coord|interview  # (dynamic tasks) CLI exposing a RESTRICTED view of scenario state
+ ├── tests/
+ │   ├── test.sh          # runs verify.py, writes reward ∈ [0,1] to /logs/verifier/reward.txt
+-│   └── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
++│   ├── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
++│   └── lib/             # the dimension module (generate/ORACLE/verify/CHEATERS) --
++│                        # uploaded by Harbor only at verification time, after the
++│                        # agent phase; never present in environment/, never in the image
+ └── solution/
+     └── solve.sh         # oracle: solves via the PUBLIC interface → reward 1.0 (self-check)
+ ```
+ 
+ **Isolation invariant.** The dimension module (`generate`, `ORACLE`, `verify`,
+ `CHEATERS`) never enters the agent's image. Static dimensions ship it to
+ `tests/lib/`, which Harbor uploads only at verification time. Interactive
+ dimensions keep it in a sidecar. Identical grading between selfcheck and the
+ in-container verifier is achieved by shipping the *same file to a place the
+ agent cannot read* -- not by shipping it to the agent.
+diff --git a/forge/maf/core.py b/forge/maf/core.py
+index 71094cd..e7a0e79 100644
+--- a/forge/maf/core.py
++++ b/forge/maf/core.py
+@@ -1,13 +1,14 @@
+ """Core primitives shared by every dimension and by both runtimes.
+ 
+-This module is copied verbatim into each generated task's ``environment/lib`` so
++This module is copied verbatim into each generated task's ``tests/lib`` -- which
++Harbor uploads only at verification time, never into the agent's image -- so
+ that the in-container verifier and the in-process selfcheck grade identically.
+ It must stay standard-library-only.
+ """
+ 
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ import random
+ from dataclasses import dataclass, field
+diff --git a/forge/maf/harbor.py b/forge/maf/harbor.py
+index c1ff73c..ef85564 100644
+--- a/forge/maf/harbor.py
++++ b/forge/maf/harbor.py
+@@ -1,15 +1,18 @@
+ """Render a Dimension + instance into a runnable Harbor 0.18 task directory.
+ 
+-Single source of truth: the dimension's Python module is *copied* into the task
+-(with its one internal import rewritten), so the in-container verifier grades
+-with exactly the code the selfcheck battery validated.
++Single source of truth: the dimension's Python module is *copied* (with its one
++internal import rewritten) into ``tests/lib/``, which Harbor uploads only at
++verification time -- after the agent phase completes. The in-container
++verifier therefore grades with exactly the code the selfcheck battery
++validated, without ever shipping that code (``generate``/``ORACLE``/``verify``/
++``CHEATERS``) to a place the agent can read it.
+ """
+ 
+ from __future__ import annotations
+ 
+ import importlib
+ import json
+ import os
+ from pathlib import Path
+ 
+ from forge.maf.core import public
+@@ -21,24 +24,27 @@ _RUNTIME = Path(__file__).parent / "runtime"
+ _DOCKER_BASE = (
+     "FROM python:3.11-slim\n"
+     "RUN apt-get update && apt-get install -y --no-install-recommends "
+     "tmux git curl ca-certificates && rm -rf /var/lib/apt/lists/*\n"
+     "WORKDIR /app\n"
+ )
+ 
+ 
+ def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
+     task_dir = Path(out_dir) / f"{dim.NAME}-{task_id}"
+-    for sub in ("environment/lib", "tests", "solution"):
++    for sub in ("environment", "tests/lib", "solution"):
+         (task_dir / sub).mkdir(parents=True, exist_ok=True)
+ 
+-    _copy_runtime(dim, task_dir / "environment" / "lib")
++    # The dimension module holds generate()/ORACLE/verify()/CHEATERS. It ships to
++    # tests/, which Harbor uploads only at verification time -- never to the
++    # agent's image. See docs/DESIGN.md §5.
++    _copy_runtime(dim, task_dir / "tests" / "lib", include_cli=dim.INTERACTIVE)
+     (task_dir / "task.toml").write_text(_task_toml(dim, task_id))
+     (task_dir / "instruction.md").write_text(_instruction(dim, instance))
+     (task_dir / "tests" / "verify.py").write_text(
+         (_RUNTIME / "verify_entry.py").read_text()
+     )
+     (task_dir / "tests" / "test.sh").write_text(_TEST_SH)
+ 
+     pub = public(instance)
+     gt = {k: v for k, v in instance.items() if k.startswith("_")}
+ 
+@@ -53,21 +59,21 @@ def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
+     return task_dir
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Static dimensions (single-shot artifact, e.g. scheduling)
+ # --------------------------------------------------------------------------- #
+ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
+     (task_dir / "environment" / "task.json").write_text(json.dumps(pub, indent=2))
+     (task_dir / "tests" / "ground_truth.json").write_text(json.dumps(gt))
+     (task_dir / "environment" / "Dockerfile").write_text(
+-        _DOCKER_BASE + "COPY task.json /app/task.json\nCOPY lib /app/lib\n"
++        _DOCKER_BASE + "COPY task.json /app/task.json\n"
+     )
+     planted = json.dumps(dim.run_policy(instance, dim.ORACLE))
+     (task_dir / "solution" / "solve.sh").write_text(
+         "#!/bin/bash\nset -e\n"
+         f"cat > /app/{dim.SUBMISSION_FILE} <<'MAF_EOF'\n{planted}\nMAF_EOF\n"
+     )
+     return {
+         "interactive": False,
+         "scenario_path": "/app/task.json",
+         "ground_truth_path": "/tests/ground_truth.json",
+@@ -111,29 +117,30 @@ def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:
+         "interactive": True,
+         "scenario_path": "/opt/maf/scenario.json",
+         "ground_truth_path": None,
+         "submission_path": "/app/transcript.jsonl",
+     }
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Helpers
+ # --------------------------------------------------------------------------- #
+-def _copy_runtime(dim, lib_dir: Path):
++def _copy_runtime(dim, lib_dir: Path, include_cli: bool = False):
+     import forge.maf.core as core_mod
+ 
++    lib_dir.mkdir(parents=True, exist_ok=True)
+     lib_dir.joinpath("maf_core.py").write_text(Path(core_mod.__file__).read_text())
+     mod = importlib.import_module(type(dim).__module__)
+     src = Path(mod.__file__).read_text()
+     src = src.replace("from forge.maf.core import", "from maf_core import")
+     lib_dir.joinpath("maf_dim.py").write_text(src)
+-    if getattr(dim, "INTERACTIVE", False):
++    if include_cli:
+         lib_dir.joinpath("cli.py").write_text((_RUNTIME / "cli.py").read_text())
+ 
+ 
+ def _instruction(dim, instance) -> str:
+     return (
+         f"# {dim.NAME}\n\n{dim.GOAL}\n\n"
+         f"{dim.render_instruction(instance)}\n\n"
+         f"## Output contract\n\n{dim.OUTPUT_CONTRACT}\n"
+     )
+ 
+diff --git a/forge/maf/runtime/verify_entry.py b/forge/maf/runtime/verify_entry.py
+index f8dfd57..a155df9 100644
+--- a/forge/maf/runtime/verify_entry.py
++++ b/forge/maf/runtime/verify_entry.py
+@@ -24,21 +24,21 @@ def _load_submission(cfg):
+                 if line:
+                     out.append(json.loads(line))
+         return out
+     with open(path) as fh:
+         return json.load(fh)
+ 
+ 
+ def _grade():
+     here = os.path.dirname(os.path.abspath(__file__))
+     cfg = json.load(open(os.path.join(here, "verify_config.json")))
+-    sys.path.insert(0, "/app/lib")
++    sys.path.insert(0, "/tests/lib")
+     import maf_dim  # noqa: E402
+ 
+     instance = json.load(open(cfg["scenario_path"]))
+     gt = cfg.get("ground_truth_path")
+     if gt and os.path.exists(gt):
+         instance.update(json.load(open(gt)))
+ 
+     submission = _load_submission(cfg)
+     return maf_dim.verify(instance, submission)
+ 
+diff --git a/forge/tests/test_harbor.py b/forge/tests/test_harbor.py
+index 6010911..28d05e8 100644
+--- a/forge/tests/test_harbor.py
++++ b/forge/tests/test_harbor.py
+@@ -1,46 +1,50 @@
+ import json
+ import tomllib
+ 
+ from forge.maf.dimensions.scheduling import DIM
+ from forge.maf.harbor import write_task
++from forge.maf.leak_audit import audit
+ 
+ 
+ def test_write_task_produces_valid_tree(tmp_path):
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+     assert (d / "task.toml").exists()
+     tomllib.loads((d / "task.toml").read_text())  # parses
+     assert (d / "instruction.md").read_text().strip()
+     assert (d / "environment" / "task.json").exists()
+     assert (d / "environment" / "Dockerfile").exists()
+-    assert (d / "environment" / "lib" / "maf_core.py").exists()
+-    assert (d / "environment" / "lib" / "maf_dim.py").exists()
++    assert (d / "tests" / "lib" / "maf_core.py").exists()
++    assert (d / "tests" / "lib" / "maf_dim.py").exists()
+     assert (d / "solution" / "solve.sh").exists()
+     assert (d / "tests" / "verify.py").exists()
+     assert (d / "tests" / "ground_truth.json").exists()
+ 
+ 
+-def test_public_files_hide_ground_truth(tmp_path):
++def test_agent_image_hides_ground_truth_and_grader(tmp_path):
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+-    instruction = (d / "instruction.md").read_text()
+-    task_json = (d / "environment" / "task.json").read_text()
+-    for leak in ("_planted", "_opt_makespan"):
+-        assert leak not in instruction
+-        assert leak not in task_json
++    assert audit(d) == []
++
++
++def test_dimension_module_ships_to_tests_not_environment(tmp_path):
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    d = write_task(DIM, inst, tmp_path, "0001")
++    assert (d / "tests" / "lib" / "maf_dim.py").exists()
++    assert not (d / "environment" / "lib").exists()
+ 
+ 
+ def test_copied_module_has_no_package_imports(tmp_path):
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+-    src = (d / "environment" / "lib" / "maf_dim.py").read_text()
++    src = (d / "tests" / "lib" / "maf_dim.py").read_text()
+     assert "from forge.maf.core" not in src
+     assert "from maf_core import" in src
+ 
+ 
+ def test_embedded_oracle_solution_verifies(tmp_path):
+     # The planted schedule embedded in solve.sh must score 1.0 through verify().
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+     solve = (d / "solution" / "solve.sh").read_text()
+     start = solve.index("[")
+diff --git a/forge/tests/test_leak_audit.py b/forge/tests/test_leak_audit.py
+index 14e8dca..11de66e 100644
+--- a/forge/tests/test_leak_audit.py
++++ b/forge/tests/test_leak_audit.py
+@@ -1,12 +1,10 @@
+-import pytest
+-
+ from forge.maf.dimensions.scheduling import DIM as SCHED
+ from forge.maf.harbor import write_task
+ from forge.maf.leak_audit import audit, image_files, unparsed_copies
+ 
+ 
+ def _task_with_dockerfile(tmp_path, dockerfile_body, files=None):
+     """Build a minimal task_dir (environment/Dockerfile + optional source files)
+     without going through write_task, so COPY-parsing edge cases can be tested
+     in isolation from the real dimension templates."""
+     task_dir = tmp_path / "task"
+@@ -20,28 +18,41 @@ def _task_with_dockerfile(tmp_path, dockerfile_body, files=None):
+     return task_dir
+ 
+ 
+ def test_image_files_follows_dockerfile_copy(tmp_path):
+     inst = SCHED.generate(3, {"n": 6, "k": 2, "trap": True})
+     d = write_task(SCHED, inst, tmp_path, "0001")
+     names = {p.name for p in image_files(d)}
+     # task.json is COPYed in; the Dockerfile itself is build context, not image.
+     assert "task.json" in names
+     assert "Dockerfile" not in names
+-    # COPY lib /app/lib pulls the whole lib dir in via directory expansion --
+-    # that's the exact leak this audit exists to catch. Pin it independently of
+-    # the xfail'd leak test below, so directory expansion stays covered even
+-    # while the leak itself remains open.
++    # Task 3 relocated the dimension module to tests/lib/, which Harbor
++    # uploads only at verification time. The real task's Dockerfile no
++    # longer COPYs a directory into the agent image at all.
++    assert "maf_dim.py" not in names
++
++
++def test_image_files_expands_directory_copy(tmp_path):
++    # Directory-expansion coverage, now synthetic since the real task's
++    # Dockerfile no longer COPYs a directory into the agent image (see
++    # test_image_files_follows_dockerfile_copy above). Pinned independently
++    # of test_scheduling_task_does_not_leak so this parser capability stays
++    # covered on its own merits.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
++        {"lib/maf_dim.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
++    )
++    names = {p.name for p in image_files(d)}
+     assert "maf_dim.py" in names
+ 
+ 
+-@pytest.mark.xfail(reason="leak open until Task 3 relocates the dimension module", strict=True)
+ def test_scheduling_task_does_not_leak(tmp_path):
+     inst = SCHED.generate(3, {"n": 6, "k": 2, "trap": True})
+     d = write_task(SCHED, inst, tmp_path, "0001")
+     assert audit(d) == []
+ 
+ 
+ def test_image_files_handles_chown_flag(tmp_path):
+     d = _task_with_dockerfile(
+         tmp_path,
+         "FROM python:3.11-slim\nCOPY --chown=1000:1000 task.json /app/task.json\n",

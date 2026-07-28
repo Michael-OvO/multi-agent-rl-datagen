@@ -1,0 +1,260 @@
+# Review package: bf86ce3542ab..HEAD
+
+## Commits
+b3e9833 feat(g2): require every dimension to name its dictation cheater
+
+## Files changed
+ forge/maf/dimensions/scheduling.py   |  6 ++++++
+ forge/maf/selfcheck.py               | 13 +++++++++++-
+ forge/tests/test_failure_recovery.py | 11 ++++++++++
+ forge/tests/test_selfcheck.py        | 41 ++++++++++++++++++++++++++++++++++++
+ forge/tests/test_theory_of_mind.py   | 11 ++++++++++
+ 5 files changed, 81 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/forge/maf/dimensions/scheduling.py b/forge/maf/dimensions/scheduling.py
+index 171334d..97d241c 100644
+--- a/forge/maf/dimensions/scheduling.py
++++ b/forge/maf/dimensions/scheduling.py
+@@ -151,20 +151,25 @@ def _greedy_earliest(instance: dict) -> list[dict]:
+         schedule.append({"subtask": tid, "worker": w, "start": start})
+         free[w] = end
+         finish[tid] = end
+         remaining.discard(tid)
+     return schedule
+ 
+ 
+ ORACLE = _oracle
+ CHEATERS = {"serial": _serial, "greedy_earliest": _greedy_earliest}
+ 
++# V4: what does mechanically obeying our instruction produce? The instruction
++# states constraints (dependency order, skill match) and no procedure, so
++# obeying it literally *is* _serial -- valid, unoptimised, and 0.5 at best.
++DICTATION_CHEATER = "serial"
++
+ 
+ def run_policy(instance: dict, policy) -> list[dict]:
+     return policy(instance)
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Verifier
+ # --------------------------------------------------------------------------- #
+ def verify(instance: dict, submission) -> RewardBreakdown:
+     subs = instance["subtasks"]
+@@ -317,20 +322,21 @@ OUTPUT_CONTRACT = (
+ 
+ class _Scheduling:
+     NAME = NAME
+     SUBMISSION_FILE = SUBMISSION_FILE
+     INTERACTIVE = INTERACTIVE
+     DIFFICULTY_PRESETS = DIFFICULTY_PRESETS
+     GOAL = GOAL
+     OUTPUT_CONTRACT = OUTPUT_CONTRACT
+     ORACLE = staticmethod(ORACLE)
+     CHEATERS = CHEATERS
++    DICTATION_CHEATER = DICTATION_CHEATER
+     generate = staticmethod(generate)
+     run_policy = staticmethod(run_policy)
+     verify = staticmethod(verify)
+     ablate = staticmethod(ablate)
+     render_instruction = staticmethod(render_instruction)
+     unique_ground_truth = staticmethod(unique_ground_truth)
+ 
+     def make_env(self, instance):  # static dimension has no interactive env
+         raise NotImplementedError("scheduling is single-shot; no Env")
+ 
+diff --git a/forge/maf/selfcheck.py b/forge/maf/selfcheck.py
+index ed35e8d..ac04a85 100644
+--- a/forge/maf/selfcheck.py
++++ b/forge/maf/selfcheck.py
+@@ -1,15 +1,16 @@
+ """The CLEAN/VALID gate battery (DESIGN.md §4.3).
+ 
+ Run in-process at generation time — no Docker, no LLM tokens. An instance ships
+ only if every check passes. CLEAN = the reward has no noise; VALID = the reward
+-gap is caused by the target skill.
++gap is caused by the target skill, and not by the instruction handing the agent
++its own optimal algorithm (V4).
+ """
+ 
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
+ 
+ from forge.maf.core import transcript_hash
+ 
+ # Malformed submissions used to fuzz the verifier for C4.
+ _GARBAGE = [None, [], "garbage", 42, [{"subtask": "nope"}], {"x": 1}, [{}]]
+@@ -68,11 +69,21 @@ def selfcheck(dim, instance, tau: float = 0.6, delta: float = 0.4,
+     checks["V2_discrimination"] = (r_oracle.reward - max_cheat) > delta
+ 
+     twin = dim.ablate(instance)
+     twin_rewards = [
+         dim.verify(twin, dim.run_policy(twin, pol)).reward
+         for pol in dim.CHEATERS.values()
+     ]
+     detail["twin_rewards"] = twin_rewards
+     checks["V3_ablation"] = any(r >= 1.0 - eps for r in twin_rewards)
+ 
++    # V4: the dimension must name which cheater is the best policy achievable by
++    # mechanically executing its instruction text. V1 then requires that cheater
++    # to score below tau. A dimension whose instruction states its own optimal
++    # algorithm measures instruction-following, not the target skill --
++    # theory-of-mind scored asks == q_opt on 12/12 sweep runs for exactly that
++    # reason, and no cheater in its panel tested for it.
++    dictation = getattr(dim, "DICTATION_CHEATER", None)
++    checks["V4_dictation_declared"] = dictation in dim.CHEATERS
++    detail["dictation_cheater"] = dictation
++
+     return SelfcheckReport(ok=all(checks.values()), checks=checks, detail=detail)
+diff --git a/forge/tests/test_failure_recovery.py b/forge/tests/test_failure_recovery.py
+index 0d73771..94c7d8b 100644
+--- a/forge/tests/test_failure_recovery.py
++++ b/forge/tests/test_failure_recovery.py
+@@ -1,10 +1,12 @@
++import pytest
++
+ from forge.maf.dimensions.failure_recovery import DIM
+ from forge.maf.selfcheck import selfcheck
+ 
+ MED = {"n": 5, "workers": 3, "fail_rate": 0.35}
+ 
+ 
+ def test_oracle_completes_and_scores_one():
+     for s in range(20):
+         inst = DIM.generate(s, MED)
+         r = DIM.verify(inst, DIM.run_policy(inst, DIM.ORACLE))
+@@ -16,20 +18,29 @@ def test_static_plan_fails_when_failures_present():
+     r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["static_plan"]))
+     assert r.reward < 0.6
+ 
+ 
+ def test_brute_force_exhausts_budget():
+     inst = DIM.generate(0, {"n": 5, "workers": 3, "fail_rate": 0.4})
+     r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["brute_force"]))
+     assert r.reward < 0.6
+ 
+ 
++@pytest.mark.xfail(
++    reason="V4 (selfcheck.py) requires DICTATION_CHEATER: failure-recovery's "
++    "instruction describes the canonical recovery strategy itself (topological "
++    "order, try rostered workers in sorted order, move on after a failure), "
++    "and mechanically following it literally reaches the optimum -- so no "
++    "cheater in CHEATERS can play the dictation role. This dimension is "
++    "degenerate and is quarantined by Task 6, not fixed here.",
++    strict=True,
++)
+ def test_selfcheck_passes():
+     inst = DIM.generate(1, MED)
+     rep = selfcheck(DIM, inst)
+     assert rep.ok, rep.checks
+ 
+ 
+ def test_ablation_static_plan_wins():
+     inst = DIM.generate(1, MED)
+     twin = DIM.ablate(inst)
+     r = DIM.verify(twin, DIM.run_policy(twin, DIM.CHEATERS["static_plan"]))
+diff --git a/forge/tests/test_selfcheck.py b/forge/tests/test_selfcheck.py
+index 0fa5964..5f5b2aa 100644
+--- a/forge/tests/test_selfcheck.py
++++ b/forge/tests/test_selfcheck.py
+@@ -22,10 +22,51 @@ def test_trivial_instance_fails_validity():
+ def test_c4_robust_to_garbage():
+     inst = DIM.generate(1, {"n": 4, "k": 2, "trap": True})
+     rep = selfcheck(DIM, inst)
+     assert rep.checks["C4_verifier_robust"] is True
+ 
+ 
+ def test_report_exposes_cheater_rewards():
+     inst = DIM.generate(3, {"n": 7, "k": 3, "trap": True})
+     rep = selfcheck(DIM, inst)
+     assert set(rep.detail["cheater_rewards"]) == set(DIM.CHEATERS)
++
++
++class _Undeclared:
++    """A dimension that never says what obeying its instruction produces."""
++    NAME = DIM.NAME
++    CHEATERS = DIM.CHEATERS
++    ORACLE = staticmethod(DIM.ORACLE)
++    generate = staticmethod(DIM.generate)
++    run_policy = staticmethod(DIM.run_policy)
++    verify = staticmethod(DIM.verify)
++    ablate = staticmethod(DIM.ablate)
++    # DICTATION_CHEATER deliberately absent.
++
++
++class _MisDeclared(_Undeclared):
++    """A dimension that names a cheater it does not have."""
++    DICTATION_CHEATER = "no_such_policy"
++
++
++def test_dimension_that_does_not_declare_dictation_is_rejected():
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    rep = selfcheck(_Undeclared(), inst)
++    assert rep.checks["V4_dictation_declared"] is False
++    assert rep.ok is False
++
++
++def test_dimension_that_names_a_missing_cheater_is_rejected():
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    rep = selfcheck(_MisDeclared(), inst)
++    assert rep.checks["V4_dictation_declared"] is False
++    assert rep.ok is False
++
++
++def test_scheduling_declares_dictation_and_it_loses():
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    rep = selfcheck(DIM, inst)
++    assert rep.checks["V4_dictation_declared"] is True
++    # V1 already requires this, but pin it explicitly: obeying the instruction
++    # must not be enough to win.
++    assert rep.detail["cheater_rewards"][DIM.DICTATION_CHEATER] < 0.6
++    assert rep.ok is True
+diff --git a/forge/tests/test_theory_of_mind.py b/forge/tests/test_theory_of_mind.py
+index 05b3f85..75133ba 100644
+--- a/forge/tests/test_theory_of_mind.py
++++ b/forge/tests/test_theory_of_mind.py
+@@ -1,10 +1,12 @@
++import pytest
++
+ from forge.maf.dimensions.theory_of_mind import DIM
+ from forge.maf.selfcheck import selfcheck
+ 
+ MED = {"suspects": 5, "referral_depth": 2}
+ 
+ 
+ def test_unique_solution():
+     for s in range(20):
+         inst = DIM.generate(s, MED)
+         assert DIM.unique_ground_truth(inst)
+@@ -23,20 +25,29 @@ def test_info_dump_cannot_win_under_budget():
+         r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["info_dump"]))
+         assert r.reward < 0.6, (s, r.reward)
+ 
+ 
+ def test_no_referral_fails():
+     inst = DIM.generate(0, MED)
+     r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["no_referral"]))
+     assert r.gate == 0
+ 
+ 
++@pytest.mark.xfail(
++    reason="V4 (selfcheck.py) requires DICTATION_CHEATER: theory-of-mind's "
++    "instruction names each topic's entry witness and says to follow referrals, "
++    "and doing exactly that costs q_opt -- the instruction states its own "
++    "optimal algorithm, so no cheater in CHEATERS can play the dictation role. "
++    "Both gpt-5.6 and gpt-4.1 scored asks == q_opt on 12/12 sweep runs. This "
++    "dimension is degenerate and is quarantined by Task 6, not fixed here.",
++    strict=True,
++)
+ def test_selfcheck_passes():
+     for s in range(5):
+         inst = DIM.generate(s, MED)
+         assert selfcheck(DIM, inst).ok, selfcheck(DIM, inst).checks
+ 
+ 
+ def test_ablation_direct_read_wins():
+     inst = DIM.generate(2, MED)
+     twin = DIM.ablate(inst)
+     r = DIM.verify(twin, DIM.run_policy(twin, DIM.CHEATERS["no_referral"]))

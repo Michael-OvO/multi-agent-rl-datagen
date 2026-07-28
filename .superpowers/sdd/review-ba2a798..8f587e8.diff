@@ -1,0 +1,267 @@
+# Review package: ba2a7983d57f..HEAD
+
+## Commits
+8f587e8 chore(tasks): regenerate scheduling task without the leak
+
+## Files changed
+ docs/RESULTS.md                                    | 28 +++++++++++++++++++++-
+ scripts/dryrun_local.py                            |  9 +++++--
+ scripts/verify_all.sh                              |  7 +++++-
+ .../environment/Dockerfile                         |  1 -
+ .../{environment => tests}/lib/maf_core.py         |  3 ++-
+ .../{environment => tests}/lib/maf_dim.py          |  6 +++++
+ tasks/parallel-scheduling-0003/tests/verify.py     |  2 +-
+ 7 files changed, 49 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/docs/RESULTS.md b/docs/RESULTS.md
+index 221dd1d..bf60302 100644
+--- a/docs/RESULTS.md
++++ b/docs/RESULTS.md
+@@ -1,31 +1,57 @@
+ # Verification Results
+ 
++> **2026-07-14 — `theory-of-mind` and `failure-recovery` are quarantined.**
++> `forge/forge_cli.py:QUARANTINED` now refuses to render either dimension: their
++> CLI reads the ground-truth scenario at runtime *inside the agent container*,
++> so (unlike `parallel-scheduling`) relocating the dimension module to
++> `tests/lib` cannot remove it from the agent's image. Fixing this needs the
++> Plan 2 sidecar; see `docs/superpowers/plans/2026-07-14-isolation-and-gates.md`.
++>
++> Separately, both constructs turned out to be degenerate as reward signals.
++> `theory-of-mind`'s instruction states its own optimal algorithm, so both
++> models tested scored `asks == q_opt` (reward 1.0) on 12/12 sweep runs — the
++> task measures instruction-following, not theory-of-mind skill.
++> `failure-recovery`'s worker roster is dispatched in pre-sorted order (see
++> `forge/maf/dimensions/failure_recovery.py`), which similarly collapses the
++> intended skill signal.
++>
++> The rows and figures below for these two dimensions **are not fabricated** —
++> they are real measurements from real Harbor runs at the time this file was
++> written. But given the above, they must **not** be read as evidence of model
++> capability at theory-of-mind or failure-recovery: a reward of 1.0 here
++> reflects a degenerate construct, not the skill the task nominally targets.
++> They are kept for historical record, not as a capability claim.
++> `parallel-scheduling` is unaffected by either issue and is the only
++> dimension `forge_cli` currently renders.
++
+ All three sample tasks were verified end-to-end. Two things are demonstrated:
+ 
+ 1. **The tasks run in real Harbor/Docker and the oracle scores 1.0** (correctness
+    of environment + verifier + reference solution).
+ 2. **The reward discriminates skill** — a spread from 0.0 (shortcut baselines) to
+    1.0 (optimal play), which is the signal RL trains on.
+ 
+ ## 1. Harbor oracle verification (real Docker)
+ 
+ Command: `harbor run --path <task> --agent oracle -n 1` (Harbor 0.18, Docker 28.4).
+ 
+ | Task | Trials | Exceptions | Reward | Runtime |
+ |---|---|---|---|---|
+ | `parallel-scheduling-0003` | 1 | 0 | **1.000** | 31s |
+ | `failure-recovery-0001` | 1 | 0 | **1.000** | 17s |
+ | `theory-of-mind-0002` | 1 | 0 | **1.000** | 17s |
+ 
+ Reproduce: `bash scripts/verify_all.sh` (needs Docker). Logic-only (no Docker):
+-`python3 scripts/dryrun_local.py`.
++`python3 scripts/dryrun_local.py`. As of the 2026-07-14 quarantine note above,
++both scripts only exercise `parallel-scheduling` — `failure-recovery` and
++`theory-of-mind` no longer have task dirs to reproduce against.
+ 
+ ## 2. Reward spread — the RL signal
+ 
+ The **CLEAN/VALID** gate guarantees `oracle − max(cheater) > 0.4`. Measured on the
+ shipped sample instances:
+ 
+ | Task | Oracle | Shortcut (cheater) rewards |
+ |---|---|---|
+ | `parallel-scheduling` | **1.00** | serial 0.42 · greedy-earliest 0.50 |
+ | `failure-recovery` | **1.00** | static-plan 0.00 · retry-same 0.00 · brute-force 0.00 |
+diff --git a/scripts/dryrun_local.py b/scripts/dryrun_local.py
+index 10fbde2..dcc599c 100644
+--- a/scripts/dryrun_local.py
++++ b/scripts/dryrun_local.py
+@@ -1,16 +1,21 @@
+ """Faithful local dry-run of the shipped tasks' oracle -> verify flow.
+ 
+ Executes exactly what the container would (oracle produces a submission, the
+ copied dimension module verifies it), but with local paths and importing ONLY
+-each task's ``environment/lib`` — no access to the ``forge`` package. Proves the
++each task's ``tests/lib`` — no access to the ``forge`` package. Proves the
+ shipped artifacts are self-contained and score the oracle at 1.0, without Docker.
++
++``tests/lib`` (not ``environment/lib``) is what the verifier actually imports:
++the dimension module ships to ``tests/``, which Harbor uploads only at
++verification time -- see ``forge/maf/harbor.py`` and
++``forge/maf/runtime/verify_entry.py``.
+ """
+ 
+ import importlib.util
+ import json
+ import re
+ import sys
+ from pathlib import Path
+ 
+ 
+ def _import_maf_dim(lib_dir: Path):
+@@ -42,21 +47,21 @@ def _full_instance(task: Path, cfg: dict) -> dict:
+ 
+ 
+ def main():
+     tasks = sorted(p for p in Path("tasks").iterdir() if p.is_dir())
+     ok = True
+     for task in tasks:
+         for name in list(sys.modules):
+             if name in ("maf_core", "maf_dim"):
+                 del sys.modules[name]
+         cfg = json.load(open(task / "tests" / "verify_config.json"))
+-        maf_dim = _import_maf_dim(task / "environment" / "lib")
++        maf_dim = _import_maf_dim(task / "tests" / "lib")
+         submission = _oracle_submission(task, cfg, maf_dim)
+         rb = maf_dim.verify(_full_instance(task, cfg), submission)
+         status = "OK " if rb.reward == 1.0 else "FAIL"
+         if rb.reward != 1.0:
+             ok = False
+         print(f"[{status}] {task.name:28s} oracle reward = {rb.reward} ({rb.subscores})")
+     print("\nALL PASS" if ok else "\nFAILURES PRESENT")
+     sys.exit(0 if ok else 1)
+ 
+ 
+diff --git a/scripts/verify_all.sh b/scripts/verify_all.sh
+index 59a8188..0c4cc53 100755
+--- a/scripts/verify_all.sh
++++ b/scripts/verify_all.sh
+@@ -1,12 +1,17 @@
+ #!/usr/bin/env bash
+ # Verify every generated sample task with Harbor's oracle agent (needs Docker).
+ # Each task must report reward 1.0.
++#
++# failure-recovery and theory-of-mind are quarantined (see
++# forge/forge_cli.py:QUARANTINED) pending the Plan 2 sidecar -- their task
++# dirs were deleted and forge_cli refuses to regenerate them, so only
++# parallel-scheduling is globbed here.
+ set -euo pipefail
+ export PATH="$HOME/.local/bin:$PATH"
+ 
+-tasks=(tasks/parallel-scheduling-* tasks/failure-recovery-* tasks/theory-of-mind-*)
++tasks=(tasks/parallel-scheduling-*)
+ for t in "${tasks[@]}"; do
+   echo "==================== oracle: $t ===================="
+   harbor run --path "$t" --agent oracle -n 1
+ done
+ echo "All oracle runs complete. Inspect rewards above (expect 1.0 each)."
+diff --git a/tasks/parallel-scheduling-0003/environment/Dockerfile b/tasks/parallel-scheduling-0003/environment/Dockerfile
+index b7d4e7a..e0b24b7 100644
+--- a/tasks/parallel-scheduling-0003/environment/Dockerfile
++++ b/tasks/parallel-scheduling-0003/environment/Dockerfile
+@@ -1,5 +1,4 @@
+ FROM python:3.11-slim
+ RUN apt-get update && apt-get install -y --no-install-recommends tmux git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+ WORKDIR /app
+ COPY task.json /app/task.json
+-COPY lib /app/lib
+diff --git a/tasks/parallel-scheduling-0003/environment/lib/maf_core.py b/tasks/parallel-scheduling-0003/tests/lib/maf_core.py
+similarity index 95%
+rename from tasks/parallel-scheduling-0003/environment/lib/maf_core.py
+rename to tasks/parallel-scheduling-0003/tests/lib/maf_core.py
+index 71094cd..e7a0e79 100644
+--- a/tasks/parallel-scheduling-0003/environment/lib/maf_core.py
++++ b/tasks/parallel-scheduling-0003/tests/lib/maf_core.py
+@@ -1,13 +1,14 @@
+ """Core primitives shared by every dimension and by both runtimes.
+ 
+-This module is copied verbatim into each generated task's ``environment/lib`` so
++This module is copied verbatim into each generated task's ``tests/lib`` -- which
++Harbor uploads only at verification time, never into the agent's image -- so
+ that the in-container verifier and the in-process selfcheck grade identically.
+ It must stay standard-library-only.
+ """
+ 
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ import random
+ from dataclasses import dataclass, field
+diff --git a/tasks/parallel-scheduling-0003/environment/lib/maf_dim.py b/tasks/parallel-scheduling-0003/tests/lib/maf_dim.py
+similarity index 97%
+rename from tasks/parallel-scheduling-0003/environment/lib/maf_dim.py
+rename to tasks/parallel-scheduling-0003/tests/lib/maf_dim.py
+index 830572f..47d1175 100644
+--- a/tasks/parallel-scheduling-0003/environment/lib/maf_dim.py
++++ b/tasks/parallel-scheduling-0003/tests/lib/maf_dim.py
+@@ -151,20 +151,25 @@ def _greedy_earliest(instance: dict) -> list[dict]:
+         schedule.append({"subtask": tid, "worker": w, "start": start})
+         free[w] = end
+         finish[tid] = end
+         remaining.discard(tid)
+     return schedule
+ 
+ 
+ ORACLE = _oracle
+ CHEATERS = {"serial": _serial, "greedy_earliest": _greedy_earliest}
+ 
++# V4: what does mechanically obeying our instruction produce? The instruction
++# states constraints (dependency order, skill match) and no procedure, so
++# obeying it literally *is* _serial -- valid, unoptimised, and 0.5 at best.
++DICTATION_CHEATER = "serial"
++
+ 
+ def run_policy(instance: dict, policy) -> list[dict]:
+     return policy(instance)
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Verifier
+ # --------------------------------------------------------------------------- #
+ def verify(instance: dict, submission) -> RewardBreakdown:
+     subs = instance["subtasks"]
+@@ -317,20 +322,21 @@ OUTPUT_CONTRACT = (
+ 
+ class _Scheduling:
+     NAME = NAME
+     SUBMISSION_FILE = SUBMISSION_FILE
+     INTERACTIVE = INTERACTIVE
+     DIFFICULTY_PRESETS = DIFFICULTY_PRESETS
+     GOAL = GOAL
+     OUTPUT_CONTRACT = OUTPUT_CONTRACT
+     ORACLE = staticmethod(ORACLE)
+     CHEATERS = CHEATERS
++    DICTATION_CHEATER = DICTATION_CHEATER
+     generate = staticmethod(generate)
+     run_policy = staticmethod(run_policy)
+     verify = staticmethod(verify)
+     ablate = staticmethod(ablate)
+     render_instruction = staticmethod(render_instruction)
+     unique_ground_truth = staticmethod(unique_ground_truth)
+ 
+     def make_env(self, instance):  # static dimension has no interactive env
+         raise NotImplementedError("scheduling is single-shot; no Env")
+ 
+diff --git a/tasks/parallel-scheduling-0003/tests/verify.py b/tasks/parallel-scheduling-0003/tests/verify.py
+index f8dfd57..a155df9 100644
+--- a/tasks/parallel-scheduling-0003/tests/verify.py
++++ b/tasks/parallel-scheduling-0003/tests/verify.py
+@@ -24,21 +24,21 @@ def _load_submission(cfg):
+                 if line:
+                     out.append(json.loads(line))
+         return out
+     with open(path) as fh:
+         return json.load(fh)
+ 
+ 
+ def _grade():
+     here = os.path.dirname(os.path.abspath(__file__))
+     cfg = json.load(open(os.path.join(here, "verify_config.json")))
+-    sys.path.insert(0, "/app/lib")
++    sys.path.insert(0, "/tests/lib")
+     import maf_dim  # noqa: E402
+ 
+     instance = json.load(open(cfg["scenario_path"]))
+     gt = cfg.get("ground_truth_path")
+     if gt and os.path.exists(gt):
+         instance.update(json.load(open(gt)))
+ 
+     submission = _load_submission(cfg)
+     return maf_dim.verify(instance, submission)
+ 

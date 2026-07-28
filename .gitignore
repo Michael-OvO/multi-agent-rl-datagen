@@ -15,8 +15,12 @@ __pycache__/
 .env.*
 !.env.example
 
-# Harbor local job output
-jobs/
+# Harbor local job output. The bundles are ignored; `jobs/` itself is NOT, for
+# the same reason `sweep/_seed_*.json` is not -- see below. Those runs are paid
+# LLM rollouts against the shipped tasks. They cost real money, they cannot be
+# reproduced, and they are the only record of what a `harbor run` actually did.
+# The tarballs they arrived in are regenerable from the logs; the logs are not
+# regenerable from anything.
 *.tar.gz
 
 # Render/build intermediates. output/ is NOT ignored: output/pdf holds the
@@ -40,7 +44,10 @@ sweep/runs/
 
 # AppWorld dataset (183M, re-fetch with: appworld download data)
 appworld_data/
-experiments/
+
+# `experiments/` used to be ignored on this line, sharing the AppWorld dataset's
+# comment as though it were more re-fetchable bulk. It is not: it holds the probe
+# outputs those measurements were read off, and nothing re-fetches it.
 
 # Gaia2 mini split (162M parquet + unpacked scenarios; re-fetch with:
 # uv run --with pandas --with pyarrow python -m scripts.gaia2_fetch)

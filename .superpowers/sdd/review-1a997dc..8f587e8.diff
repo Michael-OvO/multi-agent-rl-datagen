@@ -1,0 +1,3674 @@
+# Review package: 1a997dc6b661277a39f3c8b75cc6925eafc2df84..HEAD
+
+## Commits
+8f587e8 chore(tasks): regenerate scheduling task without the leak
+ba2a798 fix(maf): G1 leak_audit fails closed on compiled bytecode instead of skipping it
+b568f42 feat: quarantine the interactive dimensions until the sidecar lands
+1e1204d test: derive the partial-schedule fixture from the instance
+0d1fc18 test: pin the four executed exploits at reward 0
+b3e9833 feat(g2): require every dimension to name its dictation cheater
+bf86ce3 fix(isolation): ship the dimension module to tests/, not the agent image
+337e221 docs(g1): stop audit() promising an unconditional clean-image guarantee
+910e471 fix(g1): stop comments from eating continuations; fail closed on ADD archives
+0119e3d fix(g1): join continuations, clamp .. traversal, recognize ADD in leak audit
+1fac2bd fix(g1): fail closed on unparseable Dockerfile COPY directives
+c9f653f test(g1): leak audit reproduces the seed-brute-force exploit
+e8db524 docs: retract unimplemented claims; replace copy-into-task invariant
+
+## Files changed
+ README.md                                          |   8 +-
+ docs/DESIGN.md                                     | 102 +++---
+ docs/RESULTS.md                                    |  28 +-
+ forge/forge_cli.py                                 |  20 ++
+ forge/maf/core.py                                  |   3 +-
+ forge/maf/dimensions/scheduling.py                 |   6 +
+ forge/maf/harbor.py                                |  23 +-
+ forge/maf/leak_audit.py                            | 318 +++++++++++++++++++
+ forge/maf/runtime/verify_entry.py                  |   2 +-
+ forge/maf/selfcheck.py                             |  13 +-
+ forge/tests/test_adversarial.py                    |  85 +++++
+ forge/tests/test_docs_honesty.py                   |  41 +++
+ forge/tests/test_failure_recovery.py               |  11 +
+ forge/tests/test_forge_cli.py                      |  18 ++
+ forge/tests/test_harbor.py                         |  22 +-
+ forge/tests/test_leak_audit.py                     | 341 +++++++++++++++++++++
+ forge/tests/test_selfcheck.py                      |  41 +++
+ forge/tests/test_theory_of_mind.py                 |  11 +
+ scripts/dryrun_local.py                            |   9 +-
+ scripts/verify_all.sh                              |   7 +-
+ tasks/failure-recovery-0001/environment/Dockerfile |   8 -
+ tasks/failure-recovery-0001/environment/coord      |   2 -
+ tasks/failure-recovery-0001/environment/lib/cli.py |  36 ---
+ .../environment/lib/maf_core.py                    |  99 ------
+ .../environment/lib/maf_dim.py                     | 333 --------------------
+ .../environment/scenario.json                      |  54 ----
+ tasks/failure-recovery-0001/instruction.md         |  28 --
+ tasks/failure-recovery-0001/solution/solve.sh      |  12 -
+ tasks/failure-recovery-0001/task.toml              |  33 --
+ tasks/failure-recovery-0001/tests/test.sh          |   3 -
+ tasks/failure-recovery-0001/tests/verify.py        |  62 ----
+ .../failure-recovery-0001/tests/verify_config.json |   6 -
+ .../environment/Dockerfile                         |   1 -
+ .../{environment => tests}/lib/maf_core.py         |   3 +-
+ .../{environment => tests}/lib/maf_dim.py          |   6 +
+ tasks/parallel-scheduling-0003/tests/verify.py     |   2 +-
+ tasks/theory-of-mind-0002/environment/Dockerfile   |   8 -
+ tasks/theory-of-mind-0002/environment/interview    |   2 -
+ tasks/theory-of-mind-0002/environment/lib/cli.py   |  36 ---
+ .../environment/lib/maf_core.py                    |  99 ------
+ .../theory-of-mind-0002/environment/lib/maf_dim.py | 304 ------------------
+ .../theory-of-mind-0002/environment/scenario.json  |  62 ----
+ tasks/theory-of-mind-0002/instruction.md           |  27 --
+ tasks/theory-of-mind-0002/solution/solve.sh        |  12 -
+ tasks/theory-of-mind-0002/task.toml                |  33 --
+ tasks/theory-of-mind-0002/tests/test.sh            |   3 -
+ tasks/theory-of-mind-0002/tests/verify.py          |  62 ----
+ tasks/theory-of-mind-0002/tests/verify_config.json |   6 -
+ 48 files changed, 1038 insertions(+), 1413 deletions(-)
+
+## Diff
+diff --git a/README.md b/README.md
+index 87891a1..e74f030 100644
+--- a/README.md
++++ b/README.md
+@@ -35,51 +35,51 @@ policies that provably lose, and an **ablation twin** proving the reward gap is
+ 
+ ```
+ docs/DESIGN.md                    design doc (research + method + validity argument)
+ docs/RESULTS.md                   verification evidence
+ forge/maf/core.py                 reward shape + Dimension contract
+ forge/maf/dimensions/*.py         the three capability generators
+ forge/maf/selfcheck.py            the CLEAN/VALID gate battery
+ forge/maf/harbor.py               renders a Dimension+instance -> Harbor task dir
+ forge/maf/runtime/                generic in-container CLI + verifier (copied into tasks)
+ forge/forge_cli.py                `forge gen` — generate + gate + write
+-forge/tests/                      34 in-process tests (no Docker)
++forge/tests/                      41 in-process tests (no Docker)
+ tasks/                            3 generated, oracle-verified sample tasks
+ scripts/verify_all.sh             real Harbor oracle run (needs Docker)
+ scripts/dryrun_local.py           oracle->verify logic check (no Docker)
+ skills/multi-agent-task-forge/    the reusable task-forging skill
+ ```
+ 
+ ## Quickstart
+ 
+ ```bash
+ uv venv && uv sync                      # dev env (Python 3.11+)
+-uv run pytest forge/tests -q            # 34 tests, all in-process (no Docker)
++uv run pytest forge/tests -q            # 41 tests, all in-process (no Docker)
+ 
+ # generate more tasks (each passes the CLEAN/VALID gate before it is written)
+ uv run python -m forge.forge_cli gen --dim parallel-scheduling \
+     --seed 0 --n 20 --difficulty medium --out tasks/
+ 
+ python3 scripts/dryrun_local.py         # confirm oracle=1.0 without Docker
+ bash scripts/verify_all.sh              # confirm oracle=1.0 in real Harbor (Docker)
+ ```
+ 
+ ## Verify a single task in Harbor
+ 
+ ```bash
+ uv tool install harbor                  # Harbor 0.18+
+ 
+ # reference solution (no API key needed) -> reward 1.0
+-harbor run --path tasks/theory-of-mind-0002 --agent oracle -n 1
++harbor run --path tasks/parallel-scheduling-0003 --agent oracle -n 1
+ 
+ # a real LLM agent (any litellm provider; put the key in a gitignored .env)
+-harbor run --path tasks/theory-of-mind-0002 \
++harbor run --path tasks/parallel-scheduling-0003 \
+     --agent terminus-2 --model openai/gpt-5.6 -n 1 --env-file .env
+ ```
+ 
+ Measured with `gpt-5.6`: scheduling 1.00, theory-of-mind 1.00, failure-recovery
+ **0.75** (a real partial reward) — see [`docs/RESULTS.md`](docs/RESULTS.md).
+ 
+ ## Adding a new capability dimension
+ 
+ Follow `skills/multi-agent-task-forge/SKILL.md`: name the skill and its shortcuts,
+ build an environment where each shortcut provably loses, write a **constructive**
+diff --git a/docs/DESIGN.md b/docs/DESIGN.md
+index 3551c06..1cb9fa0 100644
+--- a/docs/DESIGN.md
++++ b/docs/DESIGN.md
+@@ -1,69 +1,69 @@
+ # Multi-Agent Foundational-Capability RL Data Generation — Design
+ 
+-**Status:** Draft for review
++**Status:** Current
+ **Date:** 2026-07-14
+ **Deliverable format:** Harbor tasks (`task.toml` / `instruction.md` / `environment` / `tests` / `solution`)
+ 
+ ---
+ 
+ ## 0. TL;DR
+ 
+-We generate RL training tasks that target **multi-agent orchestration capabilities** by
+-**inverting the multi-agent setup**: the model under test plays a single role — the
+-**orchestrator (Main agent)** — while every other agent and the world are replaced by a
+-**deterministic, scripted environment that holds ground truth**. The environment *is* the
+-verifier.
++`forge` is a **deterministic orchestrator microbenchmark forge**: it generates RL training
++tasks that target **multi-agent orchestration capabilities** by **inverting the multi-agent
++setup**: the model under test plays a single role — the **orchestrator (Main agent)** — while
++every other agent and the world are replaced by a **deterministic, scripted environment that
++holds ground truth**. The environment *is* the verifier.
+ 
+ This buys three things that a live multi-agent system cannot:
+ 
+ 1. **Deterministic, programmatic reward** — no LLM judge, no rollout variance.
+ 2. **Constructed ground truth** — we generate each instance from a *known* optimal solution,
+    so grading (including "how optimal") is exact and cheap.
+ 3. **Unbounded procedural scale** — each capability is a *parametric environment family*;
+-   `seed × difficulty × dimension × surface-template` yields thousands of tasks at ~zero
++   `seed × difficulty × dimension` yields thousands of tasks at ~zero
+    marginal human cost, each auto-validated by an **oracle self-check** and an
+    **anti-trivial baseline gate** before it ships.
+ 
+ The rest of this document is organized around the two things that actually matter:
+ **§4 Why the scheme is valid** and **§8 How it scales**. Everything else is scaffolding for
+ those two.
+ 
+ ---
+ 
+ ## 1. Goal & scope
+ 
+ Produce a **repeatable pipeline** (skill + code) that emits verifiable RL tasks for
+ multi-agent foundational capabilities, plus ≥3 runnable Harbor sample tasks that pass
+ verification.
+ 
+ **In scope (chosen capability spine):**
+ 
+ ```
+-① Task decomposition ─→ ② Dependency ID & parallel scheduling ─→ ③ Role/capability assignment
+-                                      │
+-                                      ▼
+-                        ④ Dynamic replanning & failure recovery
+-                                      │
+-                                      ▼
+-                        ⑤ Theory of Mind & information-asymmetric communication
+-   (foundational)                                                    (hardest)
++② Dependency ID & parallel scheduling ─→ ③ Role/capability assignment
++                    │
++                    ▼
++④ Dynamic replanning & failure recovery
++                    │
++                    ▼
++⑤ Theory of Mind & information-asymmetric communication
++   (foundational)                                        (hardest)
+ ```
+ 
+ **Explicitly deferred (phase 2, same pipeline):** collaboration-topology adaptation
+ (star/tree/debate/chain), Sub↔Sub communication, debate. Rationale in §2.4.
+ 
+ **Three sample tasks** span the widest curriculum arc and both verification paradigms:
+ 
+ | Task | Capability | Paradigm | Tier |
+ |---|---|---|---|
+-| `parallel-scheduling` | ② dependency ID + parallel scheduling (+①,③) | static, single-shot artifact | mid |
++| `parallel-scheduling` | ② dependency ID + parallel scheduling (+③) | static, single-shot artifact | mid |
+ | `failure-recovery`    | ④ dynamic replanning + failure recovery      | dynamic, multi-turn CLI     | mid-high |
+ | `theory-of-mind`      | ⑤ ToM + info-asymmetric communication        | dynamic, multi-turn CLI     | highest |
+ 
+ ---
+ 
+ ## 2. Research: capabilities, failure modes, curriculum
+ 
+ > **Evidence:** the claims below are grounded in verified literature citations and our
+ > own two-model empirical sweep — see [`RESEARCH.md`](RESEARCH.md). In brief: unaided
+ > LLM planning succeeds ~12% (PlanBench) and drops 47%→11% sync→async (Robotouille);
+@@ -80,32 +80,29 @@ that require *live multi-party dynamics* (debate, Sub↔Sub negotiation, topolog
+ resist determinism and are deferred — not because they're unimportant, but because making
+ them cleanly verifiable is a separate research step (§2.4).
+ 
+ ### 2.2 Typical failure modes of current models
+ 
+ Documented from observed LLM-orchestrator behavior. Each generated task is designed so that
+ the failure mode is *punished by the reward*, not merely discouraged by the prompt.
+ 
+ | Capability | Typical failure mode | How our reward punishes it |
+ |---|---|---|
+-| ① Decomposition | Over/under-decompose; emit "steps" that aren't independently dispatchable; conflate decomposition with ordering. | Subtasks are given as a DAG; mis-reading structure → dependency-gate violation → reward 0. |
+ | ② Dependency ID & scheduling | **Serialize everything** (miss parallelism); greedy schedule ignoring the critical path; assign two tasks to one worker at once (ignore resource contention). | Hard gate on dependency + no-overlap; **quality score = T_opt / T_achieved** so serialization and greed cost reward. |
+ | ③ Role/capability assignment | Match by surface keyword rather than actual capability; ignore load balance. | Capability constraint is a hard gate; contention shows up in makespan. |
+ | ④ Dynamic replanning / recovery | **Assume success** (never check); **retry the same failing worker**; cascade (don't redo downstream after a bad upstream result); over-redo everything. | Failures only surface at runtime → static plans fail the completion gate; wasted/blind retries cost the efficiency score; a dispatch budget punishes over-redo. |
+-| ⑤ ToM / communication | **Assume shared knowledge** (don't model that a peer lacks info); ask the wrong agent; **info-dump** (ask everyone everything → no ToM); ignore referrals; trust a lying agent without cross-check. | A **query budget < exhaustive** makes info-dumping impossible; correct answer requires following referrals (2nd-order ToM); liar variants require cross-checking. |
++| ⑤ ToM / communication | **Assume shared knowledge** (don't model that a peer lacks info); ask the wrong agent; **info-dump** (ask everyone everything → no ToM); ignore referrals. | A **query budget < exhaustive** makes info-dumping impossible; correct answer requires following referrals (2nd-order ToM). |
+ 
+ ### 2.3 Curriculum ordering — the argument
+ 
+ The spine is a genuine *prerequisite chain*, not a difficulty ranking:
+ 
+-- **You cannot schedule (②) what you cannot decompose (①).** Scheduling operates on a
+-  subtask graph; a wrong graph makes scheduling ill-posed.
+ - **Recovery (④) presupposes a plan (②/③).** "Detect a failed dispatch and re-route"
+   is only meaningful once the model can produce and reason about an assignment.
+ - **ToM (⑤) presupposes role-awareness (③) and communication.** Reasoning about *who knows
+   what* requires first modeling *who is who* and being able to address them.
+ 
+ This yields a natural training curriculum: master static planning → add runtime dynamics
+ (failure) → add epistemic dynamics (asymmetric knowledge). Difficulty knobs (§7) provide the
+ *intra-*dimension gradient; the spine provides the *inter-*dimension gradient.
+ 
+ ### 2.4 What we defer and why
+@@ -161,249 +158,249 @@ six, and argue each. **This is the section that matters most.**
+ 
+ ### 4.1 Reward soundness (is the signal real?)
+ 
+ **Claim:** reward is a deterministic, reproducible function of ground truth, computable
+ without any model in the loop.
+ 
+ - Ground truth is *constructed*, not inferred (§4.2 details per task). The verifier is pure
+   Python over the agent's artifact/log and the scenario file. Same input → same reward,
+   bit-for-bit.
+ - Harbor consumes a **float reward** (`float(reward.txt)`, confirmed in
+-  `harbor/verifier/verifier.py:73`), so we emit **continuous** `reward ∈ [0,1]` (and a
+-  richer `reward.json` with sub-scores for RL credit assignment). Oracle → `1.0`.
++  `harbor/verifier/verifier.py:73`), so we emit **continuous** `reward ∈ [0,1]`. Oracle → `1.0`.
+ 
+ ### 4.2 Construct validity via **shortcut-closure** (does passing *require* the capability?)
+ 
+ This is the crux. A task is construct-valid only if there is **no capability-orthogonal
+ shortcut** to a high reward. We argue closure per task:
+ 
+ - **`parallel-scheduling`.** Two shortcuts to kill: (i) *ignore dependencies* → closed by the
+   hard dependency gate (reward 0). (ii) *greedy/serial scheduling* → closed by **trap
+   instances**: we plant configurations where the greedy choice inflates makespan, and the
+   quality score `T_opt / T_achieved` strictly punishes any non-critical-path-aware plan.
+   Therefore a high reward *requires* genuine parallel + critical-path reasoning.
+ - **`failure-recovery`.** Shortcut = *submit a static plan / assume success* → closed because
+   failures are **injected at runtime and only observable through the CLI**; a static plan
+   fails the completion gate. Shortcut = *blind retry / brute force* → closed by **decoy
+   workers + a dispatch budget**; brute force exhausts the budget before completion.
+   Therefore a high reward *requires* detect-then-adapt.
+ - **`theory-of-mind`.** Shortcut = *ask every agent about every topic, then deduce* → closed
+   by a **query budget strictly below exhaustive**; the only way inside budget is to **follow
+   referrals** (use agent A's knowledge of what agent B knows — 2nd-order ToM) to route
+-  queries. Liar variants further require cross-checking. Therefore a high reward *requires*
+-  epistemic modeling of peers.
++  queries. Therefore a high reward *requires* epistemic modeling of peers.
+ 
+ **Shortcut-closure is a design invariant, not a hope.** For every generator we enumerate the
+ known shortcuts and encode a mechanism that defeats each; the anti-trivial gate (§4.3)
+ empirically confirms the closure held for each generated instance.
+ 
+ ### 4.3 The CLEAN/VALID gate battery — every instance must pass, at generation time
+ 
+ Procedural generation's danger is silently emitting instances that are *broken* (reward
+ noise) or *off-skill* (measure the wrong thing). We reject both with an executable battery
+ run **in-process at generation time** (pure Python — no Docker, no tokens). An instance ships
+ only if **all** checks pass. "CLEAN" means the reward has no noise; "VALID" means the reward
+ gap is *caused by* the target skill.
+ 
+ **CLEAN — no reward noise:**
+ 
+ | Check | Proves | Mechanism |
+ |---|---|---|
+ | **C1 Determinism** | same actions → same reward | run oracle twice; assert identical reward + transcript hash (env responses are pure functions of `scenario.json`). |
+ | **C2 Solvable & fair** | reachable through the *public interface only* | oracle is **forbidden to read the ground-truth file**; must reach `1.0` via `schedule.json` / `coord` / `interview`. |
+-| **C3 Unique ground truth** | grading isn't arbitrary | ToM: a CSP solver (z3) asserts **exactly one** model; scheduling: `T_opt` = planted length; recovery: "all SUCCESS" is unambiguous. |
++| **C3 Unique ground truth** | grading isn't arbitrary | scheduling: `T_opt` = planted length; recovery: "all SUCCESS" is unambiguous; ToM: elimination over suspects leaves exactly one candidate. |
+ | **C4 Verifier robustness** | malformed output → reward 0, never a crash | fuzz the verifier with garbage artifacts / random CLI calls; assert it always returns `[0,1]`, never throws. |
+ | **C5 Well-posed contract** | the agent knows what to produce | `instruction.md` names the exact output schema/commands; a "format-only" baseline parses to reward 0 cleanly. |
+ 
+ **VALID — tests the *right* skill:**
+ 
+ | Check | Proves | Mechanism |
+ |---|---|---|
+ | **V1 Cheater panel** | no capability-orthogonal shortcut wins | one baseline **per known shortcut**, each must score `< τ` (default 0.6). |
+ | **V2 Discrimination** | the task separates skilled from unskilled | `oracle − max(cheaters) > Δ` (default 0.4); weak gap → reject. |
+ | **V3 Ablation twin** | the gap is **caused by** the target skill | build the skill-removed twin; a cheater that failed V1 must now score `≥ 1−ε` (a *counterfactual* validity proof). |
+ 
+ Per-skill instantiation of V1/V3:
+ 
+ | Skill | Cheater panel (each must lose) | Ablation twin (removes the skill-forcing mechanism) |
+ |---|---|---|
+-| ② scheduling | serial, greedy-earliest, random-valid | delete greedy traps → **serial becomes optimal → scores 1.0** |
++| ② scheduling | serial, greedy-earliest | delete greedy traps → **serial becomes optimal → scores 1.0** |
+ | ④ failure-recovery | static-plan, retry-same-worker, brute-force-all | disable failure injection → **static plan scores 1.0** |
+ | ⑤ theory-of-mind | info-dump-in-budget, random-target, never-follow-referral | make all clues public → **direct-read scores 1.0** |
+ 
+ This battery is what makes scale *safe*: quality is enforced by executable gates, not review.
+ **Honest residual:** V1's panel only covers shortcuts we enumerated; an unknown exploit still
+ slips through. V3 narrows this (proves the *intended* mechanism is load-bearing) but does not
+ prove *no other* mechanism is. The standing defense is a periodic **adversarial surface-probe**
+ (a cheap policy allowed to see only surface features must fail) — a scaling *practice*, not a
+ one-time gate.
+ 
+ ### 4.4 Difficulty controllability
+ 
+ Difficulty is set by a small set of **orthogonal knobs** (§7) whose effect is *verified*, not
+ assumed: the **oracle-minus-baseline gap** is a computable proxy for instance hardness, so we
+ calibrate knobs empirically (bigger gap ≈ more capability-dependent). This gives principled
+ curricula and lets us target a model's frontier.
+ 
+ ### 4.5 Diversity / anti-overfitting
+ 
+ Procedural tasks risk **surface-form overfitting** (the model learns the generator's
+-boilerplate, not the capability). Mitigations, in increasing strength:
++boilerplate, not the capability). Mitigation:
+ 
+ - **Structural randomization** — the *reasoning* changes with graph topology / information
+   partition, not just labels. Memorizing surface strings does not transfer across seeds.
+-- **Multiple cover-story templates** per dimension (e.g. scheduling as a build pipeline, a
+-  film production, a kitchen brigade) + a **paraphrase layer** on `instruction.md`.
+-- **Held-out generator configs** for evaluation (train on seed range A / difficulty grid A,
+-  eval on B) so we can *measure* overfitting rather than hope it's absent.
+ 
+ ### 4.6 Scale economics (the argument that this is worth doing)
+ 
+ - **Marginal human cost per task ≈ 0.** After a generator is written, tasks come from
+-  `seed × difficulty × template`. The only per-task cost is the **oracle self-check**, which
++  `seed × difficulty`. The only per-task cost is the **oracle self-check**, which
+   is deterministic Python + a container run — **no LLM tokens**.
+ - Contrast: human-authored tasks are O(hours) each; LLM-judged tasks carry per-eval token
+   cost *and* reward noise. Our scheme's cost curve is flat in the number of tasks.
+ - This is the whole point: **the pipeline, not the tasks, is the deliverable.** Three sample
+   tasks are an existence proof; the generators are the asset.
+ 
+ ---
+ 
+ ## 5. Task anatomy (the shared Harbor skeleton)
+ 
+ ```
+ task-dir/
+ ├── task.toml            # [environment] our image; [verifier] continuous reward; timeouts
+ ├── instruction.md       # "You are the Main agent; goal = X." Describe the goal, not steps.
+ ├── environment/
+ │   ├── Dockerfile       # python:3.11-slim + copy env server + scenario
+ │   ├── scenario.json    # this instance (seed-generated): DAG / roster / private info / GT
+ │   └── coord|interview  # (dynamic tasks) CLI exposing a RESTRICTED view of scenario state
+ ├── tests/
+ │   ├── test.sh          # runs verify.py, writes reward ∈ [0,1] to /logs/verifier/reward.txt
+-│   └── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
++│   ├── verify.py        # pure-Python: artifact/log vs ground truth → continuous reward
++│   └── lib/             # the dimension module (generate/ORACLE/verify/CHEATERS) --
++│                        # uploaded by Harbor only at verification time, after the
++│                        # agent phase; never present in environment/, never in the image
+ └── solution/
+     └── solve.sh         # oracle: solves via the PUBLIC interface → reward 1.0 (self-check)
+ ```
+ 
+-**Reward shape (uniform):** `reward = hard_gate ∈ {0,1} × quality ∈ (0,1]`. `reward.json`
+-additionally carries sub-scores (`gate`, `quality`, `budget_used`, …) for RL credit
+-assignment. Ground truth lives in the container but is **never exposed** through the agent's
+-protocol (the CLI returns only what a peer would legitimately reveal).
++**Isolation invariant.** The dimension module (`generate`, `ORACLE`, `verify`,
++`CHEATERS`) never enters the agent's image. Static dimensions ship it to
++`tests/lib/`, which Harbor uploads only at verification time. Interactive
++dimensions keep it in a sidecar. Identical grading between selfcheck and the
++in-container verifier is achieved by shipping the *same file to a place the
++agent cannot read* -- not by shipping it to the agent.
++
++**Reward shape (uniform):** `reward = hard_gate ∈ {0,1} × quality ∈ (0,1]`. Ground truth lives
++in the container but is **never exposed** through the agent's protocol (the CLI returns only
++what a peer would legitimately reveal).
+ 
+ ---
+ 
+ ## 6. The three task families (detail)
+ 
+ ### 6.1 `parallel-scheduling` (static · single-shot)
+ 
+ - **Scenario.** Main agent gets a subtask DAG + a roster of specialist sub-agents (each has
+   capability tags; each does one task at a time). Produce `schedule.json` = list of
+   `{subtask, worker, start}` **minimizing makespan**.
+ - **Generation (known-optimal by construction).** First lay out an optimal `k`-worker × `T`
+   schedule, then *read off* durations / dependencies / capability constraints from it. The
+   optimum makespan `= T` is therefore known without solving an NP-hard problem. Plant greedy
+   traps to close the greedy shortcut (§4.2).
+ - **Verifier.** Hard gate: every subtask scheduled once; `start ≥ max(dep finishes)`;
+   capability match; no worker overlap. Quality: `T / makespan(schedule)`.
+ - **Oracle.** Emit the planted optimal schedule → reward 1.0.
+-- **Trains:** ② dependency ID + parallel scheduling; ① reading structure; ③ assignment.
++- **Trains:** ② dependency ID + parallel scheduling; ③ capability assignment.
+ 
+ ### 6.2 `failure-recovery` (dynamic · multi-turn)
+ 
+ - **Scenario.** Dispatch subtasks to sub-agents via `coord`. The env deterministically
+-  **injects failures** (some `(task,worker)` pairs fail; some are decoys; some failures are
+-  *silent* and only surface as a downstream failure). Drive all subtasks to SUCCESS.
++  **injects failures** (some `(task,worker)` pairs fail; some are decoys). Drive all subtasks
++  to SUCCESS.
+ - **Protocol.** `coord roster | dag | dispatch <task> <worker> | status | submit`. Env holds
+   the `(task,worker) → success?` truth table; at least one feasible assignment always exists.
+ - **Verifier.** Hard gate: all subtasks SUCCESS at submit + protocol compliance (no dispatch
+   before deps done). Quality: efficiency = `1 − wasted_dispatches / budget` (and/or makespan).
+ - **Oracle.** Scripted correct policy using **only** the public CLI (try a valid worker, on
+   failure try the next, respect deps) → reward 1.0 *and* proves the task is fair/solvable.
+ - **Trains:** ④ dynamic replanning + failure recovery; Main↔Sub communication.
+ 
+ ### 6.3 `theory-of-mind` (dynamic · multi-turn)
+ 
+ - **Scenario.** A logic-deduction puzzle with a **unique** solution whose clues are
+   **partitioned across sub-agents' private knowledge**. The Main agent can't see clues; it
+   must **ask the right agent**. Some agents only know *who to ask* (referrals = 2nd-order
+   ToM). Deduce the answer within a **query budget** and `submit`.
+ - **Protocol.** `interview agents | ask <agent> <topic> | submit <answer>`. Wrong target →
+   "I don't know, maybe ask X" (referral signal).
+ - **Generation.** Generate a constraint-satisfaction instance with a unique solution;
+   partition clues; build a referral graph so a minimal query strategy exists; set
+   `budget < exhaustive` to close the info-dump shortcut.
+ - **Verifier.** Hard gate: correct answer. Quality: query efficiency (fewer, targeted
+-  queries → higher). Liar variants add a cross-check requirement.
++  queries → higher).
+ - **Oracle.** Scripted optimal interviewer that follows referrals and solves the grid within
+   budget → reward 1.0.
+-- **Trains:** ⑤ ToM (incl. higher-order); info-asymmetric directed communication;
+-  role-awareness.
++- **Trains:** ⑤ ToM; info-asymmetric directed communication; role-awareness.
+ 
+ ---
+ 
+ ## 7. Difficulty control
+ 
+ Orthogonal knobs, shared across dimensions where meaningful:
+ 
+ | Axis | Knob |
+ |---|---|
+ | Scale | # subtasks / # workers / # agents / # clues |
+ | Structure | DAG depth vs width; dependency density; capability scarcity |
+-| Adversarial | greedy traps; decoy workers; red-herring clues; silent failures; lying agents |
+-| ToM order | 1st (ask directly) → 2nd (referral) → 3rd (referral-of-referral / detect lies) |
++| Adversarial | greedy traps; decoy workers; red-herring clues |
++| ToM order | 1st (ask directly) → 2nd (referral) → 3rd (referral-of-referral) |
+ | Budget | dispatch budget / query budget tightened toward the oracle minimum |
+ 
+ **Calibration:** difficulty is validated by the **oracle-minus-baseline reward gap** (§4.4),
+ not asserted. Knobs that don't widen the gap don't add real difficulty.
+ 
+ ---
+ 
+ ## 8. Scale path & bottlenecks
+ 
+ ### 8.1 The scale multiplier
+ 
+ ```
+-#tasks  =  |seeds|  ×  |difficulty cells|  ×  |dimensions|  ×  |surface templates|
++#tasks  =  |seeds|  ×  |difficulty cells|  ×  |dimensions|
+ ```
+ 
+ - **seeds** — unbounded structural variety per config (new graph / partition each seed).
+ - **difficulty cells** — the knob grid (§7); tens to hundreds of meaningful cells.
+ - **dimensions** — 3 now; each new generator is a multiplicative breadth lever.
+-- **surface templates** — cover stories × paraphrase.
+ 
+ Thousands of *validated* tasks are immediate; millions are a matter of compute for the
+ self-check gate. **No human is in the per-task loop.**
+ 
+ ### 8.2 Honest bottlenecks (and mitigations)
+ 
+-1. **Surface-form homogeneity → overfitting.** *Mitigate:* template diversity + paraphrase +
+-   held-out-config eval to *measure* it (§4.5). *Residual risk:* real; this is the main thing
+-   to watch as volume grows.
++1. **Surface-form homogeneity → overfitting.** *Mitigate:* structural randomization (§4.5).
++   *Residual risk:* real; this is the main thing to watch as volume grows.
+ 2. **Structural-diversity ceiling per dimension.** A scheduling generator can only express so
+    many *kinds* of reasoning. *Mitigate:* breadth comes from **adding dimensions/topologies**,
+    not from more seeds of one dimension. This is why the pipeline (not the task) is the asset.
+ 3. **Verifier-expressiveness limit.** The scheme only covers capabilities reducible to a
+    ground-truth decision. Creativity/taste-type skills are **out of reach by construction** —
+    an honest, permanent boundary of the approach.
+ 4. **Difficulty-calibration drift.** As models improve, today's "hard" becomes trivial.
+    *Mitigate:* the oracle-vs-baseline gap is recomputable, so recalibration is automated.
+ 
+ ---
+ 
+ ## 9. Generation pipeline (`forge`) — skill + code
+ 
+ ```
+ forge/
+ ├── common/
+ │   ├── harbor_writer.py   # writes task.toml / instruction.md / environment / tests / solution
+-│   ├── reward.py          # shared reward helpers (gate × quality, reward.json)
++│   ├── reward.py          # shared reward helpers (gate × quality)
+ │   └── selfcheck.py       # runs oracle + baseline in-container, enforces the §4.3 gates
+ ├── generators/
+ │   ├── parallel_scheduling.py   # generate(seed, difficulty) -> task dir
+ │   ├── failure_recovery.py
+ │   └── theory_of_mind.py
+ └── forge_cli.py           # `forge gen --dim X --seed S --difficulty D --n 100 --out tasks/`
+ ```
+ 
+ - Each `generate(seed, difficulty)` is **pure** (seed-deterministic) and emits a complete
+   Harbor task directory.
+@@ -437,20 +434,21 @@ theory-of-mind 1.00, failure-recovery **0.75** (a genuine partial reward). Any l
+ provider works via `--model <provider>/<id>` + a key in a gitignored `.env`. Tasks use
+ `network_mode = "public"` so terminal agents can reach their model API; nothing on the
+ internet helps solve them, so egress does not enable cheating. See `docs/RESULTS.md`.
+ 
+ ---
+ 
+ ## 11. Risks & limitations
+ 
+ - **Docker dependency.** Harbor runs tasks in containers; the daemon must be up to verify.
+ - **Overfitting to generators** — the #1 quality risk at scale (§8.2); mitigated but not
+-  eliminated; must be *measured* via held-out configs.
++  eliminated.
+ - **Coverage boundary** — only ground-truth-decidable capabilities; live-dynamics skills
+   (debate, Sub↔Sub) need future harness work.
+ - **Oracle correctness is load-bearing** — a buggy oracle would pass bad instances. Mitigated
+   by the **constructive-generator invariant**: every generator plants the instance *and its
+   optimal solution trace* together, so the oracle is always "replay the planted trace," never
+   "search for a solution at grade time." This keeps the oracle correct-by-construction and
+   the §4.3 self-check cheap at any difficulty. The V1/V2 gates catch residual oracle bugs (a
+   broken oracle that can't beat the cheater panel is rejected).
+ ```
++```
+diff --git a/docs/RESULTS.md b/docs/RESULTS.md
+index 221dd1d..bf60302 100644
+--- a/docs/RESULTS.md
++++ b/docs/RESULTS.md
+@@ -1,31 +1,57 @@
+ # Verification Results
+ 
++> **2026-07-14 — `theory-of-mind` and `failure-recovery` are quarantined.**
++> `forge/forge_cli.py:QUARANTINED` now refuses to render either dimension: their
++> CLI reads the ground-truth scenario at runtime *inside the agent container*,
++> so (unlike `parallel-scheduling`) relocating the dimension module to
++> `tests/lib` cannot remove it from the agent's image. Fixing this needs the
++> Plan 2 sidecar; see `docs/superpowers/plans/2026-07-14-isolation-and-gates.md`.
++>
++> Separately, both constructs turned out to be degenerate as reward signals.
++> `theory-of-mind`'s instruction states its own optimal algorithm, so both
++> models tested scored `asks == q_opt` (reward 1.0) on 12/12 sweep runs — the
++> task measures instruction-following, not theory-of-mind skill.
++> `failure-recovery`'s worker roster is dispatched in pre-sorted order (see
++> `forge/maf/dimensions/failure_recovery.py`), which similarly collapses the
++> intended skill signal.
++>
++> The rows and figures below for these two dimensions **are not fabricated** —
++> they are real measurements from real Harbor runs at the time this file was
++> written. But given the above, they must **not** be read as evidence of model
++> capability at theory-of-mind or failure-recovery: a reward of 1.0 here
++> reflects a degenerate construct, not the skill the task nominally targets.
++> They are kept for historical record, not as a capability claim.
++> `parallel-scheduling` is unaffected by either issue and is the only
++> dimension `forge_cli` currently renders.
++
+ All three sample tasks were verified end-to-end. Two things are demonstrated:
+ 
+ 1. **The tasks run in real Harbor/Docker and the oracle scores 1.0** (correctness
+    of environment + verifier + reference solution).
+ 2. **The reward discriminates skill** — a spread from 0.0 (shortcut baselines) to
+    1.0 (optimal play), which is the signal RL trains on.
+ 
+ ## 1. Harbor oracle verification (real Docker)
+ 
+ Command: `harbor run --path <task> --agent oracle -n 1` (Harbor 0.18, Docker 28.4).
+ 
+ | Task | Trials | Exceptions | Reward | Runtime |
+ |---|---|---|---|---|
+ | `parallel-scheduling-0003` | 1 | 0 | **1.000** | 31s |
+ | `failure-recovery-0001` | 1 | 0 | **1.000** | 17s |
+ | `theory-of-mind-0002` | 1 | 0 | **1.000** | 17s |
+ 
+ Reproduce: `bash scripts/verify_all.sh` (needs Docker). Logic-only (no Docker):
+-`python3 scripts/dryrun_local.py`.
++`python3 scripts/dryrun_local.py`. As of the 2026-07-14 quarantine note above,
++both scripts only exercise `parallel-scheduling` — `failure-recovery` and
++`theory-of-mind` no longer have task dirs to reproduce against.
+ 
+ ## 2. Reward spread — the RL signal
+ 
+ The **CLEAN/VALID** gate guarantees `oracle − max(cheater) > 0.4`. Measured on the
+ shipped sample instances:
+ 
+ | Task | Oracle | Shortcut (cheater) rewards |
+ |---|---|---|
+ | `parallel-scheduling` | **1.00** | serial 0.42 · greedy-earliest 0.50 |
+ | `failure-recovery` | **1.00** | static-plan 0.00 · retry-same 0.00 · brute-force 0.00 |
+diff --git a/forge/forge_cli.py b/forge/forge_cli.py
+index c05115a..c7a650e 100644
+--- a/forge/forge_cli.py
++++ b/forge/forge_cli.py
+@@ -10,37 +10,57 @@ written; failures are logged and skipped. Usage:
+ from __future__ import annotations
+ 
+ import argparse
+ import json
+ import sys
+ from pathlib import Path
+ 
+ from forge.maf.harbor import write_task
+ from forge.maf.selfcheck import selfcheck
+ 
++# Dimensions whose CLI must read the scenario at runtime inside the agent
++# container, so the scenario is necessarily in the agent's image. Relocating the
++# module (as static dimensions do) cannot fix them; only the Plan 2 sidecar can.
++# Rendering them would emit data whose reward is obtainable by reading the answer.
++QUARANTINED = {
++    "theory-of-mind": (
++        "ground truth ships in the agent image; needs the Plan 2 sidecar. "
++        "The construct is also degenerate: the instruction states the optimal "
++        "algorithm (asks == q_opt on 12/12 sweep runs)."
++    ),
++    "failure-recovery": (
++        "ground truth ships in the agent image; needs the Plan 2 sidecar."
++    ),
++}
++
+ 
+ def registry() -> dict:
+     reg = {}
+     from forge.maf.dimensions import scheduling
+ 
+     reg[scheduling.DIM.NAME] = scheduling.DIM
+     for name in ("failure_recovery", "theory_of_mind"):
+         try:
+             mod = __import__(f"forge.maf.dimensions.{name}", fromlist=["DIM"])
+             reg[mod.DIM.NAME] = mod.DIM
+         except Exception:
+             pass
+     return reg
+ 
+ 
+ def gen(args) -> dict:
+     reg = registry()
++    if args.dim in QUARANTINED:
++        raise SystemExit(
++            f"refusing to render quarantined dimension {args.dim!r}: "
++            f"{QUARANTINED[args.dim]}"
++        )
+     if args.dim not in reg:
+         raise SystemExit(f"unknown dimension {args.dim!r}; have {sorted(reg)}")
+     dim = reg[args.dim]
+     difficulty = dim.DIFFICULTY_PRESETS.get(args.difficulty)
+     if difficulty is None:
+         raise SystemExit(
+             f"unknown difficulty {args.difficulty!r}; "
+             f"have {sorted(dim.DIFFICULTY_PRESETS)}"
+         )
+ 
+diff --git a/forge/maf/core.py b/forge/maf/core.py
+index 71094cd..e7a0e79 100644
+--- a/forge/maf/core.py
++++ b/forge/maf/core.py
+@@ -1,13 +1,14 @@
+ """Core primitives shared by every dimension and by both runtimes.
+ 
+-This module is copied verbatim into each generated task's ``environment/lib`` so
++This module is copied verbatim into each generated task's ``tests/lib`` -- which
++Harbor uploads only at verification time, never into the agent's image -- so
+ that the in-container verifier and the in-process selfcheck grade identically.
+ It must stay standard-library-only.
+ """
+ 
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ import random
+ from dataclasses import dataclass, field
+diff --git a/forge/maf/dimensions/scheduling.py b/forge/maf/dimensions/scheduling.py
+index 171334d..97d241c 100644
+--- a/forge/maf/dimensions/scheduling.py
++++ b/forge/maf/dimensions/scheduling.py
+@@ -151,20 +151,25 @@ def _greedy_earliest(instance: dict) -> list[dict]:
+         schedule.append({"subtask": tid, "worker": w, "start": start})
+         free[w] = end
+         finish[tid] = end
+         remaining.discard(tid)
+     return schedule
+ 
+ 
+ ORACLE = _oracle
+ CHEATERS = {"serial": _serial, "greedy_earliest": _greedy_earliest}
+ 
++# V4: what does mechanically obeying our instruction produce? The instruction
++# states constraints (dependency order, skill match) and no procedure, so
++# obeying it literally *is* _serial -- valid, unoptimised, and 0.5 at best.
++DICTATION_CHEATER = "serial"
++
+ 
+ def run_policy(instance: dict, policy) -> list[dict]:
+     return policy(instance)
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Verifier
+ # --------------------------------------------------------------------------- #
+ def verify(instance: dict, submission) -> RewardBreakdown:
+     subs = instance["subtasks"]
+@@ -317,20 +322,21 @@ OUTPUT_CONTRACT = (
+ 
+ class _Scheduling:
+     NAME = NAME
+     SUBMISSION_FILE = SUBMISSION_FILE
+     INTERACTIVE = INTERACTIVE
+     DIFFICULTY_PRESETS = DIFFICULTY_PRESETS
+     GOAL = GOAL
+     OUTPUT_CONTRACT = OUTPUT_CONTRACT
+     ORACLE = staticmethod(ORACLE)
+     CHEATERS = CHEATERS
++    DICTATION_CHEATER = DICTATION_CHEATER
+     generate = staticmethod(generate)
+     run_policy = staticmethod(run_policy)
+     verify = staticmethod(verify)
+     ablate = staticmethod(ablate)
+     render_instruction = staticmethod(render_instruction)
+     unique_ground_truth = staticmethod(unique_ground_truth)
+ 
+     def make_env(self, instance):  # static dimension has no interactive env
+         raise NotImplementedError("scheduling is single-shot; no Env")
+ 
+diff --git a/forge/maf/harbor.py b/forge/maf/harbor.py
+index c1ff73c..ef85564 100644
+--- a/forge/maf/harbor.py
++++ b/forge/maf/harbor.py
+@@ -1,15 +1,18 @@
+ """Render a Dimension + instance into a runnable Harbor 0.18 task directory.
+ 
+-Single source of truth: the dimension's Python module is *copied* into the task
+-(with its one internal import rewritten), so the in-container verifier grades
+-with exactly the code the selfcheck battery validated.
++Single source of truth: the dimension's Python module is *copied* (with its one
++internal import rewritten) into ``tests/lib/``, which Harbor uploads only at
++verification time -- after the agent phase completes. The in-container
++verifier therefore grades with exactly the code the selfcheck battery
++validated, without ever shipping that code (``generate``/``ORACLE``/``verify``/
++``CHEATERS``) to a place the agent can read it.
+ """
+ 
+ from __future__ import annotations
+ 
+ import importlib
+ import json
+ import os
+ from pathlib import Path
+ 
+ from forge.maf.core import public
+@@ -21,24 +24,27 @@ _RUNTIME = Path(__file__).parent / "runtime"
+ _DOCKER_BASE = (
+     "FROM python:3.11-slim\n"
+     "RUN apt-get update && apt-get install -y --no-install-recommends "
+     "tmux git curl ca-certificates && rm -rf /var/lib/apt/lists/*\n"
+     "WORKDIR /app\n"
+ )
+ 
+ 
+ def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
+     task_dir = Path(out_dir) / f"{dim.NAME}-{task_id}"
+-    for sub in ("environment/lib", "tests", "solution"):
++    for sub in ("environment", "tests/lib", "solution"):
+         (task_dir / sub).mkdir(parents=True, exist_ok=True)
+ 
+-    _copy_runtime(dim, task_dir / "environment" / "lib")
++    # The dimension module holds generate()/ORACLE/verify()/CHEATERS. It ships to
++    # tests/, which Harbor uploads only at verification time -- never to the
++    # agent's image. See docs/DESIGN.md §5.
++    _copy_runtime(dim, task_dir / "tests" / "lib", include_cli=dim.INTERACTIVE)
+     (task_dir / "task.toml").write_text(_task_toml(dim, task_id))
+     (task_dir / "instruction.md").write_text(_instruction(dim, instance))
+     (task_dir / "tests" / "verify.py").write_text(
+         (_RUNTIME / "verify_entry.py").read_text()
+     )
+     (task_dir / "tests" / "test.sh").write_text(_TEST_SH)
+ 
+     pub = public(instance)
+     gt = {k: v for k, v in instance.items() if k.startswith("_")}
+ 
+@@ -53,21 +59,21 @@ def write_task(dim, instance: dict, out_dir, task_id: str) -> Path:
+     return task_dir
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Static dimensions (single-shot artifact, e.g. scheduling)
+ # --------------------------------------------------------------------------- #
+ def _write_static(dim, instance, pub, gt, task_dir) -> dict:
+     (task_dir / "environment" / "task.json").write_text(json.dumps(pub, indent=2))
+     (task_dir / "tests" / "ground_truth.json").write_text(json.dumps(gt))
+     (task_dir / "environment" / "Dockerfile").write_text(
+-        _DOCKER_BASE + "COPY task.json /app/task.json\nCOPY lib /app/lib\n"
++        _DOCKER_BASE + "COPY task.json /app/task.json\n"
+     )
+     planted = json.dumps(dim.run_policy(instance, dim.ORACLE))
+     (task_dir / "solution" / "solve.sh").write_text(
+         "#!/bin/bash\nset -e\n"
+         f"cat > /app/{dim.SUBMISSION_FILE} <<'MAF_EOF'\n{planted}\nMAF_EOF\n"
+     )
+     return {
+         "interactive": False,
+         "scenario_path": "/app/task.json",
+         "ground_truth_path": "/tests/ground_truth.json",
+@@ -111,29 +117,30 @@ def _write_interactive(dim, instance, pub, gt, task_dir) -> dict:
+         "interactive": True,
+         "scenario_path": "/opt/maf/scenario.json",
+         "ground_truth_path": None,
+         "submission_path": "/app/transcript.jsonl",
+     }
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Helpers
+ # --------------------------------------------------------------------------- #
+-def _copy_runtime(dim, lib_dir: Path):
++def _copy_runtime(dim, lib_dir: Path, include_cli: bool = False):
+     import forge.maf.core as core_mod
+ 
++    lib_dir.mkdir(parents=True, exist_ok=True)
+     lib_dir.joinpath("maf_core.py").write_text(Path(core_mod.__file__).read_text())
+     mod = importlib.import_module(type(dim).__module__)
+     src = Path(mod.__file__).read_text()
+     src = src.replace("from forge.maf.core import", "from maf_core import")
+     lib_dir.joinpath("maf_dim.py").write_text(src)
+-    if getattr(dim, "INTERACTIVE", False):
++    if include_cli:
+         lib_dir.joinpath("cli.py").write_text((_RUNTIME / "cli.py").read_text())
+ 
+ 
+ def _instruction(dim, instance) -> str:
+     return (
+         f"# {dim.NAME}\n\n{dim.GOAL}\n\n"
+         f"{dim.render_instruction(instance)}\n\n"
+         f"## Output contract\n\n{dim.OUTPUT_CONTRACT}\n"
+     )
+ 
+diff --git a/forge/maf/leak_audit.py b/forge/maf/leak_audit.py
+new file mode 100644
+index 0000000..0fdea36
+--- /dev/null
++++ b/forge/maf/leak_audit.py
+@@ -0,0 +1,318 @@
++"""G1: static audit that the agent's image contains nothing that derives
++ground truth.
++
++What this does: statically approximates Docker's COPY/ADD build semantics
++over the Dockerfile templates this repo generates (see
++`forge/maf/harbor.py`) -- stripping comments, joining backslash line
++continuations, resolving `--chown=`/multi-source/glob forms, and expanding
++directories -- to decide which host files actually land in the agent's
++image. It then scans those files for ground-truth JSON keys and grading-
++machinery markers (see FORBIDDEN_MARKERS below).
++
++Fail-closed, and why: the only way to know for certain what ends up in a
++built image is to build it and list its contents, and this module
++deliberately does not do that (that would put a Docker build in the
++unit-test path). A static approximation can therefore never fully replicate
++Docker's own parser -- it can only approximate. Anything this module cannot
++resolve with confidence (an unrecognized flag, a `--from=` multi-stage
++copy, a heredoc/JSON-array COPY, a source resolving outside the build
++context, an archive an `ADD` would auto-extract, ...) is surfaced via
++`unparsed_copies()` and turned into an `audit()` violation rather than
++silently skipped or silently assumed safe. A silent under-report is false
++assurance -- worse than no audit at all, because it says "clean" about an
++image nobody actually inspected.
++
++Guarantee, precisely stated: for the Dockerfile forms `forge/maf/harbor.py`
++actually emits today (plain `COPY <source> <dest>` lines, no continuations,
++no comments, no ADD, no archives, no multi-stage builds), `audit() == []`
++means the image is clean with respect to the marker/ground-truth-key scan
++below. Any Dockerfile construct this module does not specifically recognize
++does not get the benefit of the doubt -- it fails closed into a reported
++violation instead of a clean result.
++
++The same fail-closed rule applies to file *content*, not just to Dockerfile
++syntax. Compiled Python (`.pyc`/`.pyo`, and anything under a `__pycache__`
++directory) is never a legitimate part of an agent image for this repo's
++task templates: every marker in FORBIDDEN_MARKERS survives verbatim into
++compiled bytecode as a literal string constant, and a module imports and
++runs from a `.pyc` alone with no `.py` source present anywhere on disk. A
++substring scan over marshalled bytecode is not "coverage" -- a scan that
++happens to miss a marker is indistinguishable from a clean result -- so
++such files are a flat violation rather than a best-effort scan. More
++generally, any file this module cannot decode as text is surfaced as a
++violation rather than silently skipped: "I cannot scan this" must never be
++treated as "therefore harmless".
++"""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++# Substrings that must never appear in a file the agent can read.
++FORBIDDEN_MARKERS = (
++    "def generate(",
++    "ORACLE",
++    "CHEATERS",
++    "def verify(",
++    "def ablate(",
++    "DIFFICULTY_PRESETS",
++)
++
++_GLOB_CHARS = "*?["
++_DIRECTIVES = ("COPY", "ADD")
++
++# `ADD` (unlike `COPY`) auto-extracts a local archive at the destination --
++# the image ends up with whatever the archive contains, not the archive
++# itself. This module does not implement archive extraction (that would mean
++# re-deriving Docker's own tar/gzip/zip handling); a marker scan over the
++# still-compressed bytes is blind, and _ground_truth_keys() only looks at
++# `.json` files, so an ADD-with-archive source would otherwise land content
++# in the image the audit never actually inspects. Fail closed instead: any
++# `ADD` source with one of these suffixes is treated as unresolvable, the
++# same as a `--from=` multi-stage copy.
++_ARCHIVE_SUFFIXES = (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip")
++
++
++def image_files(task_dir: Path) -> list[Path]:
++    """Host paths of files copied into the agent image by its Dockerfile.
++
++    Includes everything a resolved COPY/ADD directive puts in the image --
++    compiled bytecode included. A file silently dropped here would be
++    invisible to every downstream consumer of this list (audit() below, and
++    the callers in Tasks 3/5/7), which is the exact failure mode this
++    function must not reintroduce.
++    """
++    files, _ = _scan(Path(task_dir))
++    return files
++
++
++def unparsed_copies(task_dir: Path) -> list[str]:
++    """COPY/ADD directives image_files() could not resolve to real paths.
++
++    Each entry is a violation: an unresolvable COPY/ADD may put anything into
++    the image, so an audit that ignored it would report clean on an image it
++    never actually inspected.
++    """
++    _, unparsed = _scan(Path(task_dir))
++    return unparsed
++
++
++def _logical_lines(text: str) -> list[str]:
++    """Join Dockerfile backslash line continuations into single logical lines.
++
++    A directive parser that walks physical lines never sees a source token
++    that lands on a continuation line -- it isn't malformed input, it's a
++    normal multi-line COPY/ADD that silently vanishes from the scan. This is
++    an explicit pre-pass so every later stage (directive matching, source
++    resolution) only ever sees one complete directive per logical line.
++
++    Comment lines are stripped BEFORE continuation-joining, matching Docker's
++    own semantics: a `#` line is a full-line comment, not a statement that
++    can span multiple lines, so a trailing `\\` inside one is a literal
++    backslash rather than a continuation marker. Joining first (as an
++    earlier version of this function did) would let a comment ending in `\\`
++    splice itself onto the next physical line -- silently swallowing
++    whatever real directive followed, which is the same silent-drop failure
++    this function exists to prevent, just reached through a `#` line instead
++    of a plain one.
++    """
++    physical = [
++        raw.rstrip() for raw in text.splitlines() if not raw.lstrip().startswith("#")
++    ]
++    logical: list[str] = []
++    buf: list[str] = []
++    for line in physical:
++        if line.endswith("\\"):
++            buf.append(line[:-1])
++            continue
++        buf.append(line)
++        logical.append(" ".join(buf))
++        buf = []
++    if buf:  # trailing continuation with no terminating line
++        logical.append(" ".join(buf))
++    return logical
++
++
++def _scan(task_dir: Path) -> tuple[list[Path], list[str]]:
++    """Walk the Dockerfile's COPY/ADD directives once, splitting them into
++    files we can confidently say are in the image and lines we can't vouch
++    for at all.
++
++    Deliberately not a full Dockerfile COPY/ADD implementation -- fails
++    closed instead: anything we can't resolve with confidence becomes an
++    `unparsed` entry rather than being silently dropped (the bug this
++    replaces).
++    """
++    env = task_dir / "environment"
++    dockerfile = env / "Dockerfile"
++    if not dockerfile.exists():
++        return [], []
++    files: list[Path] = []
++    unparsed: list[str] = []
++    for line in _logical_lines(dockerfile.read_text()):
++        parts = line.split()
++        if not parts or parts[0].upper() not in _DIRECTIVES:
++            continue
++        directive = parts[0].upper()
++        resolved = _resolve_copy(directive, parts[1:], env)
++        if resolved is None:
++            unparsed.append(line.strip())
++        else:
++            files.extend(resolved)
++    return files, unparsed
++
++
++def _resolve_copy(directive: str, args: list[str], env: Path) -> list[Path] | None:
++    """Resolve one COPY/ADD directive's arguments (everything after the
++    `COPY`/`ADD` token) to concrete host files, or None if any part of it
++    can't be confidently resolved (an unrecognized flag, a multi-stage
++    `--from=` source, a heredoc/JSON-array form, an `ADD` source with an
++    archive suffix, or a source matching nothing on disk).
++    """
++    i = 0
++    while i < len(args) and args[i].startswith("--"):
++        if args[i].startswith("--from="):
++            return None  # copies from another build stage, not the host disk
++        i += 1
++    rest = args[i:]
++    if len(rest) < 2:
++        return None  # not a recognizable "source(s)... dest" shape
++
++    out: list[Path] = []
++    for token in rest[:-1]:  # every token but the last is a source
++        if directive == "ADD" and token.endswith(_ARCHIVE_SUFFIXES):
++            return None  # auto-extracted archive -- see _ARCHIVE_SUFFIXES
++        matches = _resolve_source(token, env)
++        if matches is None:
++            return None
++        out.extend(matches)
++    return out
++
++
++def _clamped(path: Path, root: Path) -> Path | None:
++    """Return `path` if it resolves to somewhere inside `root`, else None.
++
++    A source token like `../../../../etc/passwd` is lexically inside
++    `root`'s prefix (so a later `f.relative_to(task_dir)` never raises) but
++    `..` walks it physically outside. Real `docker build` refuses a source
++    escaping the build context; a source that escapes here must be treated
++    the same as any other unresolvable source -- a violation, not a silent
++    include and not a silent skip.
++    """
++    root_r = root.resolve()
++    resolved = path.resolve()
++    if resolved != root_r and root_r not in resolved.parents:
++        return None
++    return path
++
++
++def _resolve_source(token: str, env: Path) -> list[Path] | None:
++    """Resolve a single COPY/ADD source token to files on disk, or None if it
++    matches no file or directory (including a glob matching nothing, or a
++    path that only resolves outside `env` -- e.g. `..` traversal, or a URL
++    passed to `ADD`)."""
++    rel = token.lstrip("/")
++    if any(c in token for c in _GLOB_CHARS):
++        hits = list(env.glob(rel))
++        if not hits:
++            return None
++        out: list[Path] = []
++        for hit in hits:
++            if _clamped(hit, env) is None:
++                return None
++            if hit.is_dir():
++                out.extend(p for p in hit.rglob("*") if p.is_file())
++            elif hit.is_file():
++                out.append(hit)
++        return out
++    target = env / rel
++    if _clamped(target, env) is None:
++        return None
++    if target.is_dir():
++        return [p for p in target.rglob("*") if p.is_file()]
++    if target.is_file():
++        return [target]
++    return None
++
++
++_COMPILED_SUFFIXES = (".pyc", ".pyo")
++
++
++def _is_compiled_python(path: Path) -> bool:
++    """True for a compiled-bytecode file, or any file under a __pycache__ dir.
++
++    See the module docstring: these are never legitimate in an agent image
++    for this repo's task templates, and are treated as a flat violation
++    rather than substring-scanned, because a scan over marshalled bytecode
++    that happens to miss a marker is indistinguishable from a clean result.
++    """
++    return path.suffix in _COMPILED_SUFFIXES or "__pycache__" in path.parts
++
++
++def _decode_text(path: Path) -> str | None:
++    """Return `path`'s contents as text, or None if it cannot be decoded.
++
++    A file that isn't valid UTF-8 text -- an image, an archive, a compiled
++    artifact -- cannot be substring-scanned with any confidence: bytes that
++    happen to decode do not mean the scan covered the file's real content,
++    and there is no way to tell "scanned and clean" apart from "silently
++    missed". Callers must turn a None here into a violation, never a skip.
++    """
++    try:
++        return path.read_text(encoding="utf-8")
++    except (UnicodeDecodeError, OSError):
++        return None
++
++
++def _ground_truth_keys(path: Path) -> list[str]:
++    if path.suffix != ".json":
++        return []
++    try:
++        data = json.loads(path.read_text())
++    except Exception:
++        return []
++    if not isinstance(data, dict):
++        return []
++    return [k for k in data if k.startswith("_")]
++
++
++def audit(task_dir: Path) -> list[str]:
++    """Return violations found in the files this module can resolve.
++
++    An empty list means: no ground-truth key and no grading-machinery marker was
++    found in any file reachable from a COPY/ADD directive this module could parse,
++    and no directive was left uninspected. It is *not* an unconditional guarantee
++    that the image is clean -- this is a static approximation that never builds
++    the image. See the module docstring for the exact scope. Unrecognized forms
++    fail closed and appear here as violations rather than being assumed safe.
++    """
++    task_dir = Path(task_dir)
++    violations: list[str] = []
++    for line in unparsed_copies(task_dir):
++        violations.append(
++            f"COPY/ADD directive not fully inspected (image may contain "
++            f"unaudited content): {line}"
++        )
++    for f in image_files(task_dir):
++        rel = f.relative_to(task_dir)
++        for key in _ground_truth_keys(f):
++            violations.append(f"{rel}: ground-truth key {key!r} in agent image")
++        if _is_compiled_python(f):
++            violations.append(
++                f"{rel}: compiled Python bytecode in agent image -- unauditable "
++                f"(grading markers survive compilation and a module can be "
++                f"imported from bytecode alone, with no .py source present)"
++            )
++            continue
++        text = _decode_text(f)
++        if text is None:
++            violations.append(
++                f"{rel}: file in agent image could not be scanned as text "
++                f"(unscannable content is a violation, not a skip)"
++            )
++            continue
++        for marker in FORBIDDEN_MARKERS:
++            if marker in text:
++                violations.append(f"{rel}: grading machinery {marker!r} in agent image")
++    return violations
+diff --git a/forge/maf/runtime/verify_entry.py b/forge/maf/runtime/verify_entry.py
+index f8dfd57..a155df9 100644
+--- a/forge/maf/runtime/verify_entry.py
++++ b/forge/maf/runtime/verify_entry.py
+@@ -24,21 +24,21 @@ def _load_submission(cfg):
+                 if line:
+                     out.append(json.loads(line))
+         return out
+     with open(path) as fh:
+         return json.load(fh)
+ 
+ 
+ def _grade():
+     here = os.path.dirname(os.path.abspath(__file__))
+     cfg = json.load(open(os.path.join(here, "verify_config.json")))
+-    sys.path.insert(0, "/app/lib")
++    sys.path.insert(0, "/tests/lib")
+     import maf_dim  # noqa: E402
+ 
+     instance = json.load(open(cfg["scenario_path"]))
+     gt = cfg.get("ground_truth_path")
+     if gt and os.path.exists(gt):
+         instance.update(json.load(open(gt)))
+ 
+     submission = _load_submission(cfg)
+     return maf_dim.verify(instance, submission)
+ 
+diff --git a/forge/maf/selfcheck.py b/forge/maf/selfcheck.py
+index ed35e8d..ac04a85 100644
+--- a/forge/maf/selfcheck.py
++++ b/forge/maf/selfcheck.py
+@@ -1,15 +1,16 @@
+ """The CLEAN/VALID gate battery (DESIGN.md §4.3).
+ 
+ Run in-process at generation time — no Docker, no LLM tokens. An instance ships
+ only if every check passes. CLEAN = the reward has no noise; VALID = the reward
+-gap is caused by the target skill.
++gap is caused by the target skill, and not by the instruction handing the agent
++its own optimal algorithm (V4).
+ """
+ 
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
+ 
+ from forge.maf.core import transcript_hash
+ 
+ # Malformed submissions used to fuzz the verifier for C4.
+ _GARBAGE = [None, [], "garbage", 42, [{"subtask": "nope"}], {"x": 1}, [{}]]
+@@ -68,11 +69,21 @@ def selfcheck(dim, instance, tau: float = 0.6, delta: float = 0.4,
+     checks["V2_discrimination"] = (r_oracle.reward - max_cheat) > delta
+ 
+     twin = dim.ablate(instance)
+     twin_rewards = [
+         dim.verify(twin, dim.run_policy(twin, pol)).reward
+         for pol in dim.CHEATERS.values()
+     ]
+     detail["twin_rewards"] = twin_rewards
+     checks["V3_ablation"] = any(r >= 1.0 - eps for r in twin_rewards)
+ 
++    # V4: the dimension must name which cheater is the best policy achievable by
++    # mechanically executing its instruction text. V1 then requires that cheater
++    # to score below tau. A dimension whose instruction states its own optimal
++    # algorithm measures instruction-following, not the target skill --
++    # theory-of-mind scored asks == q_opt on 12/12 sweep runs for exactly that
++    # reason, and no cheater in its panel tested for it.
++    dictation = getattr(dim, "DICTATION_CHEATER", None)
++    checks["V4_dictation_declared"] = dictation in dim.CHEATERS
++    detail["dictation_cheater"] = dictation
++
+     return SelfcheckReport(ok=all(checks.values()), checks=checks, detail=detail)
+diff --git a/forge/tests/test_adversarial.py b/forge/tests/test_adversarial.py
+new file mode 100644
+index 0000000..8b099d6
+--- /dev/null
++++ b/forge/tests/test_adversarial.py
+@@ -0,0 +1,85 @@
++"""Regression tests for exploits executed against the shipped tasks on 2026-07-14.
++
++Exploits 1, 3, and 4 scored reward 1.0 on parallel-scheduling or on the
++interactive dimensions. They are structural now -- the files are gone -- so
++these tests assert absence from the agent image.
++
++Exploit 2 (forging the graded artifact) does NOT apply to parallel-scheduling:
++its submission is a schedule the verifier independently re-executes, so
++"forging" it means solving the problem. Exploit 2 is interactive-only and its
++regression test lands in Plan 2 with the sidecar. It is named here so the gap
++is explicit rather than silently absent.
++"""
++
++import json
++
++from forge.maf.dimensions.scheduling import DIM
++from forge.maf.harbor import write_task
++from forge.maf.leak_audit import image_files
++
++
++def _task(tmp_path):
++    inst = DIM.generate(3, {"n": 6, "k": 2, "trap": True})
++    return inst, write_task(DIM, inst, tmp_path, "0001")
++
++
++def _json_keys(path):
++    if path.suffix != ".json":
++        return []
++    try:
++        data = json.loads(path.read_text())
++    except Exception:
++        return []
++    return list(data) if isinstance(data, dict) else []
++
++
++def test_exploit1_ground_truth_absent_from_agent_image(tmp_path):
++    # Attack: cat the scenario out of the image to read the answer.
++    _, d = _task(tmp_path)
++    for f in image_files(d):
++        leaked = [k for k in _json_keys(f) if k.startswith("_")]
++        assert not leaked, f"{f.name} leaks {leaked}"
++
++
++def test_exploit3_oracle_absent_from_agent_image(tmp_path):
++    # Attack: import maf_dim from /app/lib and run the shipped ORACLE.
++    _, d = _task(tmp_path)
++    for f in image_files(d):
++        assert "ORACLE" not in f.read_text(errors="ignore"), f"{f.name} ships the oracle"
++
++
++def test_exploit4_generator_absent_from_agent_image(tmp_path):
++    # Attack: brute-force the seed against the shipped generate() until the
++    # public fields match, then read the private ones out of the regenerated
++    # instance. Recovered _planted at seed=3 and scored 1.0.
++    _, d = _task(tmp_path)
++    for f in image_files(d):
++        assert "def generate(" not in f.read_text(errors="ignore"), (
++            f"{f.name} ships the generator; seed brute-force defeats /tests isolation"
++        )
++
++
++def test_incomplete_schedule_scores_zero(tmp_path):
++    # Not exploit 2 -- see module docstring. This pins the completeness gate:
++    # a submission that does not schedule every subtask is invalid regardless
++    # of makespan (_check_schedule's `set(seen) != set(subs)`).
++    #
++    # The id and worker are derived from the instance, never hardcoded. An
++    # earlier draft used a literal "t0", which generate() never emits, so
++    # _check_schedule rejected it on the *unknown-subtask-id* branch and the
++    # test passed without ever reaching the completeness check it names.
++    # Hardcoding any id re-arms that trap the moment the id scheme changes.
++    inst, _ = _task(tmp_path)
++    assert len(inst["subtasks"]) > 1, "fixture must be partial-schedulable"
++    tid = sorted(inst["subtasks"])[0]
++    worker = next(
++        w for w, skills in inst["workers"].items()
++        if inst["subtasks"][tid]["skill"] in skills
++    )
++    partial = [{"subtask": tid, "worker": worker, "start": 0}]
++    assert DIM.verify(inst, partial).reward == 0.0
++
++
++def test_empty_submission_scores_zero(tmp_path):
++    inst, _ = _task(tmp_path)
++    assert DIM.verify(inst, []).reward == 0.0
+diff --git a/forge/tests/test_docs_honesty.py b/forge/tests/test_docs_honesty.py
+new file mode 100644
+index 0000000..de040fb
+--- /dev/null
++++ b/forge/tests/test_docs_honesty.py
+@@ -0,0 +1,41 @@
++"""Docs must not claim capabilities the code does not have.
++
++Every pattern here was verified absent from forge/ during the 2026-07-14 audit.
++If you implement one of these for real, delete its entry -- do not weaken the test.
++
++Patterns are word-boundary regexes, not substrings: a bare "liar" substring also
++matches "familiar" and "peculiar", which would fail this test for prose that
++claims nothing.
++"""
++
++import re
++from pathlib import Path
++
++import pytest
++
++_ROOT = Path(__file__).resolve().parents[2]
++_DESIGN = _ROOT / "docs" / "DESIGN.md"
++
++# (regex, human name, why it is a lie)
++UNIMPLEMENTED_CLAIMS = [
++    (r"\bz3\b", "z3", "no z3/CSP solver exists in forge/"),
++    (r"\brandom[- ]valid\b", "random-valid", "no random-valid baseline exists in forge/"),
++    (r"\bliar\b", "liar", "no liar dimension exists in forge/"),
++    (r"\breward\.json\b", "reward.json", "the verifier writes reward.txt, not reward.json"),
++    (r"\bheld[- ]out\b", "held-out", "no held-out config machinery exists in forge/"),
++]
++
++
++@pytest.mark.parametrize("pattern,name,why", UNIMPLEMENTED_CLAIMS)
++def test_design_does_not_claim_unimplemented_feature(pattern, name, why):
++    hits = re.findall(pattern, _DESIGN.read_text(), flags=re.IGNORECASE)
++    assert not hits, f"DESIGN.md claims {name!r} ({len(hits)} hits) but {why}"
++
++
++def test_design_is_not_marked_draft():
++    assert "draft for review" not in _DESIGN.read_text().lower()
++
++
++def test_design_code_fences_are_balanced():
++    fences = [ln for ln in _DESIGN.read_text().splitlines() if ln.startswith("```")]
++    assert len(fences) % 2 == 0, f"unclosed code fence: {len(fences)} fence markers"
+diff --git a/forge/tests/test_failure_recovery.py b/forge/tests/test_failure_recovery.py
+index 0d73771..94c7d8b 100644
+--- a/forge/tests/test_failure_recovery.py
++++ b/forge/tests/test_failure_recovery.py
+@@ -1,10 +1,12 @@
++import pytest
++
+ from forge.maf.dimensions.failure_recovery import DIM
+ from forge.maf.selfcheck import selfcheck
+ 
+ MED = {"n": 5, "workers": 3, "fail_rate": 0.35}
+ 
+ 
+ def test_oracle_completes_and_scores_one():
+     for s in range(20):
+         inst = DIM.generate(s, MED)
+         r = DIM.verify(inst, DIM.run_policy(inst, DIM.ORACLE))
+@@ -16,20 +18,29 @@ def test_static_plan_fails_when_failures_present():
+     r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["static_plan"]))
+     assert r.reward < 0.6
+ 
+ 
+ def test_brute_force_exhausts_budget():
+     inst = DIM.generate(0, {"n": 5, "workers": 3, "fail_rate": 0.4})
+     r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["brute_force"]))
+     assert r.reward < 0.6
+ 
+ 
++@pytest.mark.xfail(
++    reason="V4 (selfcheck.py) requires DICTATION_CHEATER: failure-recovery's "
++    "instruction describes the canonical recovery strategy itself (topological "
++    "order, try rostered workers in sorted order, move on after a failure), "
++    "and mechanically following it literally reaches the optimum -- so no "
++    "cheater in CHEATERS can play the dictation role. This dimension is "
++    "degenerate and is quarantined by Task 6, not fixed here.",
++    strict=True,
++)
+ def test_selfcheck_passes():
+     inst = DIM.generate(1, MED)
+     rep = selfcheck(DIM, inst)
+     assert rep.ok, rep.checks
+ 
+ 
+ def test_ablation_static_plan_wins():
+     inst = DIM.generate(1, MED)
+     twin = DIM.ablate(inst)
+     r = DIM.verify(twin, DIM.run_policy(twin, DIM.CHEATERS["static_plan"]))
+diff --git a/forge/tests/test_forge_cli.py b/forge/tests/test_forge_cli.py
+index a98a79f..d3943ae 100644
+--- a/forge/tests/test_forge_cli.py
++++ b/forge/tests/test_forge_cli.py
+@@ -1,14 +1,18 @@
+ import json
+ import subprocess
+ import sys
+ 
++import pytest
++
++from forge.forge_cli import QUARANTINED, main
++
+ 
+ def _run(*args, cwd="."):
+     return subprocess.run(
+         [sys.executable, "-m", "forge.forge_cli", *args],
+         capture_output=True, text=True, cwd=cwd,
+     )
+ 
+ 
+ def test_cli_ships_only_passing_tasks(tmp_path):
+     out = tmp_path / "tasks"
+@@ -19,10 +23,24 @@ def test_cli_ships_only_passing_tasks(tmp_path):
+     assert summary["shipped"] >= 1
+     dirs = list(out.glob("parallel-scheduling-*"))
+     assert len(dirs) == summary["shipped"]
+     for d in dirs:
+         assert (d / "task.toml").exists()
+ 
+ 
+ def test_cli_rejects_unknown_dimension(tmp_path):
+     r = _run("gen", "--dim", "nope", "--out", str(tmp_path))
+     assert r.returncode != 0
++
++
++def test_quarantined_dimension_cannot_be_rendered(tmp_path):
++    with pytest.raises(SystemExit) as exc:
++        main(["gen", "--dim", "theory-of-mind", "--out", str(tmp_path)])
++    assert exc.value.code != 0
++    assert not list(tmp_path.iterdir())
++
++
++def test_quarantine_names_the_reason():
++    assert "theory-of-mind" in QUARANTINED
++    assert "failure-recovery" in QUARANTINED
++    for reason in QUARANTINED.values():
++        assert "sidecar" in reason.lower()
+diff --git a/forge/tests/test_harbor.py b/forge/tests/test_harbor.py
+index 6010911..28d05e8 100644
+--- a/forge/tests/test_harbor.py
++++ b/forge/tests/test_harbor.py
+@@ -1,46 +1,50 @@
+ import json
+ import tomllib
+ 
+ from forge.maf.dimensions.scheduling import DIM
+ from forge.maf.harbor import write_task
++from forge.maf.leak_audit import audit
+ 
+ 
+ def test_write_task_produces_valid_tree(tmp_path):
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+     assert (d / "task.toml").exists()
+     tomllib.loads((d / "task.toml").read_text())  # parses
+     assert (d / "instruction.md").read_text().strip()
+     assert (d / "environment" / "task.json").exists()
+     assert (d / "environment" / "Dockerfile").exists()
+-    assert (d / "environment" / "lib" / "maf_core.py").exists()
+-    assert (d / "environment" / "lib" / "maf_dim.py").exists()
++    assert (d / "tests" / "lib" / "maf_core.py").exists()
++    assert (d / "tests" / "lib" / "maf_dim.py").exists()
+     assert (d / "solution" / "solve.sh").exists()
+     assert (d / "tests" / "verify.py").exists()
+     assert (d / "tests" / "ground_truth.json").exists()
+ 
+ 
+-def test_public_files_hide_ground_truth(tmp_path):
++def test_agent_image_hides_ground_truth_and_grader(tmp_path):
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+-    instruction = (d / "instruction.md").read_text()
+-    task_json = (d / "environment" / "task.json").read_text()
+-    for leak in ("_planted", "_opt_makespan"):
+-        assert leak not in instruction
+-        assert leak not in task_json
++    assert audit(d) == []
++
++
++def test_dimension_module_ships_to_tests_not_environment(tmp_path):
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    d = write_task(DIM, inst, tmp_path, "0001")
++    assert (d / "tests" / "lib" / "maf_dim.py").exists()
++    assert not (d / "environment" / "lib").exists()
+ 
+ 
+ def test_copied_module_has_no_package_imports(tmp_path):
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+-    src = (d / "environment" / "lib" / "maf_dim.py").read_text()
++    src = (d / "tests" / "lib" / "maf_dim.py").read_text()
+     assert "from forge.maf.core" not in src
+     assert "from maf_core import" in src
+ 
+ 
+ def test_embedded_oracle_solution_verifies(tmp_path):
+     # The planted schedule embedded in solve.sh must score 1.0 through verify().
+     inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
+     d = write_task(DIM, inst, tmp_path, "0001")
+     solve = (d / "solution" / "solve.sh").read_text()
+     start = solve.index("[")
+diff --git a/forge/tests/test_leak_audit.py b/forge/tests/test_leak_audit.py
+new file mode 100644
+index 0000000..cca9649
+--- /dev/null
++++ b/forge/tests/test_leak_audit.py
+@@ -0,0 +1,341 @@
++import py_compile
++
++from forge.maf.dimensions.scheduling import DIM as SCHED
++from forge.maf.harbor import write_task
++from forge.maf.leak_audit import audit, image_files, unparsed_copies
++
++
++def _task_with_dockerfile(tmp_path, dockerfile_body, files=None):
++    """Build a minimal task_dir (environment/Dockerfile + optional source files)
++    without going through write_task, so COPY-parsing edge cases can be tested
++    in isolation from the real dimension templates."""
++    task_dir = tmp_path / "task"
++    env = task_dir / "environment"
++    env.mkdir(parents=True)
++    for rel, content in (files or {}).items():
++        p = env / rel
++        p.parent.mkdir(parents=True, exist_ok=True)
++        p.write_text(content)
++    (env / "Dockerfile").write_text(dockerfile_body)
++    return task_dir
++
++
++def test_image_files_follows_dockerfile_copy(tmp_path):
++    inst = SCHED.generate(3, {"n": 6, "k": 2, "trap": True})
++    d = write_task(SCHED, inst, tmp_path, "0001")
++    names = {p.name for p in image_files(d)}
++    # task.json is COPYed in; the Dockerfile itself is build context, not image.
++    assert "task.json" in names
++    assert "Dockerfile" not in names
++    # Task 3 relocated the dimension module to tests/lib/, which Harbor
++    # uploads only at verification time. The real task's Dockerfile no
++    # longer COPYs a directory into the agent image at all.
++    assert "maf_dim.py" not in names
++
++
++def test_image_files_expands_directory_copy(tmp_path):
++    # Directory-expansion coverage, now synthetic since the real task's
++    # Dockerfile no longer COPYs a directory into the agent image (see
++    # test_image_files_follows_dockerfile_copy above). Pinned independently
++    # of test_scheduling_task_does_not_leak so this parser capability stays
++    # covered on its own merits.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
++        {"lib/maf_dim.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
++    )
++    names = {p.name for p in image_files(d)}
++    assert "maf_dim.py" in names
++
++
++def test_scheduling_task_does_not_leak(tmp_path):
++    inst = SCHED.generate(3, {"n": 6, "k": 2, "trap": True})
++    d = write_task(SCHED, inst, tmp_path, "0001")
++    assert audit(d) == []
++
++
++def test_image_files_handles_chown_flag(tmp_path):
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY --chown=1000:1000 task.json /app/task.json\n",
++        {"task.json": "{}"},
++    )
++    names = {p.name for p in image_files(d)}
++    assert names == {"task.json"}
++    assert unparsed_copies(d) == []
++
++
++def test_image_files_handles_multi_source(tmp_path):
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY a.txt b.txt dest/\n",
++        {"a.txt": "a", "b.txt": "b"},
++    )
++    names = {p.name for p in image_files(d)}
++    assert names == {"a.txt", "b.txt"}
++    assert unparsed_copies(d) == []
++
++
++def test_image_files_expands_glob(tmp_path):
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY *.py /app/\n",
++        {"one.py": "print(1)", "two.py": "print(2)", "readme.txt": "hi"},
++    )
++    names = {p.name for p in image_files(d)}
++    assert names == {"one.py", "two.py"}
++    assert unparsed_copies(d) == []
++
++
++def test_unresolvable_source_is_reported_not_dropped(tmp_path):
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY does-not-exist.txt /app/does-not-exist.txt\n",
++    )
++    # The old parser would silently drop this line. The new one must never
++    # claim a clean scan of an image it didn't actually inspect.
++    assert image_files(d) == []
++    unresolved = unparsed_copies(d)
++    assert len(unresolved) == 1
++    assert "does-not-exist.txt" in unresolved[0]
++
++
++def test_from_stage_copy_is_reported_not_dropped(tmp_path):
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY --from=builder /src/app /app/app\n",
++    )
++    assert image_files(d) == []
++    assert len(unparsed_copies(d)) == 1
++
++
++def test_audit_surfaces_unparsed_copy_as_violation(tmp_path):
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY --from=builder /src/app /app/app\n",
++    )
++    violations = audit(d)
++    assert len(violations) == 1
++    assert "not fully inspected" in violations[0] or "unresolved" in violations[0].lower()
++
++
++def test_audit_clean_when_all_copies_resolve(tmp_path):
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY task.json /app/task.json\n",
++        {"task.json": "{}"},
++    )
++    assert audit(d) == []
++
++
++# --- Review findings ------------------------------------------------------
++#
++# Each test below reproduces a way the physical-line COPY parser let a file
++# into the agent image without the audit ever seeing it. Reverting the
++# corresponding fix must turn the test red again.
++
++
++def test_backslash_continuation_source_is_scanned(tmp_path):
++    # Finding 1 (CRITICAL): a source on a continuation line is invisible to a
++    # parser that walks physical lines -- it never reaches image_files() or
++    # unparsed_copies(), so audit() reports clean on an image it never
++    # actually inspected. This is the exact Dockerfile from the finding.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\n"
++        "COPY a.py \\\n"
++        "     leak_secret.py \\\n"
++        "     /app/dest/\n",
++        {
++            "a.py": "print('a')\n",
++            "leak_secret.py": "ORACLE = 1\ndef verify(x):\n    pass\n",
++        },
++    )
++    names = {p.name for p in image_files(d)}
++    assert "leak_secret.py" in names
++    violations = audit(d)
++    assert violations != []
++    assert any("leak_secret.py" in v for v in violations)
++
++
++def test_traversal_source_is_a_violation_not_silently_included(tmp_path):
++    # Finding 2 (IMPORTANT): `../../secret_outside.txt` is lexically inside
++    # task_dir's prefix (so `f.relative_to(task_dir)` never raises) but
++    # physically outside `environment/`. The audit must neither read this
++    # file into the image nor silently drop the COPY line -- it must report
++    # the line as unresolved.
++    (tmp_path / "secret_outside.txt").write_text("ORACLE outside the task dir\n")
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY ../../secret_outside.txt /app/secret.txt\n",
++    )
++    assert not any(f.name == "secret_outside.txt" for f in image_files(d))
++    unresolved = unparsed_copies(d)
++    assert len(unresolved) == 1
++    assert audit(d) != []
++
++
++def test_add_directive_is_recognized_like_copy(tmp_path):
++    # Finding 3 (IMPORTANT): the parser only matched COPY. ADD also copies
++    # files into the image -- an ADD directive was silently skipped, the
++    # same silent-drop bug as Finding 1.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nADD lib /app/lib\n",
++        {"lib/leak.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
++    )
++    names = {p.name for p in image_files(d)}
++    assert "leak.py" in names
++    assert audit(d) != []
++
++
++def test_add_url_source_is_unresolved_not_silently_skipped(tmp_path):
++    # Companion to Finding 3: ADD also accepts a URL, which is not a local
++    # path at all. That must fail closed into unparsed_copies(), not vanish
++    # the way an unrecognized directive would.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nADD https://example.com/archive.tar.gz /app/archive.tar.gz\n",
++    )
++    assert image_files(d) == []
++    assert len(unparsed_copies(d)) == 1
++
++
++# --- Third-round review findings ------------------------------------------
++#
++# The previous fix (0119e3d) introduced _logical_lines() to join backslash
++# continuations, but joined ANY physical line ending in `\`, including
++# comment lines -- reintroducing the exact silent-drop bug class it was
++# meant to close, just via a `#` line instead of a plain COPY line.
++
++
++def test_comment_ending_in_backslash_does_not_swallow_next_line(tmp_path):
++    # Finding 1 (CRITICAL): a `#` line is a full-line comment. Docker does
++    # not continue comments -- a trailing `\` inside one is a literal
++    # backslash, not a continuation marker. The previous fix's
++    # _logical_lines() joined it anyway, splicing the comment together with
++    # the COPY line that follows into one unmatched logical line, so the
++    # COPY (and its source) vanished from both image_files() and
++    # unparsed_copies(). This is the exact Dockerfile from the finding.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\n"
++        "# note: path uses backslash \\\n"
++        "COPY leak_secret.py /app/dest/\n",
++        {"leak_secret.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
++    )
++    assert image_files(d) != []
++    assert unparsed_copies(d) == []
++    violations = audit(d)
++    assert violations != []
++    assert any("leak_secret.py" in v for v in violations)
++
++
++def test_plain_comment_does_not_swallow_following_copy(tmp_path):
++    # Regression, pinning the other direction: an ordinary comment with no
++    # trailing backslash must keep behaving exactly like before -- it must
++    # not swallow (or otherwise disturb) the COPY line after it.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\n"
++        "# just a plain comment, no continuation\n"
++        "COPY task.json /app/task.json\n",
++        {"task.json": "{}"},
++    )
++    names = {p.name for p in image_files(d)}
++    assert names == {"task.json"}
++    assert unparsed_copies(d) == []
++    assert audit(d) == []
++
++
++def test_add_local_archive_is_unresolved_not_scanned_as_opaque_file(tmp_path):
++    # Finding 2 (IMPORTANT): ADD auto-extracts a local archive at the
++    # destination -- its contents are not one opaque file, they're whatever
++    # the archive contains, none of which the audit can see (the marker
++    # scan is blind on compressed bytes, and _ground_truth_keys only looks
++    # at `.json` files). The audit must say it could not inspect this
++    # rather than silently scan the compressed blob and call it clean.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nADD leak.tar.gz /app/\n",
++        {"leak.tar.gz": "not real gzip bytes, just needs to exist on disk"},
++    )
++    assert not any(f.name == "leak.tar.gz" for f in image_files(d))
++    unresolved = unparsed_copies(d)
++    assert len(unresolved) == 1
++    assert "leak.tar.gz" in unresolved[0]
++    assert audit(d) != []
++
++
++# --- G1 fail-open: compiled bytecode is invisible to the audit ------------
++#
++# `_SKIP_SUFFIXES = (".pyc",)` filtered compiled bytecode out of
++# image_files() before the marker/ground-truth scan ever ran. Verified
++# facts (see task report): every FORBIDDEN_MARKERS substring survives into
++# compiled bytecode; a module imports and runs from a .pyc alone with no
++# .py source anywhere on disk (copy maf_core.pyc + maf_dim.pyc onto
++# sys.path -- ORACLE is present, generate() is callable); and the checked-in
++# tasks/parallel-scheduling-0003/environment/ actually ships lib/__pycache__
++# *.pyc via a `COPY lib /app/lib` Dockerfile line, so this is a real path,
++# not a theoretical one. "I cannot scan this" must fail closed into a
++# violation, not a silent skip.
++
++
++def test_pyc_only_lib_dir_is_a_violation(tmp_path):
++    # (a) A lib/ dir COPYed into the image that holds ONLY compiled
++    # bytecode -- no .py source at all -- must not audit clean. This is the
++    # exact shape of the exploit: an agent needs no .py anywhere to import
++    # and run the module.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
++    )
++    lib = d / "environment" / "lib"
++    pycache = lib / "__pycache__"
++    pycache.mkdir(parents=True)
++    src = tmp_path / "maf_dim_src.py"
++    src.write_text("ORACLE = 1\ndef verify(x):\n    pass\n")
++    py_compile.compile(
++        str(src), cfile=str(pycache / "maf_dim.cpython-313.pyc"), doraise=True
++    )
++    # Confirm the fixture matches the claim: bytecode only, no .py under lib/.
++    assert not any(p.suffix == ".py" for p in lib.rglob("*"))
++    assert audit(d) != []
++
++
++def test_pyc_alongside_py_violation_names_pyc_not_only_py(tmp_path):
++    # (b) A .pyc sitting next to its already-flagged .py must be named in
++    # its own violation. Flagging only the .py would still miss the exploit
++    # path this module exists to close: an agent can import from the .pyc
++    # even when the .py is also visible to the scan.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
++        {"lib/maf_dim.py": "ORACLE = 1\ndef verify(x):\n    pass\n"},
++    )
++    lib = d / "environment" / "lib"
++    pycache = lib / "__pycache__"
++    pycache.mkdir(parents=True)
++    py_compile.compile(
++        str(lib / "maf_dim.py"),
++        cfile=str(pycache / "maf_dim.cpython-313.pyc"),
++        doraise=True,
++    )
++    violations = audit(d)
++    assert violations != []
++    assert any("maf_dim.cpython-313.pyc" in v for v in violations), violations
++
++
++def test_image_files_includes_compiled_bytecode(tmp_path):
++    # image_files() itself must stop hiding .pyc -- it is a file genuinely
++    # copied into the agent image, and downstream consumers (Tasks 3, 5, 7)
++    # rely on image_files() to see everything that lands there.
++    d = _task_with_dockerfile(
++        tmp_path,
++        "FROM python:3.11-slim\nCOPY lib /app/lib\n",
++    )
++    lib = d / "environment" / "lib"
++    lib.mkdir(parents=True, exist_ok=True)
++    (lib / "module.pyc").write_bytes(b"\x00\x01\x02\xf3\xfe\xff\x00")
++    names = {p.name for p in image_files(d)}
++    assert "module.pyc" in names
+diff --git a/forge/tests/test_selfcheck.py b/forge/tests/test_selfcheck.py
+index 0fa5964..5f5b2aa 100644
+--- a/forge/tests/test_selfcheck.py
++++ b/forge/tests/test_selfcheck.py
+@@ -22,10 +22,51 @@ def test_trivial_instance_fails_validity():
+ def test_c4_robust_to_garbage():
+     inst = DIM.generate(1, {"n": 4, "k": 2, "trap": True})
+     rep = selfcheck(DIM, inst)
+     assert rep.checks["C4_verifier_robust"] is True
+ 
+ 
+ def test_report_exposes_cheater_rewards():
+     inst = DIM.generate(3, {"n": 7, "k": 3, "trap": True})
+     rep = selfcheck(DIM, inst)
+     assert set(rep.detail["cheater_rewards"]) == set(DIM.CHEATERS)
++
++
++class _Undeclared:
++    """A dimension that never says what obeying its instruction produces."""
++    NAME = DIM.NAME
++    CHEATERS = DIM.CHEATERS
++    ORACLE = staticmethod(DIM.ORACLE)
++    generate = staticmethod(DIM.generate)
++    run_policy = staticmethod(DIM.run_policy)
++    verify = staticmethod(DIM.verify)
++    ablate = staticmethod(DIM.ablate)
++    # DICTATION_CHEATER deliberately absent.
++
++
++class _MisDeclared(_Undeclared):
++    """A dimension that names a cheater it does not have."""
++    DICTATION_CHEATER = "no_such_policy"
++
++
++def test_dimension_that_does_not_declare_dictation_is_rejected():
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    rep = selfcheck(_Undeclared(), inst)
++    assert rep.checks["V4_dictation_declared"] is False
++    assert rep.ok is False
++
++
++def test_dimension_that_names_a_missing_cheater_is_rejected():
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    rep = selfcheck(_MisDeclared(), inst)
++    assert rep.checks["V4_dictation_declared"] is False
++    assert rep.ok is False
++
++
++def test_scheduling_declares_dictation_and_it_loses():
++    inst = DIM.generate(2, {"n": 5, "k": 2, "trap": True})
++    rep = selfcheck(DIM, inst)
++    assert rep.checks["V4_dictation_declared"] is True
++    # V1 already requires this, but pin it explicitly: obeying the instruction
++    # must not be enough to win.
++    assert rep.detail["cheater_rewards"][DIM.DICTATION_CHEATER] < 0.6
++    assert rep.ok is True
+diff --git a/forge/tests/test_theory_of_mind.py b/forge/tests/test_theory_of_mind.py
+index 05b3f85..75133ba 100644
+--- a/forge/tests/test_theory_of_mind.py
++++ b/forge/tests/test_theory_of_mind.py
+@@ -1,10 +1,12 @@
++import pytest
++
+ from forge.maf.dimensions.theory_of_mind import DIM
+ from forge.maf.selfcheck import selfcheck
+ 
+ MED = {"suspects": 5, "referral_depth": 2}
+ 
+ 
+ def test_unique_solution():
+     for s in range(20):
+         inst = DIM.generate(s, MED)
+         assert DIM.unique_ground_truth(inst)
+@@ -23,20 +25,29 @@ def test_info_dump_cannot_win_under_budget():
+         r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["info_dump"]))
+         assert r.reward < 0.6, (s, r.reward)
+ 
+ 
+ def test_no_referral_fails():
+     inst = DIM.generate(0, MED)
+     r = DIM.verify(inst, DIM.run_policy(inst, DIM.CHEATERS["no_referral"]))
+     assert r.gate == 0
+ 
+ 
++@pytest.mark.xfail(
++    reason="V4 (selfcheck.py) requires DICTATION_CHEATER: theory-of-mind's "
++    "instruction names each topic's entry witness and says to follow referrals, "
++    "and doing exactly that costs q_opt -- the instruction states its own "
++    "optimal algorithm, so no cheater in CHEATERS can play the dictation role. "
++    "Both gpt-5.6 and gpt-4.1 scored asks == q_opt on 12/12 sweep runs. This "
++    "dimension is degenerate and is quarantined by Task 6, not fixed here.",
++    strict=True,
++)
+ def test_selfcheck_passes():
+     for s in range(5):
+         inst = DIM.generate(s, MED)
+         assert selfcheck(DIM, inst).ok, selfcheck(DIM, inst).checks
+ 
+ 
+ def test_ablation_direct_read_wins():
+     inst = DIM.generate(2, MED)
+     twin = DIM.ablate(inst)
+     r = DIM.verify(twin, DIM.run_policy(twin, DIM.CHEATERS["no_referral"]))
+diff --git a/scripts/dryrun_local.py b/scripts/dryrun_local.py
+index 10fbde2..dcc599c 100644
+--- a/scripts/dryrun_local.py
++++ b/scripts/dryrun_local.py
+@@ -1,16 +1,21 @@
+ """Faithful local dry-run of the shipped tasks' oracle -> verify flow.
+ 
+ Executes exactly what the container would (oracle produces a submission, the
+ copied dimension module verifies it), but with local paths and importing ONLY
+-each task's ``environment/lib`` — no access to the ``forge`` package. Proves the
++each task's ``tests/lib`` — no access to the ``forge`` package. Proves the
+ shipped artifacts are self-contained and score the oracle at 1.0, without Docker.
++
++``tests/lib`` (not ``environment/lib``) is what the verifier actually imports:
++the dimension module ships to ``tests/``, which Harbor uploads only at
++verification time -- see ``forge/maf/harbor.py`` and
++``forge/maf/runtime/verify_entry.py``.
+ """
+ 
+ import importlib.util
+ import json
+ import re
+ import sys
+ from pathlib import Path
+ 
+ 
+ def _import_maf_dim(lib_dir: Path):
+@@ -42,21 +47,21 @@ def _full_instance(task: Path, cfg: dict) -> dict:
+ 
+ 
+ def main():
+     tasks = sorted(p for p in Path("tasks").iterdir() if p.is_dir())
+     ok = True
+     for task in tasks:
+         for name in list(sys.modules):
+             if name in ("maf_core", "maf_dim"):
+                 del sys.modules[name]
+         cfg = json.load(open(task / "tests" / "verify_config.json"))
+-        maf_dim = _import_maf_dim(task / "environment" / "lib")
++        maf_dim = _import_maf_dim(task / "tests" / "lib")
+         submission = _oracle_submission(task, cfg, maf_dim)
+         rb = maf_dim.verify(_full_instance(task, cfg), submission)
+         status = "OK " if rb.reward == 1.0 else "FAIL"
+         if rb.reward != 1.0:
+             ok = False
+         print(f"[{status}] {task.name:28s} oracle reward = {rb.reward} ({rb.subscores})")
+     print("\nALL PASS" if ok else "\nFAILURES PRESENT")
+     sys.exit(0 if ok else 1)
+ 
+ 
+diff --git a/scripts/verify_all.sh b/scripts/verify_all.sh
+index 59a8188..0c4cc53 100755
+--- a/scripts/verify_all.sh
++++ b/scripts/verify_all.sh
+@@ -1,12 +1,17 @@
+ #!/usr/bin/env bash
+ # Verify every generated sample task with Harbor's oracle agent (needs Docker).
+ # Each task must report reward 1.0.
++#
++# failure-recovery and theory-of-mind are quarantined (see
++# forge/forge_cli.py:QUARANTINED) pending the Plan 2 sidecar -- their task
++# dirs were deleted and forge_cli refuses to regenerate them, so only
++# parallel-scheduling is globbed here.
+ set -euo pipefail
+ export PATH="$HOME/.local/bin:$PATH"
+ 
+-tasks=(tasks/parallel-scheduling-* tasks/failure-recovery-* tasks/theory-of-mind-*)
++tasks=(tasks/parallel-scheduling-*)
+ for t in "${tasks[@]}"; do
+   echo "==================== oracle: $t ===================="
+   harbor run --path "$t" --agent oracle -n 1
+ done
+ echo "All oracle runs complete. Inspect rewards above (expect 1.0 each)."
+diff --git a/tasks/failure-recovery-0001/environment/Dockerfile b/tasks/failure-recovery-0001/environment/Dockerfile
+deleted file mode 100644
+index d60bf80..0000000
+--- a/tasks/failure-recovery-0001/environment/Dockerfile
++++ /dev/null
+@@ -1,8 +0,0 @@
+-FROM python:3.11-slim
+-RUN apt-get update && apt-get install -y --no-install-recommends tmux git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+-WORKDIR /app
+-COPY lib /app/lib
+-RUN mkdir -p /opt/maf
+-COPY scenario.json /opt/maf/scenario.json
+-COPY coord /usr/local/bin/coord
+-RUN chmod +x /usr/local/bin/coord
+diff --git a/tasks/failure-recovery-0001/environment/coord b/tasks/failure-recovery-0001/environment/coord
+deleted file mode 100644
+index 17c2cbb..0000000
+--- a/tasks/failure-recovery-0001/environment/coord
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/bash
+-exec python3 /app/lib/cli.py "$@"
+diff --git a/tasks/failure-recovery-0001/environment/lib/cli.py b/tasks/failure-recovery-0001/environment/lib/cli.py
+deleted file mode 100644
+index ff16057..0000000
+--- a/tasks/failure-recovery-0001/environment/lib/cli.py
++++ /dev/null
+@@ -1,36 +0,0 @@
+-"""Generic interactive CLI runtime — copied into each interactive task's lib/.
+-
+-The task's ``coord``/``interview`` shim execs ``python3 /app/lib/cli.py <args>``.
+-Each invocation loads the full scenario + persisted state, applies one command
+-via the copied dimension's ``Env.handle``, persists state, appends the single
+-interaction to the transcript, and prints the public JSON response.
+-
+-Stdlib-only. Ground-truth scenario lives outside /app (see the Dockerfile).
+-"""
+-
+-import json
+-import os
+-import sys
+-
+-SCENARIO = os.environ.get("MAF_SCENARIO", "/opt/maf/scenario.json")
+-STATE = os.environ.get("MAF_STATE", "/app/.maf_state.json")
+-TRANSCRIPT = os.environ.get("MAF_TRANSCRIPT", "/app/transcript.jsonl")
+-
+-
+-def main(argv):
+-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+-    import maf_dim
+-
+-    instance = json.load(open(SCENARIO))
+-    state = json.load(open(STATE)) if os.path.exists(STATE) else None
+-    env = maf_dim.make_env(instance, state)
+-    resp = env.handle(argv)
+-    with open(STATE, "w") as fh:
+-        json.dump(env.state(), fh)
+-    with open(TRANSCRIPT, "a") as fh:
+-        fh.write(json.dumps(env.transcript[-1]) + "\n")
+-    print(json.dumps(resp))
+-
+-
+-if __name__ == "__main__":
+-    main(sys.argv[1:])
+diff --git a/tasks/failure-recovery-0001/environment/lib/maf_core.py b/tasks/failure-recovery-0001/environment/lib/maf_core.py
+deleted file mode 100644
+index 71094cd..0000000
+--- a/tasks/failure-recovery-0001/environment/lib/maf_core.py
++++ /dev/null
+@@ -1,99 +0,0 @@
+-"""Core primitives shared by every dimension and by both runtimes.
+-
+-This module is copied verbatim into each generated task's ``environment/lib`` so
+-that the in-container verifier and the in-process selfcheck grade identically.
+-It must stay standard-library-only.
+-"""
+-
+-from __future__ import annotations
+-
+-import hashlib
+-import json
+-import random
+-from dataclasses import dataclass, field
+-from typing import Callable, Protocol, runtime_checkable
+-
+-Rng = random.Random
+-
+-
+-@dataclass
+-class RewardBreakdown:
+-    """The uniform reward shape: ``reward = gate * quality``.
+-
+-    ``gate`` is a hard 0/1 constraint check; ``quality`` is a (0,1] measure of
+-    how good a *valid* solution is. ``subscores`` carries dimension-specific
+-    diagnostics used for RL credit assignment and calibration.
+-    """
+-
+-    reward: float
+-    gate: int
+-    quality: float
+-    subscores: dict = field(default_factory=dict)
+-
+-    def to_json(self) -> dict:
+-        return {
+-            "reward": self.reward,
+-            "gate": self.gate,
+-            "quality": self.quality,
+-            "subscores": self.subscores,
+-        }
+-
+-
+-def reward(gate: int, quality: float, subscores: dict) -> RewardBreakdown:
+-    """Build a :class:`RewardBreakdown`, clamping ``quality`` to (0, 1]."""
+-    q = max(1e-6, min(1.0, float(quality)))
+-    g = 1 if gate else 0
+-    return RewardBreakdown(reward=g * q, gate=g, quality=q, subscores=subscores)
+-
+-
+-def transcript_hash(submission) -> str:
+-    """Stable, order-independent hash of a JSON-serializable submission."""
+-    return hashlib.sha256(
+-        json.dumps(submission, sort_keys=True, default=str).encode()
+-    ).hexdigest()
+-
+-
+-# A policy drives an Env (or, for static dimensions, receives the public
+-# instance) and produces the graded submission. See each dimension's
+-# ``run_policy`` for how policies are executed.
+-Policy = Callable[..., object]
+-
+-
+-@runtime_checkable
+-class Env(Protocol):
+-    """Runtime state machine for interactive dimensions."""
+-
+-    def public_state(self) -> dict:
+-        """What the agent is allowed to observe."""
+-
+-    def submission(self) -> object:
+-        """The graded artifact/transcript accumulated so far."""
+-
+-
+-@runtime_checkable
+-class Dimension(Protocol):
+-    """The contract every task family implements.
+-
+-    Ground-truth fields of an instance are prefixed with ``_`` and are never
+-    surfaced to the agent (``public`` strips them). ``ORACLE`` and every entry
+-    in ``CHEATERS`` interact only through the public policy surface.
+-    """
+-
+-    NAME: str
+-    SUBMISSION_FILE: str
+-    INTERACTIVE: bool
+-    ORACLE: Policy
+-    CHEATERS: dict
+-    DIFFICULTY_PRESETS: dict
+-
+-    def generate(self, seed: int, difficulty: dict) -> dict: ...
+-    def make_env(self, instance: dict) -> Env: ...
+-    def run_policy(self, instance: dict, policy: Policy) -> object: ...
+-    def verify(self, instance: dict, submission: object) -> RewardBreakdown: ...
+-    def ablate(self, instance: dict) -> dict: ...
+-    def render_instruction(self, instance: dict) -> str: ...
+-
+-
+-def public(instance: dict) -> dict:
+-    """Return the agent-visible view of an instance: drop ``_``-prefixed keys."""
+-    return {k: v for k, v in instance.items() if not k.startswith("_")}
+diff --git a/tasks/failure-recovery-0001/environment/lib/maf_dim.py b/tasks/failure-recovery-0001/environment/lib/maf_dim.py
+deleted file mode 100644
+index 3cc1a8f..0000000
+--- a/tasks/failure-recovery-0001/environment/lib/maf_dim.py
++++ /dev/null
+@@ -1,333 +0,0 @@
+-"""``failure-recovery`` — interactive, multi-turn dimension.
+-
+-Skill under test: **dynamic replanning + failure recovery**. The agent dispatches
+-subtasks to workers via the ``coord`` CLI. The roster advertises which workers
+-*can attempt* a task, but success is hidden ground truth: some rostered workers
+-are decoys that fail. The agent must detect failures and re-route.
+-
+-The optimum is the **canonical recovery strategy** (topological task order, try
+-rostered workers in sorted order, move on after a failure). ``quality =
+-D_opt / dispatches_used`` — so an honest agent that recovers efficiently reaches
+-1.0, while retrying a known-failed worker or brute-forcing everyone exhausts the
+-dispatch budget and fails the completion gate.
+-
+-Stdlib-only (copied into the task container).
+-"""
+-
+-from __future__ import annotations
+-
+-import random
+-
+-from maf_core import RewardBreakdown, public, reward
+-
+-NAME = "failure-recovery"
+-CLI_NAME = "coord"
+-SUBMISSION_FILE = "/app/transcript.jsonl"
+-INTERACTIVE = True
+-
+-DIFFICULTY_PRESETS = {
+-    "easy": {"n": 4, "workers": 3, "fail_rate": 0.3},
+-    "medium": {"n": 5, "workers": 3, "fail_rate": 0.35},
+-    "hard": {"n": 7, "workers": 4, "fail_rate": 0.4},
+-}
+-
+-_BIG_BUDGET = 10**6
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Runtime state machine (the public interface)
+-# --------------------------------------------------------------------------- #
+-class Env:
+-    def __init__(self, instance: dict, state: dict | None = None):
+-        self.inst = instance
+-        self.done = set(state["done"]) if state else set()
+-        self.used = state["used"] if state else 0
+-        self.transcript: list[dict] = []
+-
+-    def state(self) -> dict:
+-        return {"done": sorted(self.done), "used": self.used}
+-
+-    def _rec(self, cmd, args, resp):
+-        self.transcript.append({"cmd": cmd, **args, "response": resp})
+-        return resp
+-
+-    def handle(self, argv: list[str]) -> dict:
+-        cmd = argv[0] if argv else "help"
+-        if cmd == "roster":
+-            return self._rec("roster", {}, {"roster": self.inst["roster"]})
+-        if cmd == "dag":
+-            return self._rec("dag", {}, {"dag": self.inst["dag"]})
+-        if cmd == "status":
+-            pending = [t for t in self.inst["dag"] if t not in self.done]
+-            return self._rec("status", {}, {
+-                "done": sorted(self.done), "pending": pending,
+-                "dispatches_used": self.used, "budget": self.inst["_budget"]})
+-        if cmd == "dispatch":
+-            t = argv[1] if len(argv) > 1 else None
+-            w = argv[2] if len(argv) > 2 else None
+-            return self._rec("dispatch", {"task": t, "worker": w},
+-                             self._dispatch(t, w))
+-        if cmd == "submit":
+-            complete = self.done == set(self.inst["dag"])
+-            return self._rec("submit", {}, {"complete": complete,
+-                                            "done": sorted(self.done)})
+-        return {"error": f"unknown command {cmd!r}"}
+-
+-    def _dispatch(self, t, w) -> dict:
+-        if self.used >= self.inst["_budget"]:
+-            return {"result": "ERROR", "reason": "budget exhausted"}
+-        self.used += 1
+-        dag, roster, succ = self.inst["dag"], self.inst["roster"], self.inst["_success"]
+-        if t not in dag:
+-            return {"result": "ERROR", "reason": "unknown task"}
+-        if w not in roster.get(t, []):
+-            return {"result": "ERROR", "reason": "worker not rostered for task"}
+-        if any(d not in self.done for d in dag[t]):
+-            return {"result": "ERROR", "reason": "dependencies not satisfied"}
+-        if t in self.done:
+-            return {"result": "ERROR", "reason": "task already complete"}
+-        if succ.get(f"{t}|{w}", False):
+-            self.done.add(t)
+-            return {"result": "SUCCESS"}
+-        return {"result": "FAILURE", "reason": "worker could not complete the task"}
+-
+-
+-def make_env(instance: dict, state: dict | None = None) -> Env:
+-    return Env(instance, state)
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Policies
+-# --------------------------------------------------------------------------- #
+-def _oracle(env: Env):
+-    roster = env.handle(["roster"])["roster"]
+-    dag = env.handle(["dag"])["dag"]
+-    for t in _topo(dag):
+-        for w in sorted(roster[t]):
+-            if env.handle(["dispatch", t, w]).get("result") == "SUCCESS":
+-                break  # recovered / done; move to next task
+-    env.handle(["submit"])
+-
+-
+-def _static_plan(env: Env):
+-    # Shortcut: trust the roster, dispatch first worker once, never react.
+-    roster = env.handle(["roster"])["roster"]
+-    dag = env.handle(["dag"])["dag"]
+-    for t in _topo(dag):
+-        env.handle(["dispatch", t, sorted(roster[t])[0]])
+-    env.handle(["submit"])
+-
+-
+-def _retry_same(env: Env):
+-    # Shortcut: on failure, keep retrying the SAME worker.
+-    roster = env.handle(["roster"])["roster"]
+-    dag = env.handle(["dag"])["dag"]
+-    budget = env.handle(["status"])["budget"]
+-    for t in _topo(dag):
+-        w = sorted(roster[t])[0]
+-        for _ in range(budget + 1):
+-            r = env.handle(["dispatch", t, w])
+-            if r.get("result") in ("SUCCESS",) or r.get("reason") == "budget exhausted":
+-                break
+-    env.handle(["submit"])
+-
+-
+-def _brute_force(env: Env):
+-    # Shortcut: dispatch every task to every worker, ignore deps and failures.
+-    roster = env.handle(["roster"])["roster"]
+-    dag = env.handle(["dag"])["dag"]
+-    for t in sorted(dag):
+-        for w in sorted(roster[t]):
+-            env.handle(["dispatch", t, w])
+-    env.handle(["submit"])
+-
+-
+-ORACLE = _oracle
+-CHEATERS = {
+-    "static_plan": _static_plan,
+-    "retry_same": _retry_same,
+-    "brute_force": _brute_force,
+-}
+-
+-
+-def run_policy(instance: dict, policy) -> list[dict]:
+-    env = make_env(instance, None)
+-    policy(env)
+-    return env.transcript
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Verifier
+-# --------------------------------------------------------------------------- #
+-def verify(instance: dict, submission) -> RewardBreakdown:
+-    dag = instance["dag"]
+-    roster = instance["roster"]
+-    succ = instance["_success"]
+-    budget = instance["_budget"]
+-    d_opt = instance["_d_opt"]
+-    try:
+-        done, used = _replay(submission, dag, roster, succ, budget)
+-    except Exception:
+-        done, used = set(), 0
+-    gate = 1 if done == set(dag) else 0
+-    quality = (d_opt / used) if used else 0.0
+-    subs = {"dispatches": used, "budget": budget, "d_opt": d_opt,
+-            "completed": len(done), "n_tasks": len(dag)}
+-    return reward(gate, quality, subs)
+-
+-
+-def _replay(submission, dag, roster, succ, budget):
+-    done, used = set(), 0
+-    if not isinstance(submission, list):
+-        return done, used
+-    for it in submission:
+-        if not isinstance(it, dict) or it.get("cmd") != "dispatch":
+-            continue
+-        if used >= budget:
+-            break
+-        used += 1
+-        t, w = it.get("task"), it.get("worker")
+-        if (t in dag and t not in done and w in roster.get(t, [])
+-                and all(d in done for d in dag[t])
+-                and succ.get(f"{t}|{w}", False)):
+-            done.add(t)
+-    return done, used
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Generation (feasible-by-construction + planted decoys)
+-# --------------------------------------------------------------------------- #
+-def generate(seed: int, difficulty: dict) -> dict:
+-    rng = random.Random(seed)
+-    n = int(difficulty.get("n", 5))
+-    W = max(2, int(difficulty.get("workers", 3)))
+-    fail_rate = float(difficulty.get("fail_rate", 0.35))
+-    workers = [f"w{i}" for i in range(W)]
+-
+-    tasks = [f"t{i}" for i in range(n)]
+-    dag = {}
+-    for i, t in enumerate(tasks):
+-        k = 0 if i == 0 else rng.randint(0, min(2, i))
+-        dag[t] = sorted(rng.sample(tasks[:i], k)) if k else []
+-
+-    roster, success = {}, {}
+-    for t in tasks:
+-        size = rng.randint(2, W)
+-        rw = sorted(rng.sample(workers, size))
+-        roster[t] = rw
+-        # at least one worker succeeds; others fail with prob fail_rate
+-        good = rng.choice(rw)
+-        for w in rw:
+-            success[f"{t}|{w}"] = (w == good) or (rng.random() > fail_rate)
+-
+-    # Force static_plan to fail on >=1 task: make its sorted-first worker a decoy.
+-    victim = tasks[rng.randrange(n)]
+-    first = roster[victim][0]
+-    others = [w for w in roster[victim] if w != first]
+-    if others:
+-        success[f"{victim}|{first}"] = False
+-        success[f"{victim}|{rng.choice(others)}"] = True
+-
+-    inst = {"dag": dag, "roster": roster, "_success": success,
+-            "_budget": _BIG_BUDGET, "_d_opt": None}
+-    inst["_d_opt"] = _canonical_cost(inst)
+-    brute_cost = sum(len(roster[t]) for t in tasks)
+-    slack = max(1, (brute_cost - inst["_d_opt"]) // 3)
+-    inst["_budget"] = min(inst["_d_opt"] + slack, brute_cost - 1)
+-    inst["_budget"] = max(inst["_budget"], inst["_d_opt"])
+-    return inst
+-
+-
+-def _canonical_cost(instance: dict) -> int:
+-    tr = run_policy(instance, ORACLE)
+-    return sum(1 for it in tr if it["cmd"] == "dispatch")
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Ablation twin + helpers
+-# --------------------------------------------------------------------------- #
+-def ablate(instance: dict) -> dict:
+-    # Remove all failures: every rostered worker succeeds. Then the static plan
+-    # (first worker, in order) completes with zero waste.
+-    twin = {
+-        "dag": {k: list(v) for k, v in instance["dag"].items()},
+-        "roster": {k: list(v) for k, v in instance["roster"].items()},
+-        "_success": {k: True for k in instance["_success"]},
+-        "_budget": _BIG_BUDGET,
+-        "_d_opt": None,
+-    }
+-    twin["_d_opt"] = _canonical_cost(twin)
+-    twin["_budget"] = twin["_d_opt"] + 2
+-    return twin
+-
+-
+-def _topo(dag):
+-    order, seen = [], set()
+-
+-    def visit(t):
+-        if t in seen:
+-            return
+-        seen.add(t)
+-        for d in dag[t]:
+-            visit(d)
+-        order.append(t)
+-
+-    for t in sorted(dag):
+-        visit(t)
+-    return order
+-
+-
+-GOAL = (
+-    "You are the **Main agent** coordinating a team of sub-agents. Dispatch every "
+-    "subtask to a worker via the `coord` CLI and drive them all to SUCCESS. The "
+-    "roster shows who *can attempt* each task, but some workers will **fail** — "
+-    "detect failures and re-route to another capable worker. You have a limited "
+-    "dispatch budget, so do not waste attempts."
+-)
+-
+-OUTPUT_CONTRACT = (
+-    "Interact using the `coord` command (each call prints JSON):\n"
+-    "- `coord dag` — the subtask dependency graph.\n"
+-    "- `coord roster` — which workers may attempt each subtask.\n"
+-    "- `coord dispatch <task> <worker>` — attempt a subtask; returns SUCCESS / "
+-    "FAILURE / ERROR. A subtask may be dispatched only after its dependencies are "
+-    "done.\n"
+-    "- `coord status` — progress and remaining budget.\n"
+-    "- `coord submit` — finalize.\n\n"
+-    "Score: 0 unless every subtask is complete within budget; otherwise "
+-    "`optimal_dispatches / your_dispatches` — so recover efficiently and never "
+-    "retry a worker you have already seen fail."
+-)
+-
+-
+-def render_instruction(instance: dict) -> str:
+-    pub = public(instance)
+-    lines = ["## Subtasks (id: depends-on)"]
+-    for t in sorted(pub["dag"]):
+-        deps = ", ".join(pub["dag"][t]) if pub["dag"][t] else "—"
+-        lines.append(f"- `{t}`: deps={deps}")
+-    lines.append("\n## Roster (subtask: workers that may attempt it)")
+-    for t in sorted(pub["roster"]):
+-        lines.append(f"- `{t}`: {', '.join(pub['roster'][t])}")
+-    return "\n".join(lines)
+-
+-
+-class _FailureRecovery:
+-    NAME = NAME
+-    CLI_NAME = CLI_NAME
+-    SUBMISSION_FILE = SUBMISSION_FILE
+-    INTERACTIVE = INTERACTIVE
+-    DIFFICULTY_PRESETS = DIFFICULTY_PRESETS
+-    GOAL = GOAL
+-    OUTPUT_CONTRACT = OUTPUT_CONTRACT
+-    ORACLE = staticmethod(ORACLE)
+-    CHEATERS = CHEATERS
+-    generate = staticmethod(generate)
+-    make_env = staticmethod(make_env)
+-    run_policy = staticmethod(run_policy)
+-    verify = staticmethod(verify)
+-    ablate = staticmethod(ablate)
+-    render_instruction = staticmethod(render_instruction)
+-
+-
+-DIM = _FailureRecovery()
+diff --git a/tasks/failure-recovery-0001/environment/scenario.json b/tasks/failure-recovery-0001/environment/scenario.json
+deleted file mode 100644
+index f0c616f..0000000
+--- a/tasks/failure-recovery-0001/environment/scenario.json
++++ /dev/null
+@@ -1,54 +0,0 @@
+-{
+-  "dag": {
+-    "t0": [],
+-    "t1": [],
+-    "t2": [
+-      "t0",
+-      "t1"
+-    ],
+-    "t3": [],
+-    "t4": [
+-      "t3"
+-    ]
+-  },
+-  "roster": {
+-    "t0": [
+-      "w0",
+-      "w1",
+-      "w2"
+-    ],
+-    "t1": [
+-      "w0",
+-      "w1",
+-      "w2"
+-    ],
+-    "t2": [
+-      "w0",
+-      "w1"
+-    ],
+-    "t3": [
+-      "w0",
+-      "w1"
+-    ],
+-    "t4": [
+-      "w1",
+-      "w2"
+-    ]
+-  },
+-  "_success": {
+-    "t0|w0": true,
+-    "t0|w1": true,
+-    "t0|w2": true,
+-    "t1|w0": false,
+-    "t1|w1": true,
+-    "t1|w2": true,
+-    "t2|w0": true,
+-    "t2|w1": false,
+-    "t3|w0": true,
+-    "t3|w1": true,
+-    "t4|w1": true,
+-    "t4|w2": false
+-  },
+-  "_budget": 8,
+-  "_d_opt": 6
+-}
+\ No newline at end of file
+diff --git a/tasks/failure-recovery-0001/instruction.md b/tasks/failure-recovery-0001/instruction.md
+deleted file mode 100644
+index 072792b..0000000
+--- a/tasks/failure-recovery-0001/instruction.md
++++ /dev/null
+@@ -1,28 +0,0 @@
+-# failure-recovery
+-
+-You are the **Main agent** coordinating a team of sub-agents. Dispatch every subtask to a worker via the `coord` CLI and drive them all to SUCCESS. The roster shows who *can attempt* each task, but some workers will **fail** — detect failures and re-route to another capable worker. You have a limited dispatch budget, so do not waste attempts.
+-
+-## Subtasks (id: depends-on)
+-- `t0`: deps=—
+-- `t1`: deps=—
+-- `t2`: deps=t0, t1
+-- `t3`: deps=—
+-- `t4`: deps=t3
+-
+-## Roster (subtask: workers that may attempt it)
+-- `t0`: w0, w1, w2
+-- `t1`: w0, w1, w2
+-- `t2`: w0, w1
+-- `t3`: w0, w1
+-- `t4`: w1, w2
+-
+-## Output contract
+-
+-Interact using the `coord` command (each call prints JSON):
+-- `coord dag` — the subtask dependency graph.
+-- `coord roster` — which workers may attempt each subtask.
+-- `coord dispatch <task> <worker>` — attempt a subtask; returns SUCCESS / FAILURE / ERROR. A subtask may be dispatched only after its dependencies are done.
+-- `coord status` — progress and remaining budget.
+-- `coord submit` — finalize.
+-
+-Score: 0 unless every subtask is complete within budget; otherwise `optimal_dispatches / your_dispatches` — so recover efficiently and never retry a worker you have already seen fail.
+diff --git a/tasks/failure-recovery-0001/solution/solve.sh b/tasks/failure-recovery-0001/solution/solve.sh
+deleted file mode 100755
+index 7421ded..0000000
+--- a/tasks/failure-recovery-0001/solution/solve.sh
++++ /dev/null
+@@ -1,12 +0,0 @@
+-#!/bin/bash
+-set -e
+-python3 - <<'PY'
+-import json, sys
+-sys.path.insert(0, '/app/lib')
+-import maf_dim
+-inst = json.load(open('/opt/maf/scenario.json'))
+-tr = maf_dim.run_policy(inst, maf_dim.ORACLE)
+-with open('/app/transcript.jsonl', 'w') as fh:
+-    for x in tr:
+-        fh.write(json.dumps(x) + '\n')
+-PY
+diff --git a/tasks/failure-recovery-0001/task.toml b/tasks/failure-recovery-0001/task.toml
+deleted file mode 100644
+index e8b591a..0000000
+--- a/tasks/failure-recovery-0001/task.toml
++++ /dev/null
+@@ -1,33 +0,0 @@
+-schema_version = "1.3"
+-artifacts = []
+-
+-[task]
+-name = "demo/failure-recovery-0001"
+-description = "Multi-agent failure-recovery RL task (forge-generated)."
+-keywords = ["multi-agent", "rl", "failure-recovery"]
+-[[task.authors]]
+-name = "multi-agent-task-forge"
+-
+-[metadata]
+-difficulty = "medium"
+-category = "agentic"
+-tags = ["multi-agent", "orchestration"]
+-
+-[verifier]
+-timeout_sec = 300.0
+-collect = []
+-
+-[verifier.env]
+-
+-[agent]
+-timeout_sec = 600.0
+-
+-[environment]
+-network_mode = "public"
+-build_timeout_sec = 600.0
+-os = "linux"
+-mcp_servers = []
+-
+-[environment.env]
+-
+-[solution.env]
+diff --git a/tasks/failure-recovery-0001/tests/test.sh b/tasks/failure-recovery-0001/tests/test.sh
+deleted file mode 100755
+index 9a16649..0000000
+--- a/tasks/failure-recovery-0001/tests/test.sh
++++ /dev/null
+@@ -1,3 +0,0 @@
+-#!/bin/bash
+-mkdir -p /logs/verifier
+-python3 /tests/verify.py
+diff --git a/tasks/failure-recovery-0001/tests/verify.py b/tasks/failure-recovery-0001/tests/verify.py
+deleted file mode 100644
+index f8dfd57..0000000
+--- a/tasks/failure-recovery-0001/tests/verify.py
++++ /dev/null
+@@ -1,62 +0,0 @@
+-"""Generic in-container verifier — copied verbatim into each task's tests/verify.py.
+-
+-Reads ``verify_config.json`` (written next to it by the Harbor renderer), loads
+-the full instance + the agent's submission, calls the copied dimension's
+-``verify``, and writes a float reward to ``/logs/verifier/reward.txt`` plus a
+-diagnostic breakdown. Stdlib-only; never raises out — always writes a reward.
+-"""
+-
+-import json
+-import os
+-import sys
+-import traceback
+-
+-
+-def _load_submission(cfg):
+-    path = cfg["submission_path"]
+-    if not os.path.exists(path):
+-        return None
+-    if cfg["interactive"]:
+-        out = []
+-        with open(path) as fh:
+-            for line in fh:
+-                line = line.strip()
+-                if line:
+-                    out.append(json.loads(line))
+-        return out
+-    with open(path) as fh:
+-        return json.load(fh)
+-
+-
+-def _grade():
+-    here = os.path.dirname(os.path.abspath(__file__))
+-    cfg = json.load(open(os.path.join(here, "verify_config.json")))
+-    sys.path.insert(0, "/app/lib")
+-    import maf_dim  # noqa: E402
+-
+-    instance = json.load(open(cfg["scenario_path"]))
+-    gt = cfg.get("ground_truth_path")
+-    if gt and os.path.exists(gt):
+-        instance.update(json.load(open(gt)))
+-
+-    submission = _load_submission(cfg)
+-    return maf_dim.verify(instance, submission)
+-
+-
+-def _write(reward, breakdown=None):
+-    os.makedirs("/logs/verifier", exist_ok=True)
+-    with open("/logs/verifier/reward.txt", "w") as fh:
+-        fh.write(str(float(reward)))
+-    if breakdown is not None:
+-        with open("/logs/verifier/breakdown.json", "w") as fh:
+-            json.dump(breakdown, fh)
+-
+-
+-if __name__ == "__main__":
+-    try:
+-        rb = _grade()
+-        _write(rb.reward, rb.to_json())
+-        print("REWARD", rb.reward)
+-    except Exception:
+-        traceback.print_exc()
+-        _write(0.0)
+diff --git a/tasks/failure-recovery-0001/tests/verify_config.json b/tasks/failure-recovery-0001/tests/verify_config.json
+deleted file mode 100644
+index 89209d7..0000000
+--- a/tasks/failure-recovery-0001/tests/verify_config.json
++++ /dev/null
+@@ -1,6 +0,0 @@
+-{
+-  "interactive": true,
+-  "scenario_path": "/opt/maf/scenario.json",
+-  "ground_truth_path": null,
+-  "submission_path": "/app/transcript.jsonl"
+-}
+\ No newline at end of file
+diff --git a/tasks/parallel-scheduling-0003/environment/Dockerfile b/tasks/parallel-scheduling-0003/environment/Dockerfile
+index b7d4e7a..e0b24b7 100644
+--- a/tasks/parallel-scheduling-0003/environment/Dockerfile
++++ b/tasks/parallel-scheduling-0003/environment/Dockerfile
+@@ -1,5 +1,4 @@
+ FROM python:3.11-slim
+ RUN apt-get update && apt-get install -y --no-install-recommends tmux git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+ WORKDIR /app
+ COPY task.json /app/task.json
+-COPY lib /app/lib
+diff --git a/tasks/parallel-scheduling-0003/environment/lib/maf_core.py b/tasks/parallel-scheduling-0003/tests/lib/maf_core.py
+similarity index 95%
+rename from tasks/parallel-scheduling-0003/environment/lib/maf_core.py
+rename to tasks/parallel-scheduling-0003/tests/lib/maf_core.py
+index 71094cd..e7a0e79 100644
+--- a/tasks/parallel-scheduling-0003/environment/lib/maf_core.py
++++ b/tasks/parallel-scheduling-0003/tests/lib/maf_core.py
+@@ -1,13 +1,14 @@
+ """Core primitives shared by every dimension and by both runtimes.
+ 
+-This module is copied verbatim into each generated task's ``environment/lib`` so
++This module is copied verbatim into each generated task's ``tests/lib`` -- which
++Harbor uploads only at verification time, never into the agent's image -- so
+ that the in-container verifier and the in-process selfcheck grade identically.
+ It must stay standard-library-only.
+ """
+ 
+ from __future__ import annotations
+ 
+ import hashlib
+ import json
+ import random
+ from dataclasses import dataclass, field
+diff --git a/tasks/parallel-scheduling-0003/environment/lib/maf_dim.py b/tasks/parallel-scheduling-0003/tests/lib/maf_dim.py
+similarity index 97%
+rename from tasks/parallel-scheduling-0003/environment/lib/maf_dim.py
+rename to tasks/parallel-scheduling-0003/tests/lib/maf_dim.py
+index 830572f..47d1175 100644
+--- a/tasks/parallel-scheduling-0003/environment/lib/maf_dim.py
++++ b/tasks/parallel-scheduling-0003/tests/lib/maf_dim.py
+@@ -151,20 +151,25 @@ def _greedy_earliest(instance: dict) -> list[dict]:
+         schedule.append({"subtask": tid, "worker": w, "start": start})
+         free[w] = end
+         finish[tid] = end
+         remaining.discard(tid)
+     return schedule
+ 
+ 
+ ORACLE = _oracle
+ CHEATERS = {"serial": _serial, "greedy_earliest": _greedy_earliest}
+ 
++# V4: what does mechanically obeying our instruction produce? The instruction
++# states constraints (dependency order, skill match) and no procedure, so
++# obeying it literally *is* _serial -- valid, unoptimised, and 0.5 at best.
++DICTATION_CHEATER = "serial"
++
+ 
+ def run_policy(instance: dict, policy) -> list[dict]:
+     return policy(instance)
+ 
+ 
+ # --------------------------------------------------------------------------- #
+ # Verifier
+ # --------------------------------------------------------------------------- #
+ def verify(instance: dict, submission) -> RewardBreakdown:
+     subs = instance["subtasks"]
+@@ -317,20 +322,21 @@ OUTPUT_CONTRACT = (
+ 
+ class _Scheduling:
+     NAME = NAME
+     SUBMISSION_FILE = SUBMISSION_FILE
+     INTERACTIVE = INTERACTIVE
+     DIFFICULTY_PRESETS = DIFFICULTY_PRESETS
+     GOAL = GOAL
+     OUTPUT_CONTRACT = OUTPUT_CONTRACT
+     ORACLE = staticmethod(ORACLE)
+     CHEATERS = CHEATERS
++    DICTATION_CHEATER = DICTATION_CHEATER
+     generate = staticmethod(generate)
+     run_policy = staticmethod(run_policy)
+     verify = staticmethod(verify)
+     ablate = staticmethod(ablate)
+     render_instruction = staticmethod(render_instruction)
+     unique_ground_truth = staticmethod(unique_ground_truth)
+ 
+     def make_env(self, instance):  # static dimension has no interactive env
+         raise NotImplementedError("scheduling is single-shot; no Env")
+ 
+diff --git a/tasks/parallel-scheduling-0003/tests/verify.py b/tasks/parallel-scheduling-0003/tests/verify.py
+index f8dfd57..a155df9 100644
+--- a/tasks/parallel-scheduling-0003/tests/verify.py
++++ b/tasks/parallel-scheduling-0003/tests/verify.py
+@@ -24,21 +24,21 @@ def _load_submission(cfg):
+                 if line:
+                     out.append(json.loads(line))
+         return out
+     with open(path) as fh:
+         return json.load(fh)
+ 
+ 
+ def _grade():
+     here = os.path.dirname(os.path.abspath(__file__))
+     cfg = json.load(open(os.path.join(here, "verify_config.json")))
+-    sys.path.insert(0, "/app/lib")
++    sys.path.insert(0, "/tests/lib")
+     import maf_dim  # noqa: E402
+ 
+     instance = json.load(open(cfg["scenario_path"]))
+     gt = cfg.get("ground_truth_path")
+     if gt and os.path.exists(gt):
+         instance.update(json.load(open(gt)))
+ 
+     submission = _load_submission(cfg)
+     return maf_dim.verify(instance, submission)
+ 
+diff --git a/tasks/theory-of-mind-0002/environment/Dockerfile b/tasks/theory-of-mind-0002/environment/Dockerfile
+deleted file mode 100644
+index e067adb..0000000
+--- a/tasks/theory-of-mind-0002/environment/Dockerfile
++++ /dev/null
+@@ -1,8 +0,0 @@
+-FROM python:3.11-slim
+-RUN apt-get update && apt-get install -y --no-install-recommends tmux git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+-WORKDIR /app
+-COPY lib /app/lib
+-RUN mkdir -p /opt/maf
+-COPY scenario.json /opt/maf/scenario.json
+-COPY interview /usr/local/bin/interview
+-RUN chmod +x /usr/local/bin/interview
+diff --git a/tasks/theory-of-mind-0002/environment/interview b/tasks/theory-of-mind-0002/environment/interview
+deleted file mode 100644
+index 17c2cbb..0000000
+--- a/tasks/theory-of-mind-0002/environment/interview
++++ /dev/null
+@@ -1,2 +0,0 @@
+-#!/bin/bash
+-exec python3 /app/lib/cli.py "$@"
+diff --git a/tasks/theory-of-mind-0002/environment/lib/cli.py b/tasks/theory-of-mind-0002/environment/lib/cli.py
+deleted file mode 100644
+index ff16057..0000000
+--- a/tasks/theory-of-mind-0002/environment/lib/cli.py
++++ /dev/null
+@@ -1,36 +0,0 @@
+-"""Generic interactive CLI runtime — copied into each interactive task's lib/.
+-
+-The task's ``coord``/``interview`` shim execs ``python3 /app/lib/cli.py <args>``.
+-Each invocation loads the full scenario + persisted state, applies one command
+-via the copied dimension's ``Env.handle``, persists state, appends the single
+-interaction to the transcript, and prints the public JSON response.
+-
+-Stdlib-only. Ground-truth scenario lives outside /app (see the Dockerfile).
+-"""
+-
+-import json
+-import os
+-import sys
+-
+-SCENARIO = os.environ.get("MAF_SCENARIO", "/opt/maf/scenario.json")
+-STATE = os.environ.get("MAF_STATE", "/app/.maf_state.json")
+-TRANSCRIPT = os.environ.get("MAF_TRANSCRIPT", "/app/transcript.jsonl")
+-
+-
+-def main(argv):
+-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+-    import maf_dim
+-
+-    instance = json.load(open(SCENARIO))
+-    state = json.load(open(STATE)) if os.path.exists(STATE) else None
+-    env = maf_dim.make_env(instance, state)
+-    resp = env.handle(argv)
+-    with open(STATE, "w") as fh:
+-        json.dump(env.state(), fh)
+-    with open(TRANSCRIPT, "a") as fh:
+-        fh.write(json.dumps(env.transcript[-1]) + "\n")
+-    print(json.dumps(resp))
+-
+-
+-if __name__ == "__main__":
+-    main(sys.argv[1:])
+diff --git a/tasks/theory-of-mind-0002/environment/lib/maf_core.py b/tasks/theory-of-mind-0002/environment/lib/maf_core.py
+deleted file mode 100644
+index 71094cd..0000000
+--- a/tasks/theory-of-mind-0002/environment/lib/maf_core.py
++++ /dev/null
+@@ -1,99 +0,0 @@
+-"""Core primitives shared by every dimension and by both runtimes.
+-
+-This module is copied verbatim into each generated task's ``environment/lib`` so
+-that the in-container verifier and the in-process selfcheck grade identically.
+-It must stay standard-library-only.
+-"""
+-
+-from __future__ import annotations
+-
+-import hashlib
+-import json
+-import random
+-from dataclasses import dataclass, field
+-from typing import Callable, Protocol, runtime_checkable
+-
+-Rng = random.Random
+-
+-
+-@dataclass
+-class RewardBreakdown:
+-    """The uniform reward shape: ``reward = gate * quality``.
+-
+-    ``gate`` is a hard 0/1 constraint check; ``quality`` is a (0,1] measure of
+-    how good a *valid* solution is. ``subscores`` carries dimension-specific
+-    diagnostics used for RL credit assignment and calibration.
+-    """
+-
+-    reward: float
+-    gate: int
+-    quality: float
+-    subscores: dict = field(default_factory=dict)
+-
+-    def to_json(self) -> dict:
+-        return {
+-            "reward": self.reward,
+-            "gate": self.gate,
+-            "quality": self.quality,
+-            "subscores": self.subscores,
+-        }
+-
+-
+-def reward(gate: int, quality: float, subscores: dict) -> RewardBreakdown:
+-    """Build a :class:`RewardBreakdown`, clamping ``quality`` to (0, 1]."""
+-    q = max(1e-6, min(1.0, float(quality)))
+-    g = 1 if gate else 0
+-    return RewardBreakdown(reward=g * q, gate=g, quality=q, subscores=subscores)
+-
+-
+-def transcript_hash(submission) -> str:
+-    """Stable, order-independent hash of a JSON-serializable submission."""
+-    return hashlib.sha256(
+-        json.dumps(submission, sort_keys=True, default=str).encode()
+-    ).hexdigest()
+-
+-
+-# A policy drives an Env (or, for static dimensions, receives the public
+-# instance) and produces the graded submission. See each dimension's
+-# ``run_policy`` for how policies are executed.
+-Policy = Callable[..., object]
+-
+-
+-@runtime_checkable
+-class Env(Protocol):
+-    """Runtime state machine for interactive dimensions."""
+-
+-    def public_state(self) -> dict:
+-        """What the agent is allowed to observe."""
+-
+-    def submission(self) -> object:
+-        """The graded artifact/transcript accumulated so far."""
+-
+-
+-@runtime_checkable
+-class Dimension(Protocol):
+-    """The contract every task family implements.
+-
+-    Ground-truth fields of an instance are prefixed with ``_`` and are never
+-    surfaced to the agent (``public`` strips them). ``ORACLE`` and every entry
+-    in ``CHEATERS`` interact only through the public policy surface.
+-    """
+-
+-    NAME: str
+-    SUBMISSION_FILE: str
+-    INTERACTIVE: bool
+-    ORACLE: Policy
+-    CHEATERS: dict
+-    DIFFICULTY_PRESETS: dict
+-
+-    def generate(self, seed: int, difficulty: dict) -> dict: ...
+-    def make_env(self, instance: dict) -> Env: ...
+-    def run_policy(self, instance: dict, policy: Policy) -> object: ...
+-    def verify(self, instance: dict, submission: object) -> RewardBreakdown: ...
+-    def ablate(self, instance: dict) -> dict: ...
+-    def render_instruction(self, instance: dict) -> str: ...
+-
+-
+-def public(instance: dict) -> dict:
+-    """Return the agent-visible view of an instance: drop ``_``-prefixed keys."""
+-    return {k: v for k, v in instance.items() if not k.startswith("_")}
+diff --git a/tasks/theory-of-mind-0002/environment/lib/maf_dim.py b/tasks/theory-of-mind-0002/environment/lib/maf_dim.py
+deleted file mode 100644
+index 6551ea5..0000000
+--- a/tasks/theory-of-mind-0002/environment/lib/maf_dim.py
++++ /dev/null
+@@ -1,304 +0,0 @@
+-"""``theory-of-mind`` — interactive, multi-turn dimension.
+-
+-Skill under test: **theory of mind + information-asymmetric communication**. The
+-agent must identify a culprit whose exonerating clues are held privately by
+-different witnesses. It cannot see the clues; it must ``ask`` the right witness.
+-Witnesses that do not hold a clue may know *who does* — a **referral** (2nd-order
+-ToM: reasoning about another agent's knowledge). Following a referral chain of
+-depth *d* reaches the clue-holder.
+-
+-Cheaters lose by construction: ``budget = 2 * q_opt`` and every "dump" policy is
+-defined to spend its whole budget, so ``quality = q_opt/used <= 0.5 < tau`` even
+-when it guesses correctly. Only referral-following reaches the answer in q_opt
+-queries (quality 1.0).
+-
+-Stdlib-only (copied into the task container).
+-"""
+-
+-from __future__ import annotations
+-
+-import random
+-
+-from maf_core import RewardBreakdown, public, reward
+-
+-NAME = "theory-of-mind"
+-CLI_NAME = "interview"
+-SUBMISSION_FILE = "/app/transcript.jsonl"
+-INTERACTIVE = True
+-
+-DIFFICULTY_PRESETS = {
+-    "easy": {"suspects": 4, "referral_depth": 1},
+-    "medium": {"suspects": 5, "referral_depth": 2},
+-    "hard": {"suspects": 6, "referral_depth": 3},
+-}
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Runtime state machine (the public interface)
+-# --------------------------------------------------------------------------- #
+-class Env:
+-    def __init__(self, instance: dict, state: dict | None = None):
+-        self.inst = instance
+-        self.asks = state["asks"] if state else 0
+-        self.transcript: list[dict] = []
+-
+-    def state(self) -> dict:
+-        return {"asks": self.asks}
+-
+-    def _rec(self, cmd, args, resp):
+-        self.transcript.append({"cmd": cmd, **args, "response": resp})
+-        return resp
+-
+-    def handle(self, argv: list[str]) -> dict:
+-        cmd = argv[0] if argv else "help"
+-        if cmd == "agents":
+-            return self._rec("agents", {}, {
+-                "agents": self.inst["agents"],
+-                "suspects": self.inst["suspects"],
+-                "topics": self.inst["topics"],
+-                "entry": self.inst["entry"],
+-                "budget": self.inst["budget"]})
+-        if cmd == "ask":
+-            agent = argv[1] if len(argv) > 1 else None
+-            topic = argv[2] if len(argv) > 2 else None
+-            return self._rec("ask", {"agent": agent, "topic": topic},
+-                             self._ask(agent, topic))
+-        if cmd == "submit":
+-            ans = argv[1] if len(argv) > 1 else None
+-            correct = (ans == self.inst["_culprit"])
+-            return self._rec("submit", {"answer": ans}, {"correct": correct})
+-        return {"error": f"unknown command {cmd!r}"}
+-
+-    def _ask(self, agent, topic) -> dict:
+-        if self.asks >= self.inst["budget"]:
+-            return {"result": "BUDGET_EXHAUSTED"}
+-        self.asks += 1
+-        chains = self.inst["_chains"]
+-        if topic not in chains:
+-            return {"result": "UNKNOWN_TOPIC"}
+-        chain = chains[topic]
+-        knower = chain[-1]
+-        if agent == knower:
+-            elim = self.inst["_elim"][topic]
+-            return {"result": "CLUE", "eliminates": elim,
+-                    "info": f"{elim} has a verified alibi and is not the culprit."}
+-        if agent in chain[:-1]:
+-            return {"result": "REFERRAL", "ask": chain[chain.index(agent) + 1]}
+-        return {"result": "NO_INFO"}
+-
+-
+-def make_env(instance: dict, state: dict | None = None) -> Env:
+-    return Env(instance, state)
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Policies
+-# --------------------------------------------------------------------------- #
+-def _oracle(env: Env):
+-    meta = env.handle(["agents"])
+-    eliminated = set()
+-    for topic in meta["topics"]:
+-        agent = meta["entry"][topic]
+-        for _ in range(len(meta["agents"]) + 1):  # bounded referral walk
+-            r = env.handle(["ask", agent, topic])
+-            if r["result"] == "CLUE":
+-                eliminated.add(r["eliminates"])
+-                break
+-            if r["result"] == "REFERRAL":
+-                agent = r["ask"]
+-            else:
+-                break
+-    remaining = [s for s in meta["suspects"] if s not in eliminated]
+-    env.handle(["submit", remaining[0] if remaining else meta["suspects"][0]])
+-
+-
+-def _no_referral(env: Env):
+-    # Shortcut: ask each topic's entry agent once; ignore referrals.
+-    meta = env.handle(["agents"])
+-    eliminated = set()
+-    for topic in meta["topics"]:
+-        r = env.handle(["ask", meta["entry"][topic], topic])
+-        if r.get("result") == "CLUE":
+-            eliminated.add(r["eliminates"])
+-    remaining = [s for s in meta["suspects"] if s not in eliminated]
+-    env.handle(["submit", remaining[0] if remaining else meta["suspects"][0]])
+-
+-
+-def _info_dump(env: Env):
+-    # Shortcut: ask everyone about everything until the budget runs out.
+-    meta = env.handle(["agents"])
+-    eliminated = set()
+-    for a in meta["agents"]:
+-        for t in meta["topics"]:
+-            r = env.handle(["ask", a, t])
+-            if r.get("result") == "BUDGET_EXHAUSTED":
+-                return _submit_remaining(env, meta, eliminated)
+-            if r.get("result") == "CLUE":
+-                eliminated.add(r["eliminates"])
+-    _submit_remaining(env, meta, eliminated)
+-
+-
+-def _random_target(env: Env):
+-    # Shortcut: ask random (agent, topic) pairs until the budget runs out.
+-    meta = env.handle(["agents"])
+-    rng = random.Random(0)
+-    eliminated = set()
+-    while True:
+-        r = env.handle(["ask", rng.choice(meta["agents"]),
+-                        rng.choice(meta["topics"])])
+-        if r.get("result") == "BUDGET_EXHAUSTED":
+-            break
+-        if r.get("result") == "CLUE":
+-            eliminated.add(r["eliminates"])
+-    _submit_remaining(env, meta, eliminated)
+-
+-
+-def _submit_remaining(env, meta, eliminated):
+-    remaining = [s for s in meta["suspects"] if s not in eliminated]
+-    env.handle(["submit", remaining[0] if remaining else meta["suspects"][0]])
+-
+-
+-ORACLE = _oracle
+-CHEATERS = {
+-    "info_dump": _info_dump,
+-    "random_target": _random_target,
+-    "no_referral": _no_referral,
+-}
+-
+-
+-def run_policy(instance: dict, policy) -> list[dict]:
+-    env = make_env(instance, None)
+-    policy(env)
+-    return env.transcript
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Verifier
+-# --------------------------------------------------------------------------- #
+-def verify(instance: dict, submission) -> RewardBreakdown:
+-    culprit = instance["_culprit"]
+-    q_opt = instance["_q_opt"]
+-    budget = instance["budget"]
+-    asks, answer = 0, None
+-    if isinstance(submission, list):
+-        for it in submission:
+-            if not isinstance(it, dict):
+-                continue
+-            if it.get("cmd") == "ask" and asks < budget:
+-                asks += 1
+-            elif it.get("cmd") == "submit":
+-                answer = it.get("answer")
+-    gate = 1 if answer == culprit else 0
+-    quality = min(1.0, q_opt / asks) if asks > 0 else 0.01
+-    return reward(gate, quality,
+-                  {"asks": asks, "q_opt": q_opt, "budget": budget,
+-                   "answer": answer, "culprit": culprit})
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Generation
+-# --------------------------------------------------------------------------- #
+-def generate(seed: int, difficulty: dict) -> dict:
+-    rng = random.Random(seed)
+-    m = int(difficulty.get("suspects", 5))
+-    d = max(1, int(difficulty.get("referral_depth", 2)))
+-
+-    suspects = [f"s{i}" for i in range(m)]
+-    culprit = rng.choice(suspects[1:])  # never s0, so guessers (who default to s0) fail
+-    non_culprits = [s for s in suspects if s != culprit]
+-    topics = [f"topic{i}" for i in range(len(non_culprits))]
+-    elim = {topics[i]: non_culprits[i] for i in range(len(non_culprits))}
+-
+-    p = max(2 * (d + 1) + 2, d + 1)  # enough agents that budget < exhaustive
+-    agents = [f"a{i}" for i in range(p)]
+-    chains = {t: rng.sample(agents, d + 1) for t in topics}
+-
+-    q_opt = sum(len(ch) for ch in chains.values())
+-    return {
+-        "suspects": suspects,
+-        "topics": topics,
+-        "agents": agents,
+-        "entry": {t: chains[t][0] for t in topics},
+-        "budget": 2 * q_opt,
+-        "_chains": chains,
+-        "_elim": elim,
+-        "_culprit": culprit,
+-        "_q_opt": q_opt,
+-    }
+-
+-
+-def ablate(instance: dict) -> dict:
+-    # Kill the information asymmetry: every topic's entry agent IS the knower
+-    # (depth 0), so a direct one-question-per-topic read solves it.
+-    chains = {t: [ch[-1]] for t, ch in instance["_chains"].items()}
+-    q_opt = sum(len(ch) for ch in chains.values())
+-    twin = dict(instance)
+-    twin["_chains"] = chains
+-    twin["entry"] = {t: chains[t][0] for t in chains}
+-    twin["_q_opt"] = q_opt
+-    twin["budget"] = 2 * q_opt
+-    return twin
+-
+-
+-def unique_ground_truth(instance: dict) -> bool:
+-    eliminated = set(instance["_elim"].values())
+-    remaining = [s for s in instance["suspects"] if s not in eliminated]
+-    return remaining == [instance["_culprit"]]
+-
+-
+-# --------------------------------------------------------------------------- #
+-# Instruction
+-# --------------------------------------------------------------------------- #
+-GOAL = (
+-    "You are the **Main agent** investigating who took the last cookie. Exactly "
+-    "one suspect is the culprit. The exonerating clues are held privately by "
+-    "different witnesses — you cannot see them. `ask` the right witness. A "
+-    "witness who lacks a clue may tell you **who to ask instead** (a referral). "
+-    "Follow referrals, gather the clues, deduce the culprit, and `submit` — all "
+-    "within your question budget."
+-)
+-
+-OUTPUT_CONTRACT = (
+-    "Interact using the `interview` command (each call prints JSON):\n"
+-    "- `interview agents` — the witnesses, suspects, topics, per-topic entry "
+-    "witness, and your question budget.\n"
+-    "- `interview ask <witness> <topic>` — returns a CLUE (clears a suspect), a "
+-    "REFERRAL (`ask` someone else), or NO_INFO. Counts against your budget.\n"
+-    "- `interview submit <suspect>` — name the culprit.\n\n"
+-    "Score: 0 unless you name the correct culprit; otherwise "
+-    "`optimal_questions / your_questions` — so follow referrals to the clue-"
+-    "holders instead of interrogating everyone."
+-)
+-
+-
+-def render_instruction(instance: dict) -> str:
+-    pub = public(instance)
+-    lines = [f"## Suspects\n{', '.join(pub['suspects'])}"]
+-    lines.append(f"\n## Question budget\n{pub['budget']} questions")
+-    lines.append("\n## Topics and where to start (topic: entry witness)")
+-    for t in pub["topics"]:
+-        lines.append(f"- `{t}`: start by asking `{pub['entry'][t]}`")
+-    lines.append(f"\n## Witnesses\n{', '.join(pub['agents'])}")
+-    return "\n".join(lines)
+-
+-
+-class _TheoryOfMind:
+-    NAME = NAME
+-    CLI_NAME = CLI_NAME
+-    SUBMISSION_FILE = SUBMISSION_FILE
+-    INTERACTIVE = INTERACTIVE
+-    DIFFICULTY_PRESETS = DIFFICULTY_PRESETS
+-    GOAL = GOAL
+-    OUTPUT_CONTRACT = OUTPUT_CONTRACT
+-    ORACLE = staticmethod(ORACLE)
+-    CHEATERS = CHEATERS
+-    generate = staticmethod(generate)
+-    make_env = staticmethod(make_env)
+-    run_policy = staticmethod(run_policy)
+-    verify = staticmethod(verify)
+-    ablate = staticmethod(ablate)
+-    render_instruction = staticmethod(render_instruction)
+-    unique_ground_truth = staticmethod(unique_ground_truth)
+-
+-
+-DIM = _TheoryOfMind()
+diff --git a/tasks/theory-of-mind-0002/environment/scenario.json b/tasks/theory-of-mind-0002/environment/scenario.json
+deleted file mode 100644
+index 6154560..0000000
+--- a/tasks/theory-of-mind-0002/environment/scenario.json
++++ /dev/null
+@@ -1,62 +0,0 @@
+-{
+-  "suspects": [
+-    "s0",
+-    "s1",
+-    "s2",
+-    "s3",
+-    "s4"
+-  ],
+-  "topics": [
+-    "topic0",
+-    "topic1",
+-    "topic2",
+-    "topic3"
+-  ],
+-  "agents": [
+-    "a0",
+-    "a1",
+-    "a2",
+-    "a3",
+-    "a4",
+-    "a5",
+-    "a6",
+-    "a7"
+-  ],
+-  "entry": {
+-    "topic0": "a1",
+-    "topic1": "a2",
+-    "topic2": "a4",
+-    "topic3": "a3"
+-  },
+-  "budget": 24,
+-  "_chains": {
+-    "topic0": [
+-      "a1",
+-      "a0",
+-      "a2"
+-    ],
+-    "topic1": [
+-      "a2",
+-      "a5",
+-      "a6"
+-    ],
+-    "topic2": [
+-      "a4",
+-      "a2",
+-      "a7"
+-    ],
+-    "topic3": [
+-      "a3",
+-      "a4",
+-      "a0"
+-    ]
+-  },
+-  "_elim": {
+-    "topic0": "s0",
+-    "topic1": "s2",
+-    "topic2": "s3",
+-    "topic3": "s4"
+-  },
+-  "_culprit": "s1",
+-  "_q_opt": 12
+-}
+\ No newline at end of file
+diff --git a/tasks/theory-of-mind-0002/instruction.md b/tasks/theory-of-mind-0002/instruction.md
+deleted file mode 100644
+index 497357f..0000000
+--- a/tasks/theory-of-mind-0002/instruction.md
++++ /dev/null
+@@ -1,27 +0,0 @@
+-# theory-of-mind
+-
+-You are the **Main agent** investigating who took the last cookie. Exactly one suspect is the culprit. The exonerating clues are held privately by different witnesses — you cannot see them. `ask` the right witness. A witness who lacks a clue may tell you **who to ask instead** (a referral). Follow referrals, gather the clues, deduce the culprit, and `submit` — all within your question budget.
+-
+-## Suspects
+-s0, s1, s2, s3, s4
+-
+-## Question budget
+-24 questions
+-
+-## Topics and where to start (topic: entry witness)
+-- `topic0`: start by asking `a1`
+-- `topic1`: start by asking `a2`
+-- `topic2`: start by asking `a4`
+-- `topic3`: start by asking `a3`
+-
+-## Witnesses
+-a0, a1, a2, a3, a4, a5, a6, a7
+-
+-## Output contract
+-
+-Interact using the `interview` command (each call prints JSON):
+-- `interview agents` — the witnesses, suspects, topics, per-topic entry witness, and your question budget.
+-- `interview ask <witness> <topic>` — returns a CLUE (clears a suspect), a REFERRAL (`ask` someone else), or NO_INFO. Counts against your budget.
+-- `interview submit <suspect>` — name the culprit.
+-
+-Score: 0 unless you name the correct culprit; otherwise `optimal_questions / your_questions` — so follow referrals to the clue-holders instead of interrogating everyone.
+diff --git a/tasks/theory-of-mind-0002/solution/solve.sh b/tasks/theory-of-mind-0002/solution/solve.sh
+deleted file mode 100755
+index 7421ded..0000000
+--- a/tasks/theory-of-mind-0002/solution/solve.sh
++++ /dev/null
+@@ -1,12 +0,0 @@
+-#!/bin/bash
+-set -e
+-python3 - <<'PY'
+-import json, sys
+-sys.path.insert(0, '/app/lib')
+-import maf_dim
+-inst = json.load(open('/opt/maf/scenario.json'))
+-tr = maf_dim.run_policy(inst, maf_dim.ORACLE)
+-with open('/app/transcript.jsonl', 'w') as fh:
+-    for x in tr:
+-        fh.write(json.dumps(x) + '\n')
+-PY
+diff --git a/tasks/theory-of-mind-0002/task.toml b/tasks/theory-of-mind-0002/task.toml
+deleted file mode 100644
+index ada3a08..0000000
+--- a/tasks/theory-of-mind-0002/task.toml
++++ /dev/null
+@@ -1,33 +0,0 @@
+-schema_version = "1.3"
+-artifacts = []
+-
+-[task]
+-name = "demo/theory-of-mind-0002"
+-description = "Multi-agent theory-of-mind RL task (forge-generated)."
+-keywords = ["multi-agent", "rl", "theory-of-mind"]
+-[[task.authors]]
+-name = "multi-agent-task-forge"
+-
+-[metadata]
+-difficulty = "medium"
+-category = "agentic"
+-tags = ["multi-agent", "orchestration"]
+-
+-[verifier]
+-timeout_sec = 300.0
+-collect = []
+-
+-[verifier.env]
+-
+-[agent]
+-timeout_sec = 600.0
+-
+-[environment]
+-network_mode = "public"
+-build_timeout_sec = 600.0
+-os = "linux"
+-mcp_servers = []
+-
+-[environment.env]
+-
+-[solution.env]
+diff --git a/tasks/theory-of-mind-0002/tests/test.sh b/tasks/theory-of-mind-0002/tests/test.sh
+deleted file mode 100755
+index 9a16649..0000000
+--- a/tasks/theory-of-mind-0002/tests/test.sh
++++ /dev/null
+@@ -1,3 +0,0 @@
+-#!/bin/bash
+-mkdir -p /logs/verifier
+-python3 /tests/verify.py
+diff --git a/tasks/theory-of-mind-0002/tests/verify.py b/tasks/theory-of-mind-0002/tests/verify.py
+deleted file mode 100644
+index f8dfd57..0000000
+--- a/tasks/theory-of-mind-0002/tests/verify.py
++++ /dev/null
+@@ -1,62 +0,0 @@
+-"""Generic in-container verifier — copied verbatim into each task's tests/verify.py.
+-
+-Reads ``verify_config.json`` (written next to it by the Harbor renderer), loads
+-the full instance + the agent's submission, calls the copied dimension's
+-``verify``, and writes a float reward to ``/logs/verifier/reward.txt`` plus a
+-diagnostic breakdown. Stdlib-only; never raises out — always writes a reward.
+-"""
+-
+-import json
+-import os
+-import sys
+-import traceback
+-
+-
+-def _load_submission(cfg):
+-    path = cfg["submission_path"]
+-    if not os.path.exists(path):
+-        return None
+-    if cfg["interactive"]:
+-        out = []
+-        with open(path) as fh:
+-            for line in fh:
+-                line = line.strip()
+-                if line:
+-                    out.append(json.loads(line))
+-        return out
+-    with open(path) as fh:
+-        return json.load(fh)
+-
+-
+-def _grade():
+-    here = os.path.dirname(os.path.abspath(__file__))
+-    cfg = json.load(open(os.path.join(here, "verify_config.json")))
+-    sys.path.insert(0, "/app/lib")
+-    import maf_dim  # noqa: E402
+-
+-    instance = json.load(open(cfg["scenario_path"]))
+-    gt = cfg.get("ground_truth_path")
+-    if gt and os.path.exists(gt):
+-        instance.update(json.load(open(gt)))
+-
+-    submission = _load_submission(cfg)
+-    return maf_dim.verify(instance, submission)
+-
+-
+-def _write(reward, breakdown=None):
+-    os.makedirs("/logs/verifier", exist_ok=True)
+-    with open("/logs/verifier/reward.txt", "w") as fh:
+-        fh.write(str(float(reward)))
+-    if breakdown is not None:
+-        with open("/logs/verifier/breakdown.json", "w") as fh:
+-            json.dump(breakdown, fh)
+-
+-
+-if __name__ == "__main__":
+-    try:
+-        rb = _grade()
+-        _write(rb.reward, rb.to_json())
+-        print("REWARD", rb.reward)
+-    except Exception:
+-        traceback.print_exc()
+-        _write(0.0)
+diff --git a/tasks/theory-of-mind-0002/tests/verify_config.json b/tasks/theory-of-mind-0002/tests/verify_config.json
+deleted file mode 100644
+index 89209d7..0000000
+--- a/tasks/theory-of-mind-0002/tests/verify_config.json
++++ /dev/null
+@@ -1,6 +0,0 @@
+-{
+-  "interactive": true,
+-  "scenario_path": "/opt/maf/scenario.json",
+-  "ground_truth_path": null,
+-  "submission_path": "/app/transcript.jsonl"
+-}
+\ No newline at end of file
