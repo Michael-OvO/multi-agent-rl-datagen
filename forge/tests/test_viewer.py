@@ -127,3 +127,63 @@ def test_embed_logs_block_still_matches_its_rewriter(viewer_html):
         r'(<script type="application/json" id="embedded-logs">).*?(</script>)',
         re.S)
     assert len(pattern.findall(viewer_html)) == 1
+
+
+#: Every token the dashboard is built from. A later task that needs a new
+#: token adds it here first.
+REQUIRED_TOKENS = [
+    "--surface", "--plane", "--ink", "--ink-2", "--muted", "--grid", "--axis",
+    "--hair", "--wash", "--shadow",
+    "--pass", "--warn", "--fail",
+    "--pass-ink", "--warn-ink", "--fail-ink",
+    "--pass-tint", "--warn-tint", "--fail-tint",
+]
+
+
+def test_every_token_is_defined_in_all_three_theme_scopes(viewer_css):
+    scopes = theme_scopes(viewer_css)
+    for scope_name, tokens in scopes.items():
+        missing = [t for t in REQUIRED_TOKENS if t not in tokens]
+        assert not missing, f"{scope_name} scope is missing {missing}"
+
+
+def test_the_two_dark_scopes_agree(viewer_css):
+    """A viewer whose toggle and OS setting disagree is two designs."""
+    scopes = theme_scopes(viewer_css)
+    for token in REQUIRED_TOKENS:
+        assert scopes["dark-os"][token].strip() == scopes["dark-toggle"][token].strip(), (
+            f"{token} differs between the OS-dark and toggle-dark scopes")
+
+
+@pytest.mark.parametrize("mode,scope", [("light", "light"), ("dark", "dark-toggle")])
+def test_status_text_colors_clear_body_text_contrast(viewer_css, mode, scope):
+    """Status *text* is read, so it needs 4.5:1 on both of its grounds."""
+    tokens = theme_scopes(viewer_css)[scope]
+    for token in ("--pass-ink", "--warn-ink", "--fail-ink"):
+        color = tokens[token].strip()
+        worst = min(contrast(color, ground) for ground in _GROUNDS[mode])
+        assert worst >= 4.5, (
+            f"{mode} {token} ({color}) is {worst:.2f}:1 -- body text needs 4.5:1")
+
+
+@pytest.mark.parametrize("mode,scope", [("light", "light"), ("dark", "dark-toggle")])
+def test_pass_and_fail_marks_clear_non_text_contrast(viewer_css, mode, scope):
+    """Dots, rails, and tint borders are non-text marks: 3:1."""
+    tokens = theme_scopes(viewer_css)[scope]
+    for token in ("--pass", "--fail"):
+        color = tokens[token].strip()
+        worst = min(contrast(color, ground) for ground in _GROUNDS[mode])
+        assert worst >= 3.0, (
+            f"{mode} {token} ({color}) is {worst:.2f}:1 -- marks need 3:1")
+
+
+def test_warning_is_the_documented_low_contrast_exception(viewer_css):
+    """`--warn` is sub-3:1 on light by design.
+
+    The dataviz reference palette ships it that way and mitigates with the
+    icon + label pairing. This test pins the exception so nobody "fixes" the
+    hex and quietly breaks the palette's validated CVD separation.
+    """
+    light = theme_scopes(viewer_css)["light"]["--warn"].strip()
+    assert light == "#fab219"
+    assert min(contrast(light, g) for g in _GROUNDS["light"]) < 3.0

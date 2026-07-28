@@ -36,58 +36,91 @@ Supplementary files can be dropped on the page or opened via the quiet
 sweep row files.
 -->
 <style>
+  /* Design tokens. The status palette is the dataviz reference instance:
+     mark colors carry state on dots and rails, the -ink variants are the
+     text-safe steps (>=4.5:1 on both grounds of their mode), and the -tint
+     variants are the badge and panel fills. `--warn` is deliberately
+     sub-3:1 on light -- the icon + label pairing is the mitigation, so a
+     status color never carries meaning by itself. */
   :root {
     color-scheme: light;
-    --paper: #ffffff;
-    --ink: #16181d;
-    --ink-2: #4d5158;
-    --faint: #676c73;   /* ≥4.5:1 on white — citations must stay legible */
-    --rule: rgba(22, 24, 29, 0.55);
-    --hair: rgba(22, 24, 29, 0.14);
-    --wash: rgba(22, 24, 29, 0.035);
-    --panel: #fbfbfc;
-    --shadow: 0 1px 2px rgba(22, 24, 29, 0.05);
-    --red: #b42318;     /* signal red, spent only on failure and fault */
+    --surface: #fcfcfb;
+    --plane:   #f9f9f7;
+    --ink:     #0b0b0b;
+    --ink-2:   #52514e;
+    --muted:   #898781;   /* 3.41:1 -- de-emphasized labels only, never prose */
+    --grid:    #e1e0d9;
+    --axis:    #c3c2b7;
+    --hair:    rgba(11, 11, 11, 0.10);
+    --wash:    rgba(11, 11, 11, 0.035);
+    --shadow:  0 1px 2px rgba(11, 11, 11, 0.06);
+    --pass:      #0ca30c;
+    --warn:      #fab219;
+    --fail:      #d03b3b;
+    --pass-ink:  #006300;
+    --warn-ink:  #8a5a00;
+    --fail-ink:  #b42318;
+    --pass-tint: rgba(12, 163, 12, 0.10);
+    --warn-tint: rgba(250, 178, 25, 0.16);
+    --fail-tint: rgba(208, 59, 59, 0.10);
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --paper: #101114;
-    --ink: #e8eaed;
-    --ink-2: #aab0b7;
-    --faint: #868c94;
-    --rule: rgba(232, 234, 237, 0.5);
-    --hair: rgba(232, 234, 237, 0.14);
-    --wash: rgba(232, 234, 237, 0.05);
-    --panel: #15161a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --red: #f2655c;
+    --surface: #1a1a19;
+    --plane:   #0d0d0d;
+    --ink:     #ffffff;
+    --ink-2:   #c3c2b7;
+    --muted:   #898781;
+    --grid:    #2c2c2a;
+    --axis:    #383835;
+    --hair:    rgba(255, 255, 255, 0.10);
+    --wash:    rgba(255, 255, 255, 0.05);
+    --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
+    --pass:      #0ca30c;
+    --warn:      #fab219;
+    --fail:      #d03b3b;
+    --pass-ink:  #3ecb4a;
+    --warn-ink:  #fab219;
+    --fail-ink:  #f2655c;
+    --pass-tint: rgba(12, 163, 12, 0.16);
+    --warn-tint: rgba(250, 178, 25, 0.16);
+    --fail-tint: rgba(208, 59, 59, 0.20);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
-      --paper: #101114;
-      --ink: #e8eaed;
-      --ink-2: #aab0b7;
-      --faint: #868c94;
-      --rule: rgba(232, 234, 237, 0.5);
-      --hair: rgba(232, 234, 237, 0.14);
-      --wash: rgba(232, 234, 237, 0.05);
-      --panel: #15161a;
-      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-      --red: #f2655c;
+      --surface: #1a1a19;
+      --plane:   #0d0d0d;
+      --ink:     #ffffff;
+      --ink-2:   #c3c2b7;
+      --muted:   #898781;
+      --grid:    #2c2c2a;
+      --axis:    #383835;
+      --hair:    rgba(255, 255, 255, 0.10);
+      --wash:    rgba(255, 255, 255, 0.05);
+      --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
+      --pass:      #0ca30c;
+      --warn:      #fab219;
+      --fail:      #d03b3b;
+      --pass-ink:  #3ecb4a;
+      --warn-ink:  #fab219;
+      --fail-ink:  #f2655c;
+      --pass-tint: rgba(12, 163, 12, 0.16);
+      --warn-tint: rgba(250, 178, 25, 0.16);
+      --fail-tint: rgba(208, 59, 59, 0.20);
     }
   }
 
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   body {
-    background: var(--paper); color: var(--ink);
+    background: var(--plane); color: var(--ink);
     font: 14px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text",
           "Segoe UI", Inter, Roboto, system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
   }
-  ::selection { background: var(--ink); color: var(--paper); }
+  ::selection { background: var(--ink); color: var(--plane); }
 
   #page { max-width: 1080px; margin: 0 auto; padding: 40px 40px 120px; }
   @media (max-width: 720px) { #page { padding: 22px 16px 90px; } }
@@ -110,9 +143,9 @@ sweep row files.
   }
   header .draftline { color: var(--ink-2); font-size: 12.5px; margin: 0; }
   header .colophon { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
-  header .colophon .sep { color: var(--faint); padding: 0 7px; }
+  header .colophon .sep { color: var(--muted); padding: 0 7px; }
   header .colophon button, header .colophon label {
-    font: inherit; color: inherit; background: var(--panel);
+    font: inherit; color: inherit; background: var(--surface);
     border: 1px solid var(--hair); border-radius: 7px; padding: 2.5px 10px;
     cursor: pointer;
   }
@@ -135,19 +168,20 @@ sweep row files.
 
   .lede { font-size: 13.5px; color: var(--ink-2); margin: 16px 0 4px; max-width: 78ch; }
   .lede b, .runmeta b { color: var(--ink); font-weight: 600; }
-  .bad { color: var(--red); }
+  .bad { color: var(--fail-ink); }
+  .dim { color: var(--muted); }
 
   /* ---------- tables: soft framed panels, no sideways scrolling ---------- */
   .tcap { margin: 26px 0 8px; font-size: 13px; color: var(--ink-2); }
   .tcap b { font-weight: 600; color: var(--ink); }
   .tabwrap {
-    overflow-x: auto; background: var(--panel);
+    overflow-x: auto; background: var(--surface);
     border: 1px solid var(--hair); border-radius: 10px;
     box-shadow: var(--shadow);
   }
   table.tab { border-collapse: collapse; width: 100%; font-size: 13.5px; }
   table.tab th {
-    text-align: left; font-weight: 500; font-size: 12px; color: var(--faint);
+    text-align: left; font-weight: 500; font-size: 12px; color: var(--muted);
     padding: 9px 16px 8px 0; border-bottom: 1px solid var(--hair);
     white-space: nowrap;
   }
@@ -167,15 +201,15 @@ sweep row files.
   table.tab tbody tr:hover td { background: var(--wash); }
   table.tab .sortable { cursor: pointer; }
   .yes { color: var(--ink); }
-  .no  { color: var(--red); }
-  .runlab { color: var(--faint); font-size: 11px; }
+  .no  { color: var(--fail-ink); }
+  .runlab { color: var(--muted); font-size: 11px; }
   .dag { font-size: 0.85em; vertical-align: super; line-height: 0; }
-  .tnote { font-size: 12px; color: var(--faint); margin: 8px 0 0; max-width: 84ch; }
+  .tnote { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 84ch; }
 
   .mono, .call .sig, pre {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
-  .path { font-size: 11.5px; color: var(--faint); word-break: break-all; margin: 3px 0 0; }
+  .path { font-size: 11.5px; color: var(--muted); word-break: break-all; margin: 3px 0 0; }
 
   /* ---------- filter line ---------- */
   .filterline {
@@ -183,12 +217,12 @@ sweep row files.
     margin: 12px 0 10px; font-size: 12.5px; color: var(--ink-2);
   }
   .filterline input[type="search"], .filterline select {
-    font: inherit; color: var(--ink); background: var(--panel);
+    font: inherit; color: var(--ink); background: var(--surface);
     border: 1px solid var(--hair); border-radius: 7px; padding: 3px 9px;
   }
   .filterline input[type="search"] { min-width: 200px; }
   .filterline input:focus, .filterline select:focus { border-color: var(--ink-2); }
-  .filterline .count { margin-left: auto; color: var(--faint); }
+  .filterline .count { margin-left: auto; color: var(--muted); }
   .filterline label.t { cursor: pointer; }
   .filterline label.t input { accent-color: var(--ink); }
 
@@ -216,28 +250,28 @@ sweep row files.
   }
   @media (max-width: 720px) { .turn { grid-template-columns: 96px minmax(0, 1fr); } }
   .turn .spk {
-    color: var(--faint); font-size: 11.5px; font-weight: 550;
+    color: var(--muted); font-size: 11.5px; font-weight: 550;
     text-align: right; padding-top: 2px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .turn .spk .t { display: block; font-weight: 400; font-size: 10.5px;
-                  color: var(--faint); }
+                  color: var(--muted); }
   .turn .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
-  .turn.stage .txt { color: var(--faint); }
-  .turn.fail .spk { color: var(--red); font-weight: 650; }
-  .turn.pivot { border-top: 2px solid var(--red); }
-  .pivotflag { color: var(--red); font-size: 11px; font-weight: 600; margin-bottom: 3px; }
+  .turn.stage .txt { color: var(--muted); }
+  .turn.fail .spk { color: var(--fail-ink); font-weight: 650; }
+  .turn.pivot { border-top: 2px solid var(--fail-ink); }
+  .pivotflag { color: var(--fail-ink); font-size: 11px; font-weight: 600; margin-bottom: 3px; }
   .turn .report { margin-top: 5px; color: var(--ink-2); }
   .turn .report b { color: var(--ink); font-weight: 600; }
 
   details.calls { margin-top: 5px; }
   details.calls summary {
-    cursor: pointer; font-size: 11.5px; color: var(--faint);
+    cursor: pointer; font-size: 11.5px; color: var(--muted);
     width: fit-content;
   }
   .call { padding: 6px 0 2px; }
   .call .sig { font-size: 11.5px; overflow-wrap: anywhere; }
-  .call .flag { color: var(--red); font-size: 11.5px; }
+  .call .flag { color: var(--fail-ink); font-size: 11.5px; }
   .call pre {
     margin: 4px 0 4px 0; padding: 8px 11px;
     background: var(--wash); border-radius: 8px;
@@ -525,7 +559,7 @@ function renderRuns(content) {
           const runs = mine.filter(s => s.data.config === cfg)
             .sort((a, b) => String(a.data.started_at || "")
               .localeCompare(String(b.data.started_at || "")));
-          if (!runs.length) return `<td class="wrapok"><span style="color:var(--faint)">—</span></td>`;
+          if (!runs.length) return `<td class="wrapok"><span class="dim">—</span></td>`;
           return `<td class="wrapok">${runs.map(s => {
             const okr = !!(s.data.verdict && s.data.verdict.success);
             return `<a class="xref" data-i="${sessions.indexOf(s)}"
@@ -533,7 +567,7 @@ function renderRuns(content) {
               title="${esc(String(s.data.answer ?? ""))}">${
               verdictText(okr, s.data.judge)}${
               s.data.label ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
-          }).join('<span style="color:var(--faint)"> · </span>')}</td>`;
+          }).join('<span class="dim"> · </span>')}</td>`;
         }).join("")}</tr>`;
     }).join("")}</tbody></table></div>
     <p class="tnote">✓ and ✗ are the benchmark's own write-action verdicts:
@@ -601,7 +635,7 @@ function renderRuns(content) {
         <td class="n">${d.delegations ?? ""}</td>
         <td class="n">${d.specialist_turns ?? ""}</td>
         <td>${issues ? `<span class="no">${esc(issues)}</span>`
-                     : `<span style="color:var(--faint)">—</span>`}</td>
+                     : `<span class="dim">—</span>`}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 44))}</td>
         <td class="n">${d.seconds ?? ""}</td></tr>`;
     }).join("")}</tbody></table>`;
