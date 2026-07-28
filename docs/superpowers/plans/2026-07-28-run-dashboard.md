@@ -39,19 +39,25 @@ These apply to **every** task. Copy them into your working memory before startin
 
 The app script keeps its current section layout — plumbing, shared pieces, top-level render, §1 Runs, §2 Shipped-task runs, §3 Evidence files, run detail, breakdown detail, startup. New helpers go in the "shared pieces" section so every renderer can use them.
 
+**A note on line numbers.** This plan names blocks by their *content anchors*, never by line number. The file's line numbering shifts as tasks land, and it changed once already between planning and execution. Find blocks by searching for the quoted text.
+
 ---
 
-### Task 1: Palette swap and the test harness
+### Task 0: Remove the folder-connect layer
 
-Replace the paper/single-red color system with the validated status palette, and stand up the test file that guards it.
+The file currently loads data two ways: an embedded snapshot *and* a live connection to the repository folder through the File System Access API, with the directory handle retained in IndexedDB. The approved spec keeps only the snapshot (plus drag-and-drop and the file picker), and the user confirmed that choice on 2026-07-28. Removing this layer first is what makes the rest of the plan apply cleanly — every later task assumes the snapshot-only file.
+
+Do not treat this as a refactor to preserve behavior. The permission-gated data source is being deleted on purpose.
 
 **Files:**
 - Create: `forge/tests/test_viewer.py`
-- Modify: `trajectory_viewer.html` (the three theme scopes at the top of `<style>`, roughly lines 39–80)
+- Modify: `trajectory_viewer.html` (the `<!-- … -->` thesis comment, the `<header>` markup, the state block, the folder-connect functions, the empty state, the startup block)
 
 **Interfaces:**
 - Consumes: nothing (first task)
-- Produces: CSS custom properties every later task uses — `--surface`, `--plane`, `--ink`, `--ink-2`, `--muted`, `--grid`, `--axis`, `--hair`, `--wash`, `--shadow`, `--pass`, `--warn`, `--fail`, `--pass-ink`, `--warn-ink`, `--fail-ink`, `--pass-tint`, `--warn-tint`, `--fail-tint`. Also produces the pytest helpers `viewer_html()`, `viewer_css()`, `theme_scopes()`, and `contrast()` used by later tasks' tests.
+- Produces:
+  - The pytest fixtures `viewer_html` and `viewer_css`, the helpers `contrast()` and `theme_scopes()`, and the module constant `_GROUNDS` — Task 1 appends to this file and uses all of them.
+  - A viewer whose only startup path is `loadSnapshot()`, whose header holds exactly two actions ("open files", "theme"), and whose module-level `sourceLine` still drives `#draftline`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -62,11 +68,11 @@ Create `forge/tests/test_viewer.py`:
 
 `trajectory_viewer.html` has no build step and no unit-testable modules: its
 CSS and JavaScript live inline. What can be checked here is the part that is
-computable rather than visual -- that every design token exists in all three
-theme scopes, and that the colors clear WCAG contrast against the grounds
-they actually render on. Node.js is not installed on the build machine, so
-the dataviz skill's palette validator cannot run; this file carries the
-contrast math instead.
+computable rather than visual -- that the loading model is the one the spec
+approved, that every design token exists in all three theme scopes, and that
+the colors clear WCAG contrast against the grounds they actually render on.
+Node.js is not installed on the build machine, so the dataviz skill's palette
+validator cannot run; this file carries the contrast math instead.
 
 Layout, spacing, and "does it look right" are verified in a browser, not here.
 """
@@ -134,6 +140,158 @@ def theme_scopes(css: str) -> dict[str, dict[str, str]]:
     return out
 
 
+#: Every identifier the File System Access layer was built from. The spec
+#: retired that data source: the page carries its own snapshot, so opening
+#: the file is the whole workflow and no permission prompt stands in front
+#: of it.
+_FOLDER_CONNECT_RELICS = [
+    "showDirectoryPicker", "indexedDB", "queryPermission", "requestPermission",
+    "openHandleDb", "connectRepository", "refreshRepository", "liveHandle",
+    "folderpick", 'id="connect"', "DB_NAME", "webkitdirectory",
+]
+
+
+def test_the_folder_connect_layer_is_gone(viewer_html):
+    """One loading model: the embedded snapshot, plus drop and pick."""
+    body = viewer_html.split('<script type="application/json"')[0] \
+        + viewer_html.split("</script>")[-1]
+    survivors = [relic for relic in _FOLDER_CONNECT_RELICS if relic in body]
+    assert not survivors, f"folder-connect machinery survives: {survivors}"
+
+
+def test_the_snapshot_is_the_startup_path(viewer_html):
+    assert "function loadSnapshot()" in viewer_html
+
+
+def test_the_header_offers_exactly_two_actions(viewer_html):
+    header = re.search(r"<header>(.*?)</header>", viewer_html, re.S)
+    assert header, "the page header is missing"
+    assert header.group(1).count("<button") + header.group(1).count("<label") == 2, (
+        "the header's actions are 'open files' and 'theme' -- nothing else")
+
+
+def test_embed_logs_block_still_matches_its_rewriter(viewer_html):
+    """`scripts.embed_logs` rewrites the snapshot by regex; keep them agreed."""
+    pattern = re.compile(
+        r'(<script type="application/json" id="embedded-logs">).*?(</script>)',
+        re.S)
+    assert len(pattern.findall(viewer_html)) == 1
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `uv run pytest forge/tests/test_viewer.py -v`
+
+Expected: FAIL — `test_the_folder_connect_layer_is_gone` lists the surviving identifiers, and `test_the_header_offers_exactly_two_actions` counts three.
+
+- [ ] **Step 3: Replace the header markup**
+
+Find the `<header>` block in the body and replace it with:
+
+```html
+  <header>
+    <h1>Trajectory evidence</h1>
+    <p class="draftline" id="draftline">multi-agent-rl-datagen — no data loaded</p>
+    <p class="colophon">
+      <label for="pick" tabindex="0" role="button">open files</label><input id="pick" type="file" accept=".json,application/json" multiple><span class="sep">·</span><button id="theme">theme</button>
+    </p>
+  </header>
+```
+
+- [ ] **Step 4: Delete the folder-connect machinery from the script**
+
+Remove every function, state variable, and event wiring that exists only to serve the live repository connection. Work by identifier — the list in `_FOLDER_CONNECT_RELICS` is exhaustive for the JavaScript, and each name's definition and every call site go together.
+
+The state block currently declares `manualArtifacts`, `liveHandle`, `liveCache`, `liveRefresh`, and `lastLiveLoad` alongside `sessions`. Keep `sessions`; delete the rest **only if** nothing outside the removed layer reads them. Check each with a search before deleting it.
+
+Some helpers in that region serve both the removed layer and the surviving file-picker path — `artifact`, `activateArtifacts`, `artifactCounts`, `countLine`, `relativeRepoPath`, and `wantedRepoPath` among them. Decide each on evidence, not on its neighborhood: if the drag-and-drop and "open files" paths still call it, keep it; if its only callers were the folder-connect functions, delete it. After the deletions, the manual paths must still work — a dropped file and a picked file both land in `sessions` and appear in the tables.
+
+The end state for loading is exactly this: `loadSnapshot()` runs at startup and reads the embedded block; `addFiles()` handles both the picker's `change` event and the body's `drop` event; `sourceLine` is a plain module-level string that `render()` writes into `#draftline`.
+
+- [ ] **Step 5: Restore the snapshot-only startup block**
+
+The startup block at the end of the script must read:
+
+```js
+/* ================= startup: the embedded snapshot ================= */
+/* Last in the file on purpose: it renders immediately, so everything it
+   touches must already be declared. */
+
+(function loadSnapshot() {
+  const el = document.getElementById("embedded-logs");
+  if (el) {
+    let snap = null;
+    try { snap = JSON.parse(el.textContent); } catch { snap = null; }
+    if (snap && Array.isArray(snap.files) && snap.files.length) {
+      for (const f of snap.files) addSession(f.path.split("/").pop(), f.path, f.data);
+      sourceLine = `snapshot of ${snap.generated}, ${snap.files.length} artifacts`;
+      sortSessions();
+    }
+  }
+  render();
+})();
+```
+
+- [ ] **Step 6: Fix the empty state and the thesis comment**
+
+The empty state currently tells the reader to "Choose *connect repository* once and select the …". Replace that paragraph's guidance with the snapshot instruction:
+
+```js
+      <p>This file carries a snapshot of the repository's logs inside itself;
+      this copy's snapshot is empty. Refresh it with
+      <code>uv run python -m scripts.embed_logs</code>, or drop trajectory
+      JSON files anywhere on this page (or use <i>open files</i> above).</p>
+```
+
+In the `<!-- … -->` comment at the top of the file, replace the "Auto-loading" paragraph — the one describing the File System Access API and the retained IndexedDB handle — with:
+
+```
+Auto-loading: the page carries its data — a JSON snapshot of every log
+artifact sits in the #embedded-logs block, so opening the file is the whole
+workflow; refresh the snapshot with `uv run python -m scripts.embed_logs`.
+Supplementary files can be dropped on the page or opened via the quiet
+"open files" link. Recognized shapes: gaia2 episodes, sidecar breakdowns,
+sweep row files.
+```
+
+Leave the rest of the comment alone; Task 8 rewrites it wholesale.
+
+- [ ] **Step 7: Run the tests to verify they pass**
+
+Run: `uv run pytest forge/tests/test_viewer.py -v`
+
+Expected: PASS, 4 tests.
+
+- [ ] **Step 8: Verify in the browser that nothing regressed**
+
+Open `trajectory_viewer.html` in Chrome. The snapshot must load with zero clicks: the draft line reads "snapshot of 2026-07-28 12:59, 64 artifacts" and all three tabs populate. There is no "choose repository folder" button and no permission prompt. Open the developer console and confirm **no errors** — a missed `$("#connect")` reference throws on a null element and would silently stop the script. Drop a JSON file from `output/rollouts/` onto the page and confirm the draft line appends rather than overwrites.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add forge/tests/test_viewer.py trajectory_viewer.html
+git commit -m "Retire the folder connection; the snapshot is the loading model"
+```
+
+---
+
+### Task 1: Palette swap
+
+Replace the paper/single-red color system with the validated status palette.
+
+**Files:**
+- Modify: `forge/tests/test_viewer.py` (append; Task 0 created it)
+- Modify: `trajectory_viewer.html` — the three theme scopes at the top of the `<style>` block, then every rule that referenced the retired token names
+
+**Interfaces:**
+- Consumes: the fixtures `viewer_html` / `viewer_css` and the helpers `contrast()` / `theme_scopes()` / `_GROUNDS`, all created in Task 0
+- Produces: CSS custom properties every later task uses — `--surface`, `--plane`, `--ink`, `--ink-2`, `--muted`, `--grid`, `--axis`, `--hair`, `--wash`, `--shadow`, `--pass`, `--warn`, `--fail`, `--pass-ink`, `--warn-ink`, `--fail-ink`, `--pass-tint`, `--warn-tint`, `--fail-tint`
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `forge/tests/test_viewer.py` (the fixtures and helpers it uses already exist there):
+
+```python
 #: Every token the dashboard is built from. A later task that needs a new
 #: token adds it here first.
 REQUIRED_TOKENS = [
@@ -192,14 +350,6 @@ def test_warning_is_the_documented_low_contrast_exception(viewer_css):
     light = theme_scopes(viewer_css)["light"]["--warn"].strip()
     assert light == "#fab219"
     assert min(contrast(light, g) for g in _GROUNDS["light"]) < 3.0
-
-
-def test_embed_logs_block_still_matches_its_rewriter(viewer_html):
-    """`scripts.embed_logs` rewrites the snapshot by regex; keep them agreed."""
-    pattern = re.compile(
-        r'(<script type="application/json" id="embedded-logs">).*?(</script>)',
-        re.S)
-    assert len(pattern.findall(viewer_html)) == 1
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -327,7 +477,7 @@ Expected: no output.
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 7 tests (the two parametrized tests contribute two cases each).
+Expected: PASS, 11 tests (the two parametrized tests contribute two cases each).
 
 - [ ] **Step 7: Look at it in a browser**
 
@@ -461,7 +611,7 @@ ${softCount ? ` Runs tagged <i>soft judge</i> were scored by Gaia2's official
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 9 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 8: Verify in the browser**
 
@@ -734,7 +884,7 @@ Delete the now-unused `ok` and `softCount`… **keep `softCount`** — the Table
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 13 tests.
+Expected: PASS, 17 tests.
 
 - [ ] **Step 9: Verify in the browser**
 
@@ -850,7 +1000,7 @@ In the grid cell builder, the "not run" placeholder currently reads `<span style
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 15 tests.
+Expected: PASS, 19 tests.
 
 - [ ] **Step 8: Verify in the browser**
 
@@ -1002,7 +1152,7 @@ Replace the `<p class="tcap"><b>Table 2:</b> …</p>` insertion with:
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 17 tests.
+Expected: PASS, 21 tests.
 
 - [ ] **Step 9: Verify in the browser**
 
@@ -1020,6 +1170,26 @@ git commit -m "Surface models in the runs table and wire the signal filters"
 ### Task 6: Rebuild the transcript
 
 The trajectory-clearness half of the request: a sticky run header, an extracted verdict panel, a timeline rail, and failed tool calls open by default.
+
+**Preserve the shaping-signals feature.** `renderEpisode` carries work added separately (commit `d844695`) that this task must keep, restyled rather than removed. Two pieces:
+
+1. A `${d.credit ? … }` block in the meta template reporting partial reward, coverage, exact-argument fidelity, and where the pivot landed.
+2. A pivot-aware transcript loop that replaces the plain `cards` mapping:
+
+```js
+  const pivotAt = d.credit && d.credit.pivot != null ? d.credit.pivot : -1;
+  const cards = (d.events || []).map((e, i) => {
+    const node = turnNode(e);
+    if (i === pivotAt) {
+      node.classList.add("pivot");
+      node.querySelector(".txt").insertAdjacentHTML("afterbegin",
+        `<div class="pivotflag">▼ pivot — first fault (${esc(d.credit.pivot_kind)})</div>`);
+    }
+    return node;
+  });
+```
+
+That loop is **not** yours to replace — leave it exactly as it stands. Step 6 rewrites the meta block around it, and Step 6a below re-homes the credit block into the new layout. Deleting either piece fails this task.
 
 **Files:**
 - Modify: `trajectory_viewer.html` — transcript CSS; `renderEpisode`, `turnNode`, `callHtml`; new `parseRationale`
@@ -1066,6 +1236,17 @@ def test_the_transcript_has_a_status_rail(viewer_css, viewer_html):
     assert re.search(r"\.turn\[data-status=\"fail\"\]::before", viewer_css), (
         "each turn needs a rail dot colored by its status")
     assert "function turnStatus(e)" in viewer_html
+
+
+def test_the_shaping_signals_feature_survived_the_rebuild(viewer_html):
+    """Partial reward and the pivot marker predate this redesign (d844695).
+
+    The transcript rebuild restyles them; it does not get to drop them.
+    """
+    assert "d.credit" in viewer_html, "the shaping-signals block is gone"
+    assert "pivotAt" in viewer_html, "the pivot-marking loop is gone"
+    assert "pivotflag" in viewer_html, "the pivot flag is gone"
+    assert 'classList.add("pivot")' in viewer_html
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1160,6 +1341,14 @@ Replace the whole `/* ---------- transcript: dialogue with margin speakers -----
   .turn .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
   .turn.stage .txt { color: var(--muted); }
   .turn.fail .spk { color: var(--fail-ink); }
+  /* the pivot is the first faulting event: frozen prefix above it, the
+     trainable suffix from it down. It marks a boundary, so it gets a rule
+     across the turn rather than another dot on the rail. */
+  .turn.pivot { border-top: 2px solid var(--fail); }
+  .pivotflag {
+    color: var(--fail-ink); font-size: 11px; font-weight: 600;
+    margin-bottom: 3px;
+  }
   .turn .report { margin-top: 6px; color: var(--ink-2); }
   .turn .report b { color: var(--ink); font-weight: 600; }
 
@@ -1300,6 +1489,46 @@ Replace the `const meta = document.createElement("div"); meta.innerHTML = …` b
   content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>`);
 ```
 
+- [ ] **Step 6a: Re-home the shaping-signals block**
+
+The old meta template you just replaced contained a `${d.credit ? … }` block. It does not disappear — it becomes its own element after the verdict panel. Append this immediately after the `content.appendChild(panel);` line:
+
+```js
+  /* Shaping signals sit beside the verdict, never instead of it: a partial
+     reward says how much of the gold work landed, the pivot says where the
+     run first went wrong. */
+  if (d.credit) {
+    const credit = document.createElement("div");
+    credit.className = "credit";
+    credit.innerHTML = `<span class="lab">shaping signals</span>
+      <span>partial reward <b>${esc(String(d.credit.partial_reward))}</b></span>
+      <span>coverage <b>${esc(String(d.credit.coverage))}</b></span>
+      <span>fidelity <b>${esc(String(d.credit.fidelity))}</b> of
+        ${esc(String(d.credit.gold_total))} gold writes</span>
+      ${d.credit.pivot != null
+        ? `<span class="warn-text">pivot at event ${esc(String(d.credit.pivot))}
+             (${esc(d.credit.pivot_kind)}) — frozen prefix above, trainable
+             suffix below</span>`
+        : `<span class="dim">no located fault — the failure is missing work,
+             not a wrong step</span>`}`;
+    content.appendChild(credit);
+  }
+```
+
+and add its rule to the stylesheet beside the verdict-panel rules:
+
+```css
+  .credit {
+    display: flex; flex-wrap: wrap; gap: 5px 18px; align-items: baseline;
+    margin: 11px 0 0; font-size: 12px; color: var(--ink-2);
+  }
+  .credit .lab {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .credit b { color: var(--ink); font-weight: 650; }
+```
+
 - [ ] **Step 7: Set the rail status on each turn**
 
 In `turnNode`, just before the closing `return div;`, add:
@@ -1342,7 +1571,7 @@ function callHtml(c) {
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 21 tests.
+Expected: PASS, 26 tests.
 
 - [ ] **Step 11: Verify in the browser**
 
@@ -1548,7 +1777,7 @@ Expected: no output.
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 23 tests.
+Expected: PASS, 28 tests.
 
 - [ ] **Step 10: Verify in the browser**
 
@@ -1615,7 +1844,7 @@ Delete every mention of the retired system: signal red, hairline table grammar a
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 24 tests.
+Expected: PASS, 29 tests.
 
 Then confirm nothing else in the repo broke:
 
