@@ -1006,7 +1006,7 @@ In the grid cell builder, the "not run" placeholder currently reads `<span style
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 19 tests.
+Expected: PASS, 20 tests.
 
 - [ ] **Step 8: Verify in the browser**
 
@@ -1158,7 +1158,7 @@ Replace the `<p class="tcap"><b>Table 2:</b> …</p>` insertion with:
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 21 tests.
+Expected: PASS, 22 tests.
 
 - [ ] **Step 9: Verify in the browser**
 
@@ -1577,7 +1577,7 @@ function callHtml(c) {
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 26 tests.
+Expected: PASS, 27 tests.
 
 - [ ] **Step 11: Verify in the browser**
 
@@ -1788,7 +1788,7 @@ Expected: no output.
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 28 tests.
+Expected: PASS, 29 tests.
 
 - [ ] **Step 10: Verify in the browser**
 
@@ -1855,7 +1855,7 @@ Delete every mention of the retired system: signal red, hairline table grammar a
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 29 tests.
+Expected: PASS, 30 tests.
 
 Then confirm nothing else in the repo broke:
 
