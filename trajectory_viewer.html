@@ -226,6 +226,8 @@ episodes, sidecar breakdowns, sweep row files.
   .turn .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
   .turn.stage .txt { color: var(--faint); }
   .turn.fail .spk { color: var(--red); font-weight: 650; }
+  .turn.pivot { border-top: 2px solid var(--red); }
+  .pivotflag { color: var(--red); font-size: 11px; font-weight: 600; margin-bottom: 3px; }
   .turn .report { margin-top: 5px; color: var(--ink-2); }
   .turn .report b { color: var(--ink); font-weight: 600; }
 
@@ -1126,7 +1128,17 @@ function renderEpisode(content, s) {
          phase never unlocked. The transcript's tool calls below are the
          evidence.</p>` : "")}
     ${(d.blocked_reasons || []).length
-      ? `<p class="tnote">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>` : ""}`;
+      ? `<p class="tnote">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>` : ""}
+    ${d.credit ? `<p class="tnote">Shaping signals (beside the verdict, never
+      instead of it): partial reward <b>${d.credit.partial_reward}</b>
+      (coverage ${d.credit.coverage}, exact-argument fidelity
+      ${d.credit.fidelity} over ${d.credit.gold_total} gold writes)${
+      d.credit.pivot != null
+        ? `; pivot at event ${d.credit.pivot} (${esc(d.credit.pivot_kind)}) —
+           ${d.credit.pivot} events of frozen prefix, the fault and after are
+           the trainable suffix, marked red below`
+        : "; no located fault — the failure is missing work, not a wrong step"
+      }.</p>` : ""}`;
   content.appendChild(meta);
 
   const types = [...new Set((d.events || []).map(e => e.type))];
@@ -1141,7 +1153,16 @@ function renderEpisode(content, s) {
   const list = document.createElement("div");
   list.className = "transcript";
   content.appendChild(list);
-  const cards = (d.events || []).map(e => turnNode(e));
+  const pivotAt = d.credit && d.credit.pivot != null ? d.credit.pivot : -1;
+  const cards = (d.events || []).map((e, i) => {
+    const node = turnNode(e);
+    if (i === pivotAt) {
+      node.classList.add("pivot");
+      node.querySelector(".txt").insertAdjacentHTML("afterbegin",
+        `<div class="pivotflag">▼ pivot — first fault (${esc(d.credit.pivot_kind)})</div>`);
+    }
+    return node;
+  });
   batchAppend(list, cards);
 
   const apply = () => {
