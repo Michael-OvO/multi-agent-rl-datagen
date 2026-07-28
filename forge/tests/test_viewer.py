@@ -74,6 +74,19 @@ def theme_scopes(css: str) -> dict[str, dict[str, str]]:
     return out
 
 
+def viewer_source(html: str) -> str:
+    """The page minus its embedded data line.
+
+    The snapshot is machine-generated JSON carrying arbitrary prose from run
+    transcripts, so searching it for an identifier yields false hits. Strip
+    exactly that one block and keep everything else -- markup, stylesheet,
+    and the whole app script are hand-written and must be searched.
+    """
+    return re.sub(
+        r'(<script type="application/json" id="embedded-logs">).*?(</script>)',
+        r"\1\2", html, flags=re.S)
+
+
 #: Every identifier the File System Access layer was built from. The spec
 #: retired that data source: the page carries its own snapshot, so opening
 #: the file is the whole workflow and no permission prompt stands in front
@@ -87,9 +100,13 @@ _FOLDER_CONNECT_RELICS = [
 
 def test_the_folder_connect_layer_is_gone(viewer_html):
     """One loading model: the embedded snapshot, plus drop and pick."""
-    body = viewer_html.split('<script type="application/json"')[0] \
-        + viewer_html.split("</script>")[-1]
-    survivors = [relic for relic in _FOLDER_CONNECT_RELICS if relic in body]
+    source = viewer_source(viewer_html)
+    # Guard the guard: if the app script ever falls outside the searched
+    # region, this test silently stops testing anything.
+    assert '"use strict"' in source, (
+        "the app script must be inside the searched region -- the "
+        "snapshot-stripping regex is eating real code")
+    survivors = [relic for relic in _FOLDER_CONNECT_RELICS if relic in source]
     assert not survivors, f"folder-connect machinery survives: {survivors}"
 
 
