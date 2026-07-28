@@ -750,12 +750,15 @@ Add to the "shared pieces" section, after `countMalformed`:
 ```js
 /* Every counter in one pass, so the tiles and the signals line can never
    disagree about what the same runs contain. */
+/* A malformed line is a protocol fault and has its own counter; counting it
+   here too would make the two signal chips overlap while reading as disjoint. */
 function countErrors(d) {
+  const faulted = s => s && s !== "ok" && s !== "malformed";
   let n = 0;
   for (const e of d.events || []) {
-    if (e.type === "call" && e.status && e.status !== "ok") n++;
+    if (e.type === "call" && faulted(e.status)) n++;
     if (e.type === "delegation")
-      for (const c of e.calls || []) if (c.status && c.status !== "ok") n++;
+      for (const c of e.calls || []) if (faulted(c.status)) n++;
   }
   return n;
 }
@@ -885,7 +888,7 @@ Delete the now-unused `ok` and `softCount`… **keep `softCount`** — the Table
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 17 tests.
+Expected: PASS, 18 tests.
 
 - [ ] **Step 9: Verify in the browser**
 
@@ -1006,7 +1009,7 @@ In the grid cell builder, the "not run" placeholder currently reads `<span style
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 20 tests.
+Expected: PASS, 21 tests.
 
 - [ ] **Step 8: Verify in the browser**
 
@@ -1158,7 +1161,7 @@ Replace the `<p class="tcap"><b>Table 2:</b> …</p>` insertion with:
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 22 tests.
+Expected: PASS, 23 tests.
 
 - [ ] **Step 9: Verify in the browser**
 
@@ -1577,7 +1580,7 @@ function callHtml(c) {
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 27 tests.
+Expected: PASS, 28 tests.
 
 - [ ] **Step 11: Verify in the browser**
 
@@ -1788,7 +1791,7 @@ Expected: no output.
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 29 tests.
+Expected: PASS, 30 tests.
 
 - [ ] **Step 10: Verify in the browser**
 
@@ -1855,7 +1858,7 @@ Delete every mention of the retired system: signal red, hairline table grammar a
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 30 tests.
+Expected: PASS, 31 tests.
 
 Then confirm nothing else in the repo broke:
 
