@@ -171,6 +171,23 @@ sweep row files.
   .bad { color: var(--fail-ink); }
   .dim { color: var(--muted); }
 
+  /* ---------- status badges: color + icon + word, always all three ---------- */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+    line-height: 1.5;
+  }
+  .badge .ic { font-size: 11px; line-height: 1; }
+  .badge.pass { background: var(--pass-tint); color: var(--pass-ink); }
+  .badge.fail { background: var(--fail-tint); color: var(--fail-ink); }
+  .badge.warn { background: var(--warn-tint); color: var(--warn-ink); }
+  .tag {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    border-radius: 999px; border: 1px solid var(--hair);
+    font-size: 11px; color: var(--ink-2); white-space: nowrap;
+  }
+
   /* ---------- tables: soft framed panels, no sideways scrolling ---------- */
   .tcap { margin: 26px 0 8px; font-size: 13px; color: var(--ink-2); }
   .tcap b { font-weight: 600; color: var(--ink); }
@@ -203,7 +220,6 @@ sweep row files.
   .yes { color: var(--ink); }
   .no  { color: var(--fail-ink); }
   .runlab { color: var(--muted); font-size: 11px; }
-  .dag { font-size: 0.85em; vertical-align: super; line-height: 0; }
   .tnote { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 84ch; }
 
   .mono, .call .sig, pre {
@@ -441,12 +457,19 @@ function countMalformed(d) {
   return n;
 }
 
-/* Verdicts are typeset, not badged. The dagger marks the official soft
-   judge; the table note explains it, as a paper would. */
-function verdictText(ok, judge) {
-  const dag = judge && judge !== "scripted" ? `<span class="dag">†</span>` : "";
-  return ok ? `<span class="yes">✓ success${dag}</span>`
-            : `<span class="no">✗ failure${dag}</span>`;
+/* Status is carried by three channels at once -- color, icon, and word --
+   so it survives colorblindness, grayscale printing, and forced-colors. */
+const ICONS = {pass: "✓", fail: "✕", warn: "▲"};
+
+function badge(kind, label) {
+  return `<span class="badge ${kind}"><span class="ic" aria-hidden="true">${
+    ICONS[kind]}</span>${esc(label)}</span>`;
+}
+
+function verdictBadge(ok, judge) {
+  const soft = judge && judge !== "scripted"
+    ? `<span class="tag">soft judge</span>` : "";
+  return badge(ok ? "pass" : "fail", ok ? "pass" : "fail") + soft;
 }
 
 function openDetail(i) {
@@ -565,7 +588,7 @@ function renderRuns(content) {
             return `<a class="xref" data-i="${sessions.indexOf(s)}"
               tabindex="0" role="button"
               title="${esc(String(s.data.answer ?? ""))}">${
-              verdictText(okr, s.data.judge)}${
+              verdictBadge(okr, s.data.judge)}${
               s.data.label ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
           }).join('<span class="dim"> · </span>')}</td>`;
         }).join("")}</tr>`;
@@ -574,9 +597,9 @@ function renderRuns(content) {
       the judge compares the agent's write calls against the scenario's gold
       writes, so ✗ means a gold write was missing, mismatched in its
       arguments, duplicated, or a later phase never unlocked — not that the
-      harness errored.${softCount ? ` † judged by Gaia2's official soft judge
-      (gpt-5.6-sol as checker); unmarked runs use the deterministic scripted
-      judge. Two marks in one cell are the same cell under both judges.` : ""}</p>`;
+      harness errored.${softCount ? ` Runs tagged <i>soft judge</i> were scored by Gaia2's official
+      soft judge (gpt-5.6-sol as checker); the rest use the deterministic scripted
+      judge. Two marks in one cell are the same run under both judges.` : ""}</p>`;
   wrap.querySelectorAll("a[data-i]").forEach(a =>
     a.onclick = () => openDetail(Number(a.dataset.i)));
   content.appendChild(wrap);
@@ -631,7 +654,7 @@ function renderRuns(content) {
         <td>${esc(d.config || "")}</td>
         <td>${esc(d.ability || "control")}</td>${
         hasLabels ? `<td>${d.label ? esc(d.label) : "—"}</td>` : ""}
-        <td>${verdictText(okr, d.judge)}</td>
+        <td>${verdictBadge(okr, d.judge)}</td>
         <td class="n">${d.delegations ?? ""}</td>
         <td class="n">${d.specialist_turns ?? ""}</td>
         <td>${issues ? `<span class="no">${esc(issues)}</span>`
@@ -699,7 +722,7 @@ function renderBreakdowns(content) {
       return `<tr class="click" data-i="${sessions.indexOf(s)}" tabindex="0"
         data-text="${esc((s.path + " " + JSON.stringify([d.answer, d.partial])).toLowerCase())}">
         <td title="${esc(s.path)}">${esc(breakdownLabel(s))}</td>
-        <td>${verdictText(okr)}</td>
+        <td>${verdictBadge(okr)}</td>
         <td class="n">${d.partial ?? ""}</td>
         <td class="n">${d.delegations ?? (d.ledger || []).length}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 60))}</td></tr>`;
@@ -835,7 +858,7 @@ function renderEpisode(content, s) {
   meta.innerHTML = `
     <h3 class="subsec">Run ${esc(shortScenario(d.scenario_id || s.name))} —
       ${esc(d.config || "?")}${d.label ? " · " + esc(d.label) : ""} —
-      ${verdictText(okr, d.judge)}</h3>
+      ${verdictBadge(okr, d.judge)}</h3>
     <p class="path">${esc(s.path)}</p>
     <p class="runmeta">Ability <i>${esc(d.ability || "control")}</i>;
       roster ${(d.roster || []).map(a => esc(a)).join(", ") || "—"};
@@ -973,7 +996,7 @@ function renderBreakdownDetail(content, s) {
   backline(content, "back to the tables");
   const meta = document.createElement("div");
   meta.innerHTML = `
-    <h3 class="subsec">${esc(breakdownLabel(s))} — ${verdictText(!!d.success)}</h3>
+    <h3 class="subsec">${esc(breakdownLabel(s))} — ${verdictBadge(!!d.success)}</h3>
     <p class="path">${esc(s.path)}</p>
     <p class="runmeta">Partial reward ${d.partial ?? "—"}${
       d.passes != null ? ` (${d.passes} requirement${d.passes === 1 ? "" : "s"} passed,

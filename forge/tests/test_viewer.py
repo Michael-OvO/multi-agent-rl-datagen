@@ -187,3 +187,21 @@ def test_warning_is_the_documented_low_contrast_exception(viewer_css):
     light = theme_scopes(viewer_css)["light"]["--warn"].strip()
     assert light == "#fab219"
     assert min(contrast(light, g) for g in _GROUNDS["light"]) < 3.0
+
+
+def test_verdict_badges_pair_every_color_with_an_icon_and_a_word(viewer_html):
+    """The founding accessibility rule: color is never the only channel."""
+    builder = re.search(r"function badge\(kind, label\) \{(.*?)\n\}",
+                        viewer_html, re.S)
+    assert builder, "badge() builder is missing"
+    body = builder.group(1)
+    assert "ICONS[kind]" in body, "the badge must render an icon"
+    assert "esc(label)" in body, "the badge must render an escaped text label"
+    assert 'aria-hidden="true"' in body, (
+        "the icon is decorative next to its label; hide it from readers")
+
+
+def test_the_dagger_footnote_is_gone(viewer_html):
+    """Soft-judged runs get a readable tag, not a symbol you must decode."""
+    assert '<span class="dag">' not in viewer_html
+    assert "soft judge" in viewer_html
