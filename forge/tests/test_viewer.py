@@ -339,11 +339,14 @@ def test_the_shaping_signals_feature_survived_the_rebuild(viewer_html):
     """Partial reward and the pivot marker predate this redesign (d844695).
 
     The transcript rebuild restyles them; it does not get to drop them.
+    Searches the hand-written source: transcript prose in the embedded
+    snapshot could otherwise mask the feature's deletion.
     """
-    assert "d.credit" in viewer_html, "the shaping-signals block is gone"
-    assert "pivotAt" in viewer_html, "the pivot-marking loop is gone"
-    assert "pivotflag" in viewer_html, "the pivot flag is gone"
-    assert 'classList.add("pivot")' in viewer_html
+    source = viewer_source(viewer_html)
+    assert "d.credit" in source, "the shaping-signals block is gone"
+    assert "pivotAt" in source, "the pivot-marking loop is gone"
+    assert "pivotflag" in source, "the pivot flag is gone"
+    assert 'classList.add("pivot")' in source
 
 
 def test_the_gold_write_panel_keeps_multi_line_arguments(viewer_html):
@@ -417,10 +420,18 @@ def test_the_ledger_header_reports_blocked_and_the_answer(viewer_html):
 
     The per-turn blocked counts appear in the transcript rows but are summed
     nowhere else, and the ledger has no verdict panel to carry the answer.
+
+    Asserts on the aggregate, not on `l.blocked`: that substring also matches
+    the per-turn row template built lower in the same function, so deleting
+    the header's sum would leave the old assertion passing.
     """
     fn = re.search(r"function renderBreakdownDetail\(content, s\) \{(.*?)\n\}",
                    viewer_html, re.S)
     assert fn, "renderBreakdownDetail() is missing"
     body = fn.group(1)
-    assert "l.blocked" in body, "the ledger's blocked counts must be summed"
-    assert "d.answer" in body, "the ledger must still report the final answer"
+    # No DOTALL: the sum and its accumulator must sit on one line together,
+    # which the per-turn row template never does.
+    assert re.search(r"ledger\.reduce\(.*l\.blocked", body), (
+        "the ledger header must sum the per-turn blocked counts")
+    assert re.search(r'class="verdict-panel"', body) and "d.answer" in body, (
+        "the ledger must still report the final answer in its own panel")

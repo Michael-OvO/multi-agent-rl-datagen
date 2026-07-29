@@ -254,8 +254,6 @@ sweep row files.
   table.tab tr.click { cursor: pointer; }
   table.tab tbody tr:hover td { background: var(--wash); }
   table.tab .sortable { cursor: pointer; }
-  .yes { color: var(--ink); }
-  .no  { color: var(--fail-ink); }
   .runlab { color: var(--muted); font-size: 11px; }
   .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 84ch; }
 
@@ -282,8 +280,6 @@ sweep row files.
   /* ---------- section headings ---------- */
   h2.sec { font-size: 16px; font-weight: 650; letter-spacing: -0.01em;
            margin: 30px 0 4px; }
-  h3.subsec { font-size: 15px; font-weight: 650; letter-spacing: -0.01em;
-              margin: 4px 0 2px; }
 
   /* ---------- run detail ---------- */
   .backline { margin: 0 0 18px; font-size: 12.5px; color: var(--ink-2); }
@@ -507,6 +503,9 @@ function artifact(name, path, data) {
 }
 
 async function addFiles(fileList) {
+  /* `detail` is an index into `sessions`, and sorting moves rows under it.
+     Remember what the reader actually had open, not where it sat. */
+  const openPath = (detail !== null && sessions[detail]) ? sessions[detail].path : null;
   let added = 0;
   for (const f of [...fileList].filter(f => JSON_FILE.test(f.name))) {
     const path = f.webkitRelativePath || f.name;
@@ -526,7 +525,12 @@ async function addFiles(fileList) {
   } else if (added) {
     sourceLine = `picked files — ${added} artifacts`;
   }
-  sortSessions(); render();
+  sortSessions();
+  if (openPath !== null) {
+    const i = sessions.findIndex(s => s.path === openPath);
+    detail = i >= 0 ? i : null;
+  }
+  render();
 }
 $("#pick").addEventListener("change", e => { addFiles(e.target.files); e.target.value = ""; });
 for (const ev of ["dragover", "dragleave", "drop"]) {
@@ -646,7 +650,9 @@ function renderSignals(content, stats) {
     btn.onclick = () => {
       const key = btn.dataset.issue;
       if (key === "worst") {
-        issueFilter = null;
+        /* The query and the issue filter compose, exactly as the search box
+           and the dropdowns do. A chip must not silently undo a filter the
+           reader chose; if nothing matches, the count line says so. */
         pendingQuery = shortScenario(stats.worst.scenario);
       } else {
         issueFilter = issueFilter === key ? null : key;
@@ -926,7 +932,7 @@ function renderRuns(content) {
         <td>${issues ? `<span class="warn-text">${esc(issues)}</span>`
                      : `<span class="dim">clean</span>`}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 44))}</td>
-        <td class="n">${d.seconds ?? ""}</td></tr>`;
+        <td class="n">${esc(String(d.seconds ?? ""))}</td></tr>`;
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
   trs.forEach(tr => tr.onclick = () => openDetail(Number(tr.dataset.i)));
@@ -966,13 +972,17 @@ function renderBreakdowns(content) {
       <span class="mono">jobs/**/verifier/breakdown.json</span>.</p>`;
     return;
   }
-  const ok = bds.filter(s => s.data.success).length;
+  const bok = bds.filter(s => s.data.success).length;
+  const partials = bds.map(s => s.data.partial).filter(v => typeof v === "number");
+  const meanPartial = partials.length
+    ? (partials.reduce((a, b) => a + b, 0) / partials.length).toFixed(2) : null;
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Shipped-task runs</h2>
      <p class="lede"><b>${bds.length}</b> containerized AppWorld episodes from
-     <span class="mono">jobs/</span> — ${ok} success,
-     <span class="${bds.length - ok ? "bad" : ""}">${bds.length - ok} failure</span>.
-     The reward is AppWorld's own per-requirement check.</p>
+     <span class="mono">jobs/</span> — ${bok} passed,
+     <span class="${bds.length - bok ? "warn-text" : ""}">${bds.length - bok}
+     failed</span>, scored by AppWorld's own per-requirement check${
+     meanPartial ? `, mean partial credit <b>${meanPartial}</b>` : ""}.</p>
      <div class="panel-title">Verifier results
        <span class="sub">— by campaign and trial; click a row for its ledger</span></div>`);
 
@@ -995,8 +1005,8 @@ function renderBreakdowns(content) {
         data-text="${esc((s.path + " " + JSON.stringify([d.answer, d.partial])).toLowerCase())}">
         <td title="${esc(s.path)}">${esc(breakdownLabel(s))}</td>
         <td>${verdictBadge(okr)}</td>
-        <td class="n">${d.partial ?? ""}</td>
-        <td class="n">${d.delegations ?? (d.ledger || []).length}</td>
+        <td class="n">${esc(String(d.partial ?? ""))}</td>
+        <td class="n">${esc(String(d.delegations ?? (d.ledger || []).length))}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 60))}</td></tr>`;
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
@@ -1112,7 +1122,7 @@ function renderSweeps(content) {
 function renderRaw(content, s, inline) {
   if (!inline) backline(content, "back to the tables");
   content.insertAdjacentHTML("beforeend",
-    `<h3 class="subsec">${esc(s.name)}</h3>
+    `<div class="panel-title">${esc(s.name)}</div>
      <p class="path">${esc(s.path)}</p>
      <pre class="blk">${esc(JSON.stringify(s.data, null, 1).slice(0, 400000))}</pre>`);
 }
@@ -1139,12 +1149,12 @@ function renderEpisode(content, s) {
       <span>models <b>${esc(d.main_model || "?")}</b>${
         d.sub_model && d.sub_model !== d.main_model
           ? ` / <b>${esc(d.sub_model)}</b>` : ""}</span>
-      <span><b>${d.delegations ?? 0}</b> delegations</span>
-      <span><b>${d.specialist_turns ?? 0}</b> specialist turns</span>
-      <span><b>${d.seconds ?? "—"}</b> s</span>
+      <span><b>${esc(String(d.delegations ?? 0))}</b> delegations</span>
+      <span><b>${esc(String(d.specialist_turns ?? 0))}</b> specialist turns</span>
+      <span><b>${esc(String(d.seconds ?? "—"))}</b> s</span>
       <span>judge <b>${esc(judge)}</b></span>
-      ${mal ? `<span class="warn-text">${mal} malformed</span>` : ""}
-      ${d.blocked ? `<span class="warn-text">${d.blocked} blocked</span>` : ""}
+      ${mal ? `<span class="warn-text">${esc(String(mal))} malformed</span>` : ""}
+      ${d.blocked ? `<span class="warn-text">${esc(String(d.blocked))} blocked</span>` : ""}
     </div>`;
   content.appendChild(bar);
 
@@ -1319,13 +1329,13 @@ function renderBreakdownDetail(content, s) {
   bar.innerHTML = `<h3>${verdictBadge(!!d.success)}
       <span>${esc(breakdownLabel(s))}</span></h3>
     <div class="facts">
-      <span>partial <b>${d.partial ?? "—"}</b></span>${
-      d.passes != null ? `<span><b>${d.passes}</b> requirements passed</span>
-        <span><b>${d.failures ?? "?"}</b> failed</span>` : ""}
-      <span><b>${d.delegations ?? d.ledger.length}</b> delegations</span>
+      <span>partial <b>${esc(String(d.partial ?? "—"))}</b></span>${
+      d.passes != null ? `<span><b>${esc(String(d.passes))}</b> requirements passed</span>
+        <span><b>${esc(String(d.failures ?? "?"))}</b> failed</span>` : ""}
+      <span><b>${esc(String(d.delegations ?? d.ledger.length))}</b> delegations</span>
       <span><b>${d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)}</b>
         specialist turns</span>
-      ${blocked ? `<span class="warn-text">${blocked} blocked</span>`
+      ${blocked ? `<span class="warn-text">${esc(String(blocked))} blocked</span>`
                 : `<span><b>0</b> blocked</span>`}
     </div>`;
   content.appendChild(bar);
@@ -1349,8 +1359,8 @@ function renderBreakdownDetail(content, s) {
       <div class="txt">${esc(l.brief ?? "")}
         <div class="report"><b>${esc(l.specialist)}:</b> ${esc(l.report ?? "")}
           <i>(${esc(String(l.specialist_turns ?? "?"))} turns${
-          l.blocked ? `, <span class="no">${l.blocked} blocked</span>` : ""}${
-          l.refused ? `, ${l.refused} refused` : ""})</i></div>
+          l.blocked ? `, <span class="warn-text">${esc(String(l.blocked))} blocked</span>` : ""}${
+          l.refused ? `, ${esc(String(l.refused))} refused` : ""})</i></div>
         ${(l.blocked_reasons || []).length
           ? `<div class="report">Blocked: ${esc(l.blocked_reasons.join(" · "))}</div>` : ""}</div>`;
     return div;
