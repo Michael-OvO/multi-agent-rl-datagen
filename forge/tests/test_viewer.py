@@ -277,3 +277,17 @@ def test_the_grid_tags_only_the_minority_judge(viewer_html):
     assert "majorityJudge" in body and "judgeLabel(" in body
     assert "softCount" not in source, (
         "softCount is unused once the grid stops tagging every cell")
+
+
+def test_the_note_does_not_call_the_scripted_judge_official(viewer_html):
+    """"Official" is Gaia2's soft judge; the scripted fallback is not it.
+
+    The note states whichever judge is the majority as the default, so the
+    phrase has to depend on which one won rather than gluing "official" to
+    both.
+    """
+    source = viewer_source(viewer_html)
+    assert 'majorityJudge === "scripted"' in source, (
+        "the note must branch on which judge is the majority")
+    assert not re.search(r'official \$\{judgeLabel\(majorityJudge\)', source), (
+        "the note still calls whichever judge won the majority 'official'")

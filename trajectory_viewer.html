@@ -687,7 +687,9 @@ function renderRuns(content) {
     const j = s.data.judge || "scripted";
     judgeCounts.set(j, (judgeCounts.get(j) || 0) + 1);
   }
-  const majorityJudge = [...judgeCounts].sort((a, b) => b[1] - a[1])[0][0];
+  /* Ties break on name so the stated default never depends on run order. */
+  const majorityJudge = [...judgeCounts]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
 
   const wrap = document.createElement("div");
   wrap.innerHTML = `<div class="panel-title">Verdicts by scenario and configuration
@@ -727,8 +729,10 @@ function renderRuns(content) {
       judge compares the agent's write calls against the scenario's gold
       writes, so a failure means a gold write was missing, its arguments were
       wrong, it was duplicated, or a later phase never unlocked — not that the
-      harness errored. Verdicts are scored by Gaia2's official
-      ${judgeLabel(majorityJudge)} (${esc(majorityJudge)} as checker) by
+      harness errored. Verdicts are scored by
+      ${majorityJudge === "scripted"
+        ? "the deterministic scripted judge"
+        : "Gaia2's official soft judge"} (${esc(majorityJudge)} as checker) by
       default; a mark tagged with a different judge used that judge instead.
       Two marks in one cell are the same run under both judges.</p>`;
   wrap.querySelectorAll("a[data-i]").forEach(a =>
