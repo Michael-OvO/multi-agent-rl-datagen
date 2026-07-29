@@ -629,7 +629,11 @@ git commit -m "Typeset verdicts as badges: color, icon, and word together"
 
 ### Task 3: The Runs overview band
 
-The headline of the plan: four stat tiles and a clickable failure-signals line above the Runs tables.
+A clickable failure-signals line above the Runs tables.
+
+**Amended 2026-07-28, after the tiles shipped and were seen.** This task originally added four boxed stat tiles (episodes, success rate as a hero figure, failures, models) above the signals. The user removed them on sight — "unnecessary and ugly" — because the numbers restate what the tables already show. The signal chips stay: they are light, and clicking one filters the runs table.
+
+What that means for anyone reading this task now: build the `.signals` row and its click wiring, and skip every `.stats` / `.tile` / `.tile.hero` rule and the tile markup in `renderOverview`. `runStats` computes only what the chips consume — `malformed`, `blocked`, `errors`, `worst`. There is no hero figure on any view.
 
 **Files:**
 - Modify: `trajectory_viewer.html` — overview CSS; new `runStats()` and `renderOverview()` helpers; call from `renderRuns`
@@ -1623,8 +1627,10 @@ def test_no_view_still_wears_the_paper_costume(viewer_html):
         assert relic not in source, f"{relic} survived the redesign"
 
 
-def test_shipped_task_runs_get_an_overview_too(viewer_html):
-    assert "function breakdownStats(bds)" in viewer_html
+def test_no_stat_tiles_anywhere(viewer_css):
+    """The boxed summary band was removed on 2026-07-28; keep it removed."""
+    for gone in (".stats", ".tile", ".tile.hero"):
+        assert gone + " {" not in viewer_css, f"{gone} came back"
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
