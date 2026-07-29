@@ -245,8 +245,11 @@ sweep row files.
   table.tab th:first-child, table.tab td:first-child { padding-left: 16px; }
   table.tab th:last-child, table.tab td:last-child { padding-right: 16px; }
   table.tab th.n, table.tab td.n { text-align: right; }
-  /* wrap-mode tables trade taller rows for zero horizontal scrolling */
-  table.tab.wrap td { white-space: normal; overflow-wrap: anywhere; max-width: none; }
+  /* Break inside a word only when the word alone cannot fit -- a long path or
+     id. Ordinary values wrap at spaces, so cells never read as "compl/eted". */
+  table.tab.wrap td {
+    white-space: normal; overflow-wrap: break-word; word-break: normal; max-width: none;
+  }
   td.wrapok { white-space: normal !important; }
   table.tab tr.click { cursor: pointer; }
   table.tab tbody tr:hover td { background: var(--wash); }
