@@ -302,3 +302,45 @@ def test_rows_carry_their_issues_for_the_signal_filter(viewer_html):
     assert "data-issues=" in viewer_html
     assert "issueFilter" in viewer_html
     assert "dataset.issues" in viewer_html
+
+
+def test_the_run_header_sticks(viewer_css):
+    """Scroll 200 turns down and you still know which run you are reading."""
+    bar = re.search(r"\.runbar \{(.*?)\}", viewer_css, re.S)
+    assert bar, ".runbar rule is missing"
+    assert "position: sticky" in bar.group(1)
+
+
+def test_the_judges_rationale_is_parsed_not_dumped(viewer_html):
+    fn = re.search(r"function parseRationale\(text\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "parseRationale() is missing"
+    body = fn.group(1)
+    assert "tool name:" in body, "the missing gold write must be extracted"
+    assert "List of matching attempts" in body, (
+        "the attempt dump must be separated from the headline")
+
+
+def test_failed_tool_calls_open_by_default(viewer_html):
+    """The evidence for a failure should not be behind a click."""
+    assert 'bad ? " open" : ""' in viewer_html, (
+        "delegation call lists must render <details open> when a call faulted")
+    assert 'class="call bad"' in viewer_html, (
+        "a faulted call must be marked so its rail turns red")
+
+
+def test_the_transcript_has_a_status_rail(viewer_css, viewer_html):
+    assert re.search(r"\.turn\[data-status=\"fail\"\]::before", viewer_css), (
+        "each turn needs a rail dot colored by its status")
+    assert "function turnStatus(e)" in viewer_html
+
+
+def test_the_shaping_signals_feature_survived_the_rebuild(viewer_html):
+    """Partial reward and the pivot marker predate this redesign (d844695).
+
+    The transcript rebuild restyles them; it does not get to drop them.
+    """
+    assert "d.credit" in viewer_html, "the shaping-signals block is gone"
+    assert "pivotAt" in viewer_html, "the pivot-marking loop is gone"
+    assert "pivotflag" in viewer_html, "the pivot flag is gone"
+    assert 'classList.add("pivot")' in viewer_html

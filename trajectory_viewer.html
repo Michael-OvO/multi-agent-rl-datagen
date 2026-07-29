@@ -290,38 +290,126 @@ sweep row files.
     white-space: pre-wrap; overflow-wrap: anywhere;
   }
 
-  /* ---------- transcript: dialogue with margin speakers ---------- */
-  .transcript { margin-top: 18px; border-top: 1px solid var(--hair); }
-  .turn {
-    display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 0 20px;
-    padding: 8px 0; border-bottom: 1px solid var(--wash);
+  /* ---------- run header: pinned so context never scrolls away ---------- */
+  .runbar {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--plane); border-bottom: 1px solid var(--hair);
+    padding: 12px 0 11px; margin-bottom: 4px;
   }
-  @media (max-width: 720px) { .turn { grid-template-columns: 96px minmax(0, 1fr); } }
+  .runbar h3 {
+    margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .runbar .facts {
+    margin-top: 7px; font-size: 12px; color: var(--ink-2);
+    display: flex; flex-wrap: wrap; gap: 4px 16px;
+  }
+  .runbar .facts b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- the verdict, read before the transcript ---------- */
+  .verdict-panel {
+    margin: 16px 0 0; padding: 13px 16px; border-radius: 10px;
+    background: var(--wash); border: 1px solid var(--hair);
+    font-size: 13px; color: var(--ink-2);
+  }
+  .verdict-panel.fail { background: var(--fail-tint); border-color: transparent; }
+  .verdict-panel .head {
+    font-weight: 650; color: var(--ink); font-size: 13.5px; margin-bottom: 7px;
+  }
+  .verdict-panel .gold {
+    margin: 8px 0 0; padding: 9px 12px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--hair);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px; color: var(--ink); white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .verdict-panel details { margin-top: 9px; }
+  .verdict-panel summary {
+    cursor: pointer; font-size: 12px; color: var(--ink-2); width: fit-content;
+  }
+  .verdict-panel pre {
+    margin: 7px 0 0; font-size: 11px; line-height: 1.45; max-height: 260px;
+    overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+    color: var(--ink-2);
+  }
+
+  /* Shaping signals sit beside the verdict, never instead of it. */
+  .credit {
+    display: flex; flex-wrap: wrap; gap: 5px 18px; align-items: baseline;
+    margin: 11px 0 0; font-size: 12px; color: var(--ink-2);
+  }
+  .credit .lab {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .credit b { color: var(--ink); font-weight: 650; }
+
+  /* ---------- transcript: a timeline with a status rail ---------- */
+  .transcript { margin-top: 20px; }
+  .turn {
+    position: relative;
+    display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 0 26px;
+    padding: 10px 0;
+  }
+  /* the rail runs through the gutter between the speaker and the matter */
+  .turn::after {
+    content: ""; position: absolute; left: 130px; top: 0; bottom: 0;
+    width: 2px; background: var(--grid);
+  }
+  .turn:first-child::after { top: 15px; }
+  .turn:last-child::after { bottom: auto; height: 15px; }
+  .turn::before {
+    content: ""; position: absolute; left: 126px; top: 13px; z-index: 1;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--axis); border: 2px solid var(--plane);
+  }
+  .turn[data-status="pass"]::before { background: var(--pass); }
+  .turn[data-status="fail"]::before { background: var(--fail); }
+  .turn[data-status="stage"]::before { background: var(--grid); }
+  @media (max-width: 720px) {
+    .turn { grid-template-columns: 84px minmax(0, 1fr); gap: 0 20px; }
+    .turn::after { left: 92px; }
+    .turn::before { left: 88px; }
+  }
   .turn .spk {
-    color: var(--muted); font-size: 11.5px; font-weight: 550;
+    color: var(--ink-2); font-size: 11.5px; font-weight: 600;
     text-align: right; padding-top: 2px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .turn .spk .t { display: block; font-weight: 400; font-size: 10.5px;
-                  color: var(--muted); }
+  .turn .spk .t {
+    display: block; font-weight: 400; font-size: 10.5px; color: var(--muted);
+  }
   .turn .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
   .turn.stage .txt { color: var(--muted); }
-  .turn.fail .spk { color: var(--fail-ink); font-weight: 650; }
-  .turn.pivot { border-top: 2px solid var(--fail-ink); }
-  .pivotflag { color: var(--fail-ink); font-size: 11px; font-weight: 600; margin-bottom: 3px; }
-  .turn .report { margin-top: 5px; color: var(--ink-2); }
+  .turn.fail .spk { color: var(--fail-ink); }
+  /* the pivot is the first faulting event: frozen prefix above it, the
+     trainable suffix from it down. It marks a boundary, so it gets a rule
+     across the turn rather than another dot on the rail. */
+  .turn.pivot { border-top: 2px solid var(--fail); }
+  .pivotflag {
+    color: var(--fail-ink); font-size: 11px; font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .turn .report { margin-top: 6px; color: var(--ink-2); }
   .turn .report b { color: var(--ink); font-weight: 600; }
 
-  details.calls { margin-top: 5px; }
+  details.calls { margin-top: 7px; }
   details.calls summary {
-    cursor: pointer; font-size: 11.5px; color: var(--muted);
-    width: fit-content;
+    cursor: pointer; font-size: 11.5px; color: var(--ink-2); width: fit-content;
   }
-  .call { padding: 6px 0 2px; }
-  .call .sig { font-size: 11.5px; overflow-wrap: anywhere; }
-  .call .flag { color: var(--fail-ink); font-size: 11.5px; }
+  .call {
+    padding: 7px 0 3px 10px; margin-top: 5px;
+    border-left: 2px solid var(--grid);
+  }
+  .call.bad { border-left-color: var(--fail); }
+  .call .sig { font-size: 11.5px; overflow-wrap: anywhere; color: var(--ink); }
+  /* the summary's flag sits outside .call, so it is named here too -- without
+     it the faulted count reads as body text and the count stops standing out */
+  .call .flag, details.calls summary .flag {
+    color: var(--fail-ink); font-size: 11.5px; font-weight: 600;
+  }
   .call pre {
-    margin: 4px 0 4px 0; padding: 8px 11px;
+    margin: 5px 0; padding: 8px 11px;
     background: var(--wash); border-radius: 8px;
     max-height: 240px; overflow: auto;
     font-size: 11px; line-height: 1.45;
@@ -587,6 +675,31 @@ function verdictBadge(ok, judge) {
   const soft = judge && judge !== "scripted"
     ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
   return badge(ok ? "pass" : "fail", ok ? "pass" : "fail") + soft;
+}
+
+/* The scripted judge reports a failure as a wall of text: a headline, the
+   oracle call it wanted, its arguments, then every attempt it tried to match.
+   Only the first three lines answer "what went wrong", so they get pulled to
+   the front and the attempt log goes behind a disclosure. */
+function parseRationale(text) {
+  const raw = String(text || "");
+  const toolName = (raw.match(/tool name:\s*(\S+)/) || [])[1] || null;
+
+  const args = [];
+  const argBlock = raw.split(/tool args:\s*/)[1];
+  if (argBlock) {
+    for (const line of argBlock.split("\n")) {
+      if (!line.startsWith("-")) break;
+      args.push(line.slice(1).trim());
+    }
+  }
+
+  const [before, after] = raw.split("List of matching attempts:");
+  const attempts = after
+    ? after.split("\n").map(l => l.replace(/^-/, "").trim()).filter(Boolean)
+    : [];
+
+  return {toolName, args, attempts, rest: (before || raw).trim()};
 }
 
 function openDetail(i) {
@@ -1004,50 +1117,83 @@ function renderEpisode(content, s) {
 
   const judge = d.judge || "scripted";
   const mal = countMalformed(d);
-  const meta = document.createElement("div");
-  meta.innerHTML = `
-    <h3 class="subsec">Run ${esc(shortScenario(d.scenario_id || s.name))} —
-      ${esc(d.config || "?")}${d.label ? " · " + esc(d.label) : ""} —
-      ${verdictBadge(okr, d.judge)}</h3>
-    <p class="path">${esc(s.path)}</p>
-    <p class="runmeta">Ability <i>${esc(d.ability || "control")}</i>;
-      roster ${(d.roster || []).map(a => esc(a)).join(", ") || "—"};
-      judged by the ${judge === "scripted"
-        ? "deterministic scripted judge"
-        : `official soft judge (<span class="mono">${esc(judge)}</span>)`};
-      Main <span class="mono">${esc(d.main_model || "?")}</span>,
-      specialists <span class="mono">${esc(d.sub_model || "?")}</span>${
-      d.objective_action_contract
-        ? `; contract <span class="mono">${esc(d.objective_action_contract)}</span>`
-        : ""}.
-      ${d.delegations ?? 0} delegations, ${d.specialist_turns ?? 0} specialist
-      turns, ${d.waits ?? 0} wait${(d.waits ?? 0) === 1 ? "" : "s"},
-      ${d.user_turns ?? 0} user turn${(d.user_turns ?? 0) === 1 ? "" : "s"},
-      ${d.blocked ? `<span class="bad">${d.blocked} blocked</span>` : "0 blocked"},
-      ${mal ? `<span class="bad">${mal} malformed</span>` : "0 malformed"};
-      ${d.seconds ?? "—"} s wall clock${
-      d.started_at ? `, started ${esc(d.started_at)}` : ""}.
-      ${d.answer != null ? `Final answer: <b>${esc(d.answer)}</b>.` : ""}</p>
-    ${d.verdict && d.verdict.rationale && d.verdict.rationale !== "None"
-      ? `<div class="rationale">Judge's rationale — ${esc(String(d.verdict.rationale).slice(0, 1600))}</div>`
-      : (!okr ? `<p class="note">The scripted judge reports no rationale;
-         ✗ failure means the agent's write calls did not match the scenario's
-         gold writes exactly — a write missing, its arguments off, or a later
-         phase never unlocked. The transcript's tool calls below are the
-         evidence.</p>` : "")}
-    ${(d.blocked_reasons || []).length
-      ? `<p class="note">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>` : ""}
-    ${d.credit ? `<p class="note">Shaping signals (beside the verdict, never
-      instead of it): partial reward <b>${d.credit.partial_reward}</b>
-      (coverage ${d.credit.coverage}, exact-argument fidelity
-      ${d.credit.fidelity} over ${d.credit.gold_total} gold writes)${
-      d.credit.pivot != null
-        ? `; pivot at event ${d.credit.pivot} (${esc(d.credit.pivot_kind)}) —
-           ${d.credit.pivot} events of frozen prefix, the fault and after are
-           the trainable suffix, marked red below`
-        : "; no located fault — the failure is missing work, not a wrong step"
-      }.</p>` : ""}`;
-  content.appendChild(meta);
+  const bar = document.createElement("div");
+  bar.className = "runbar";
+  bar.innerHTML = `
+    <h3>${verdictBadge(okr, d.judge)}
+      <span>${esc(shortScenario(d.scenario_id || s.name))}</span>
+      <span class="dim">·</span>
+      <span>${esc(d.config || "?")}</span>${
+      d.label ? ` <span class="tag">${esc(d.label)}</span>` : ""}</h3>
+    <div class="facts">
+      <span>ability <b>${esc(d.ability || "control")}</b></span>
+      <span>models <b>${esc(d.main_model || "?")}</b>${
+        d.sub_model && d.sub_model !== d.main_model
+          ? ` / <b>${esc(d.sub_model)}</b>` : ""}</span>
+      <span><b>${d.delegations ?? 0}</b> delegations</span>
+      <span><b>${d.specialist_turns ?? 0}</b> specialist turns</span>
+      <span><b>${d.seconds ?? "—"}</b> s</span>
+      <span>judge <b>${esc(judge)}</b></span>
+      ${mal ? `<span class="warn-text">${mal} malformed</span>` : ""}
+      ${d.blocked ? `<span class="warn-text">${d.blocked} blocked</span>` : ""}
+    </div>`;
+  content.appendChild(bar);
+
+  const parsed = parseRationale(d.verdict && d.verdict.rationale);
+  const panel = document.createElement("div");
+  panel.className = "verdict-panel" + (okr ? "" : " fail");
+  if (okr) {
+    panel.innerHTML = `<div class="head">Passed</div>
+      <div>The agent's write calls matched the scenario's gold writes.${
+        d.answer != null ? ` Final answer: <b>${esc(d.answer)}</b>.` : ""}</div>`;
+  } else if (parsed.toolName) {
+    panel.innerHTML = `<div class="head">Missing gold write</div>
+      <div>The judge expected this call and did not find a match:</div>
+      <div class="gold">${esc(parsed.toolName)}${
+        parsed.args.length ? "\n  " + parsed.args.map(esc).join("\n  ") : ""}</div>${
+      parsed.attempts.length
+        ? `<details><summary>${parsed.attempts.length} matching attempt${
+            parsed.attempts.length === 1 ? "" : "s"} the judge tried</summary>
+           <pre>${esc(parsed.attempts.join("\n"))}</pre></details>` : ""}${
+      d.answer != null
+        ? `<div style="margin-top:9px">Final answer: <b>${esc(d.answer)}</b>.</div>` : ""}`;
+  } else {
+    panel.innerHTML = `<div class="head">Failed</div>
+      <div>${parsed.rest
+        ? esc(parsed.rest.slice(0, 1200))
+        : `The judge reports no rationale. A failure means the agent's write
+           calls did not match the scenario's gold writes exactly — a write
+           missing, its arguments off, or a later phase never unlocked. The
+           tool calls below are the evidence.`}</div>${
+      d.answer != null
+        ? `<div style="margin-top:9px">Final answer: <b>${esc(d.answer)}</b>.</div>` : ""}`;
+  }
+  content.appendChild(panel);
+
+  /* Shaping signals sit beside the verdict, never instead of it: a partial
+     reward says how much of the gold work landed, the pivot says where the
+     run first went wrong. */
+  if (d.credit) {
+    const credit = document.createElement("div");
+    credit.className = "credit";
+    credit.innerHTML = `<span class="lab">shaping signals</span>
+      <span>partial reward <b>${esc(String(d.credit.partial_reward))}</b></span>
+      <span>coverage <b>${esc(String(d.credit.coverage))}</b></span>
+      <span>fidelity <b>${esc(String(d.credit.fidelity))}</b> of
+        ${esc(String(d.credit.gold_total))} gold writes</span>
+      ${d.credit.pivot != null
+        ? `<span class="warn-text">pivot at event ${esc(String(d.credit.pivot))}
+             (${esc(d.credit.pivot_kind)}) — frozen prefix above, trainable
+             suffix below</span>`
+        : `<span class="dim">no located fault — the failure is missing work,
+             not a wrong step</span>`}`;
+    content.appendChild(credit);
+  }
+
+  if ((d.blocked_reasons || []).length)
+    content.insertAdjacentHTML("beforeend",
+      `<p class="note">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>`);
+  content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>`);
 
   const types = [...new Set((d.events || []).map(e => e.type))];
   const fbar = document.createElement("div");
@@ -1083,15 +1229,28 @@ function renderEpisode(content, s) {
 }
 
 function callHtml(c) {
+  const bad = c.status && c.status !== "ok";
   if (c.status === "malformed" || c.status === "false-outage") {
-    const label = c.status === "malformed" ? "unparseable line —"
-      : "rejected false outage claim —";
-    return `<div class="call"><span class="flag">${label}</span>
-      <span class="sig">${esc(String(c.raw ?? c.result ?? "").slice(0, 400))}</span></div>`;
+    const label = c.status === "malformed" ? "unparseable line"
+      : "rejected false outage claim";
+    return `<div class="call bad"><span class="flag">${label}</span>
+      <div class="sig">${esc(String(c.raw ?? c.result ?? "").slice(0, 400))}</div></div>`;
   }
-  const flag = c.status === "ok" ? "" : ` <span class="flag">${esc(c.status)}</span>`;
-  return `<div class="call"><div class="sig">${esc(c.tool)}(${esc(JSON.stringify(c.args))})${flag}</div>
+  const flag = bad ? ` <span class="flag">${esc(c.status)}</span>` : "";
+  return `<div class="call${bad ? " bad" : ""}">
+    <div class="sig">${esc(c.tool)}(${esc(JSON.stringify(c.args))})${flag}</div>
     <pre>${esc(c.result ?? "")}</pre></div>`;
+}
+
+/* The rail's dot answers "where did this go wrong" without reading a word. */
+function turnStatus(e) {
+  if (e.type === "surrender" || e.type === "stop") return "fail";
+  if (e.type === "done") return "pass";
+  if (e.type === "wait" || e.type === "notification") return "stage";
+  if (e.type === "call" && e.status && e.status !== "ok") return "fail";
+  if (e.type === "delegation"
+      && (e.calls || []).some(c => c.status && c.status !== "ok")) return "fail";
+  return "plain";
 }
 
 /* One event, set as a dialogue turn: speaker in the margin, matter in the
@@ -1124,8 +1283,8 @@ function turnNode(e) {
     body = esc(e.brief ?? "") +
       `<div class="report"><b>${esc(e.specialist ?? "")}:</b> ${esc(e.report ?? "")}</div>` +
       (calls.length
-        ? `<details class="calls"><summary>${calls.length} tool call${
-            calls.length > 1 ? "s" : ""}${bad ? ` <span class="no">(${bad} faulted)</span>` : ""
+        ? `<details class="calls"${bad ? " open" : ""}><summary>${calls.length} tool call${
+            calls.length > 1 ? "s" : ""}${bad ? ` <span class="flag">${bad} faulted</span>` : ""
           }</summary>${calls.map(callHtml).join("")}</details>`
         : "");
   } else if (e.type === "call") {
@@ -1136,6 +1295,7 @@ function turnNode(e) {
   div.innerHTML = `<div class="spk">${esc(spk)}${time}</div><div class="txt">${body}</div>`;
   div.dataset.type = e.type;
   div.dataset.text = JSON.stringify(e).toLowerCase();
+  div.dataset.status = turnStatus(e);
   return div;
 }
 
