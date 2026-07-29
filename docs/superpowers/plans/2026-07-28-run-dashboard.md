@@ -994,6 +994,48 @@ and replace the trailing `<p class="tnote">…</p>` with the same text under a n
       under both judges.` : ""}</p>`
 ```
 
+- [ ] **Step 4a: Annotate only the exception, never the rule**
+
+Measured on the live snapshot before this step: the grid printed **264 "soft judge" tags across 314 badges** and a run label on nearly every cell — three lines per cell. That is the density this redesign exists to remove. An annotation carried by 84% of cells is not information.
+
+The principle: *a per-cell annotation that is nearly universal carries no information. State it once, and annotate only what deviates.*
+
+Tally the judges before building the grid, and break ties on name so the stated default never depends on the order runs happen to arrive in:
+
+```js
+  const judgeCounts = new Map();
+  for (const s of eps) {
+    const j = s.data.judge || "scripted";
+    judgeCounts.set(j, (judgeCounts.get(j) || 0) + 1);
+  }
+  const majorityJudge = [...judgeCounts]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
+  const judgeLabel = j => j === "scripted" ? "scripted judge" : "soft judge";
+```
+
+Each mark then calls `badge()` **directly** rather than `verdictBadge()`, so the cell controls its own tagging — a tag only when the run departs from the majority, and a run label only where a cell holds more than one mark to tell apart:
+
+```js
+            const judge = s.data.judge || "scripted";
+            const tag = judge !== majorityJudge
+              ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
+            const lab = (runs.length > 1 && s.data.label)
+              ? ` <span class="runlab">${esc(s.data.label)}</span>` : "";
+```
+
+The note then names the common case once. It must branch on which judge actually won — "official" belongs to Gaia2's soft judge and must never be glued to the deterministic scripted fallback:
+
+```js
+      Verdicts are scored by ${majorityJudge === "scripted"
+        ? "the deterministic scripted judge"
+        : "Gaia2's official soft judge (gpt-5.6-sol as checker)"} by default;
+      a mark tagged with a different judge used that judge instead.
+```
+
+`softCount` is superseded by the tally — delete its declaration.
+
+On the snapshot this was built against the judge split is `gpt-5.6-sol` 132 / `scripted` 25, so roughly **25** marks carry a tag and none reads "soft judge".
+
 - [ ] **Step 5: Rename the `.tnote` rule**
 
 The `.tnote` class is used in several places. Rename the CSS rule to `.note` and update every use:
@@ -1685,48 +1727,27 @@ Replace the header CSS block (`header h1` through `input[type="file"]`) with:
 
 Also change the page background: in the `body` rule, `background: var(--paper)` became `var(--plane)` in Task 1 — confirm it reads `var(--plane)`.
 
-- [ ] **Step 4: Give the shipped-task view an overview**
+- [ ] **Step 4: Give the shipped-task view a summary line**
 
-In `renderBreakdowns`, add this helper above it:
+**Amended 2026-07-28:** this step originally added a row of stat tiles here. Tiles were removed from the product — the user called the boxed summary band unnecessary and ugly — so this step now writes a one-line summary in prose instead. Do not add tiles, cards, or a display-size figure.
+
+Replace the `content.insertAdjacentHTML("beforeend", …)` heading block in `renderBreakdowns` with:
 
 ```js
-function breakdownStats(bds) {
-  const total = bds.length;
-  const passed = bds.filter(s => s.data.success).length;
+  const bok = bds.filter(s => s.data.success).length;
   const partials = bds.map(s => s.data.partial).filter(v => typeof v === "number");
   const meanPartial = partials.length
-    ? partials.reduce((a, b) => a + b, 0) / partials.length : null;
-  return {total, passed, failed: total - passed,
-          rate: total ? Math.round((passed / total) * 100) : 0, meanPartial};
-}
-```
-
-and replace the `content.insertAdjacentHTML("beforeend", …)` heading block in `renderBreakdowns` with:
-
-```js
-  const bstats = breakdownStats(bds);
+    ? (partials.reduce((a, b) => a + b, 0) / partials.length).toFixed(2) : null;
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Shipped-task runs</h2>
-     <div class="stats">
-       <div class="tile"><div class="lab">Episodes</div>
-         <div class="val">${bstats.total}</div>
-         <div class="sub">containerized AppWorld runs</div></div>
-       <div class="tile hero"><div class="lab">Success rate</div>
-         <div class="val">${bstats.rate}%</div>
-         <div class="sub">${bstats.passed} of ${bstats.total} passed</div></div>
-       <div class="tile"><div class="lab">Failures</div>
-         <div class="val${bstats.failed ? " fail" : ""}">${bstats.failed}</div>
-         <div class="sub">by AppWorld's own check</div></div>
-       <div class="tile"><div class="lab">Mean partial</div>
-         <div class="val">${bstats.meanPartial == null ? "—"
-           : bstats.meanPartial.toFixed(2)}</div>
-         <div class="sub">per-requirement credit</div></div>
-     </div>
+     <p class="lede"><b>${bds.length}</b> containerized AppWorld episodes from
+     <span class="mono">jobs/</span> — ${bok} passed,
+     <span class="${bds.length - bok ? "warn-text" : ""}">${bds.length - bok}
+     failed</span>, scored by AppWorld's own per-requirement check${
+     meanPartial ? `, mean partial credit <b>${meanPartial}</b>` : ""}.</p>
      <div class="panel-title">Verifier results
        <span class="sub">— by campaign and trial; click a row for its ledger</span></div>`);
 ```
-
-Because the Runs tab and this tab are never on screen together, each may hold its own hero figure.
 
 - [ ] **Step 5: Restyle the evidence-files view**
 
