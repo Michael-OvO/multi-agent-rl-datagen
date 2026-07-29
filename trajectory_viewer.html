@@ -170,6 +170,8 @@ sweep row files.
   .lede b, .runmeta b { color: var(--ink); font-weight: 600; }
   .bad { color: var(--fail-ink); }
   .dim { color: var(--muted); }
+  .warn-text { color: var(--warn-ink); }
+  table.tab td.sm { font-size: 11.5px; color: var(--ink-2); }
 
   /* ---------- status badges: color + icon + word, always all three ---------- */
   .badge {
@@ -744,9 +746,8 @@ function renderRuns(content) {
   const judges = [...new Set(eps.map(s => s.data.judge || "scripted"))];
 
   content.insertAdjacentHTML("beforeend",
-    `<p class="lede">All runs, with cost counters read from
-     each trajectory: delegations, specialist turns, waits, blocked calls,
-     and malformed protocol lines.</p>`);
+    `<div class="panel-title">All runs
+       <span class="sub">— newest first; click a row for its transcript</span></div>`);
   const fbar = document.createElement("div");
   fbar.className = "filterline";
   fbar.innerHTML = `<span>restrict to
@@ -766,39 +767,52 @@ function renderRuns(content) {
   const twrap = document.createElement("div");
   twrap.className = "tabwrap";
   twrap.innerHTML = `<table class="tab"><thead><tr>
-      <th>when</th><th>scenario</th><th>configuration</th><th>ability</th>${
-      hasLabels ? "<th>run</th>" : ""}<th>verdict</th>
-      <th class="n">deleg</th><th class="n">turns</th><th>issues</th>
-      <th>answer</th><th class="n">wall&nbsp;s</th>
+      <th>verdict</th><th>when</th><th>scenario</th><th>configuration</th>
+      <th>ability</th><th>models</th>${hasLabels ? "<th>run</th>" : ""}
+      <th>issues</th><th>answer</th><th class="n">wall&nbsp;s</th>
     </tr></thead><tbody>${
     newestFirst.map(s => {
       const d = s.data, okr = !!(d.verdict && d.verdict.success);
-      const mal = countMalformed(d);
+      const mal = countMalformed(d), err = countErrors(d), blk = d.blocked || 0;
       const issues = [
-        d.blocked ? `${d.blocked} blocked` : "",
+        blk ? `${blk} blocked` : "",
         mal ? `${mal} malformed` : "",
+        err ? `${err} faulted` : "",
       ].filter(Boolean).join(" · ");
+      const tags = [mal ? "malformed" : "", blk ? "blocked" : "",
+                    err ? "errors" : ""].filter(Boolean).join(" ");
+      const models = d.main_model === d.sub_model
+        ? esc(String(d.main_model ?? "—"))
+        : `${esc(String(d.main_model ?? "?"))} <span class="dim">/</span> ${
+            esc(String(d.sub_model ?? "?"))}`;
+      const judge = d.judge || "scripted";
+      const jtag = judge !== majorityJudge
+        ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
       return `<tr class="click" data-i="${sessions.indexOf(s)}" tabindex="0"
         data-verdict="${okr ? "ok" : "bad"}"
         data-ability="${esc(d.ability || "control")}"
-        data-judge="${esc(d.judge || "scripted")}"
+        data-judge="${esc(judge)}"
+        data-issues="${tags}"
         data-text="${esc(JSON.stringify([d.scenario_id, d.config, d.ability,
-                        d.judge, d.label, d.answer]).toLowerCase())}">
+                        d.judge, d.label, d.answer, d.main_model]).toLowerCase())}">
+        <td>${badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${jtag}</td>
         <td>${fmtWhen(d.started_at)}</td>
         <td>${esc(shortScenario(d.scenario_id))}</td>
         <td>${esc(d.config || "")}</td>
-        <td>${esc(d.ability || "control")}</td>${
+        <td>${esc(d.ability || "control")}</td>
+        <td class="mono sm">${models}</td>${
         hasLabels ? `<td>${d.label ? esc(d.label) : "—"}</td>` : ""}
-        <td>${verdictBadge(okr, d.judge)}</td>
-        <td class="n">${d.delegations ?? ""}</td>
-        <td class="n">${d.specialist_turns ?? ""}</td>
-        <td>${issues ? `<span class="no">${esc(issues)}</span>`
-                     : `<span class="dim">—</span>`}</td>
+        <td>${issues ? `<span class="warn-text">${esc(issues)}</span>`
+                     : `<span class="dim">clean</span>`}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 44))}</td>
         <td class="n">${d.seconds ?? ""}</td></tr>`;
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
   trs.forEach(tr => tr.onclick = () => openDetail(Number(tr.dataset.i)));
+  if (pendingQuery) {
+    $("input[type=search]", fbar).value = pendingQuery;
+    pendingQuery = null;
+  }
   const apply = () => {
     const q = $("input[type=search]", fbar).value.toLowerCase();
     const sel = {};
@@ -808,7 +822,8 @@ function renderRuns(content) {
       const hit = (!q || tr.dataset.text.includes(q))
         && (!sel.verdict || tr.dataset.verdict === sel.verdict)
         && (!sel.ability || tr.dataset.ability === sel.ability)
-        && (!sel.judge || tr.dataset.judge === sel.judge);
+        && (!sel.judge || tr.dataset.judge === sel.judge)
+        && (!issueFilter || tr.dataset.issues.split(" ").includes(issueFilter));
       tr.style.display = hit ? "" : "none";
       shown += hit;
     }

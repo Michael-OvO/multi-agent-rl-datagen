@@ -291,3 +291,14 @@ def test_the_note_does_not_call_the_scripted_judge_official(viewer_html):
         "the note must branch on which judge is the majority")
     assert not re.search(r'official \$\{judgeLabel\(majorityJudge\)', source), (
         "the note still calls whichever judge won the majority 'official'")
+
+
+def test_the_runs_table_shows_which_models_ran(viewer_html):
+    """'What models ran this?' is a headline question, not a detail-page one."""
+    assert "<th>models</th>" in viewer_html
+
+
+def test_rows_carry_their_issues_for_the_signal_filter(viewer_html):
+    assert "data-issues=" in viewer_html
+    assert "issueFilter" in viewer_html
+    assert "dataset.issues" in viewer_html
