@@ -435,3 +435,31 @@ def test_the_ledger_header_reports_blocked_and_the_answer(viewer_html):
         "the ledger header must sum the per-turn blocked counts")
     assert re.search(r'class="verdict-panel"', body) and "d.answer" in body, (
         "the ledger must still report the final answer in its own panel")
+
+
+def test_the_ledger_header_escapes_both_of_its_sums(viewer_html):
+    """Two fields summed from the ledger must both be escaped before they
+    reach innerHTML -- whether the sum is injected inline or first hoisted
+    into a variable (as `blocked` is, a few lines above its own `<span>`).
+
+    A naive `[^)]*` regex can't span the reduce call's own arrow-function
+    parens (`(n, l) => ...`), so this allows one level of nesting instead.
+    """
+    fn = re.search(r"function renderBreakdownDetail\(content, s\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "renderBreakdownDetail() is missing"
+    body = fn.group(1)
+    sums = re.findall(r"d\.ledger\.reduce\((?:[^()]|\([^()]*\))*\)", body)
+    assert len(sums) >= 2, f"expected two summed fields, found {len(sums)}"
+    for s in sums:
+        inline = f"esc(String({s}))" in body
+        hoisted = re.search(r"const (\w+) = " + re.escape(s), body)
+        via_variable = hoisted and f"esc(String({hoisted.group(1)}))" in body
+        assert inline or via_variable, (
+            f"this sum reaches innerHTML unescaped: {s}")
+
+
+def test_no_status_class_paints_nothing(viewer_css):
+    """A colour rule whose every match overrides it is dead weight."""
+    assert not re.search(r"^\s*\.bad \{", viewer_css, re.M), (
+        ".bad's colour was inert -- every match overrode it")

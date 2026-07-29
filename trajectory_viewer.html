@@ -170,7 +170,6 @@ sweep row files.
 
   .lede { font-size: 13.5px; color: var(--ink-2); margin: 16px 0 4px; max-width: 78ch; }
   .lede b { color: var(--ink); font-weight: 600; }
-  .bad { color: var(--fail-ink); }
   .dim { color: var(--muted); }
   .warn-text { color: var(--warn-ink); }
   table.tab td.sm { font-size: 11.5px; color: var(--ink-2); }
@@ -1333,7 +1332,7 @@ function renderBreakdownDetail(content, s) {
       d.passes != null ? `<span><b>${esc(String(d.passes))}</b> requirements passed</span>
         <span><b>${esc(String(d.failures ?? "?"))}</b> failed</span>` : ""}
       <span><b>${esc(String(d.delegations ?? d.ledger.length))}</b> delegations</span>
-      <span><b>${d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)}</b>
+      <span><b>${esc(String(d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)))}</b>
         specialist turns</span>
       ${blocked ? `<span class="warn-text">${esc(String(blocked))} blocked</span>`
                 : `<span><b>0</b> blocked</span>`}
