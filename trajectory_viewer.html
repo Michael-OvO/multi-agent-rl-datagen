@@ -1311,6 +1311,7 @@ function turnNode(e) {
 function renderBreakdownDetail(content, s) {
   const d = s.data;
   backline(content, "back to the tables");
+  const blocked = d.ledger.reduce((n, l) => n + (l.blocked || 0), 0);
   const bar = document.createElement("div");
   bar.className = "runbar";
   bar.innerHTML = `<h3>${verdictBadge(!!d.success)}
@@ -1322,12 +1323,18 @@ function renderBreakdownDetail(content, s) {
       <span><b>${d.delegations ?? d.ledger.length}</b> delegations</span>
       <span><b>${d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)}</b>
         specialist turns</span>
+      ${blocked ? `<span class="warn-text">${blocked} blocked</span>`
+                : `<span><b>0</b> blocked</span>`}
     </div>`;
   content.appendChild(bar);
   content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>${
     (d.failed || []).length ? `<details class="calls"><summary>${d.failed.length}
       failed requirement${d.failed.length > 1 ? "s" : ""}</summary>
       <pre class="blk">${esc(d.failed.join("\n\n"))}</pre></details>` : ""}`);
+  if (d.answer != null)
+    content.insertAdjacentHTML("beforeend",
+      `<div class="verdict-panel"><div class="head">Final answer</div>
+       <div>${esc(String(d.answer))}</div></div>`);
 
   const list = document.createElement("div");
   list.className = "transcript";

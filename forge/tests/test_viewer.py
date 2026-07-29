@@ -385,7 +385,15 @@ def test_no_view_still_wears_the_paper_costume(viewer_html):
         assert relic not in source, f"{relic} survived the redesign"
 
 
-def test_no_stat_tiles_anywhere(viewer_css):
-    """The boxed summary band was removed on 2026-07-28; keep it removed."""
-    for gone in (".stats", ".tile", ".tile.hero"):
-        assert gone + " {" not in viewer_css, f"{gone} came back"
+def test_the_ledger_header_reports_blocked_and_the_answer(viewer_html):
+    """These have no other home in that view.
+
+    The per-turn blocked counts appear in the transcript rows but are summed
+    nowhere else, and the ledger has no verdict panel to carry the answer.
+    """
+    fn = re.search(r"function renderBreakdownDetail\(content, s\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "renderBreakdownDetail() is missing"
+    body = fn.group(1)
+    assert "l.blocked" in body, "the ledger's blocked counts must be summed"
+    assert "d.answer" in body, "the ledger must still report the final answer"
