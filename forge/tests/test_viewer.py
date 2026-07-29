@@ -385,6 +385,33 @@ def test_no_view_still_wears_the_paper_costume(viewer_html):
         assert relic not in source, f"{relic} survived the redesign"
 
 
+_DESIGN = _ROOT / "DESIGN.md"
+
+
+def test_design_doc_describes_the_shipped_palette():
+    """A design doc that contradicts the artifact is worse than none."""
+    text = _DESIGN.read_text()
+    for token in ("#0ca30c", "#d03b3b", "#fab219"):
+        assert token in text, f"DESIGN.md never mentions {token}"
+    assert "signal red" not in text.lower(), (
+        "the one-accent rule was overturned on 2026-07-28")
+
+
+def test_design_doc_does_not_document_retired_rules():
+    """Every refusal the shipped file breaks has to leave the doc with it.
+
+    A rule the artifact contradicts is read as the artifact being wrong, and
+    the next reader "fixes" the file back toward the retired system.
+    """
+    text = _DESIGN.read_text()
+    for retired in ("Table N", "dagger", "†", "No-Chrome Rule",
+                    "Bold-Figure Rule"):
+        assert retired not in text, (
+            f"DESIGN.md still documents the retired {retired!r} rule")
+    assert not re.search(r"\bTable \d", text), (
+        "numbered table captions were retired on 2026-07-28")
+
+
 def test_the_ledger_header_reports_blocked_and_the_answer(viewer_html):
     """These have no other home in that view.
 
