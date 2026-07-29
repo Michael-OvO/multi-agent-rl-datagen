@@ -188,32 +188,6 @@ sweep row files.
     font-size: 11px; color: var(--ink-2); white-space: nowrap;
   }
 
-  /* ---------- overview band: the first thing read ---------- */
-  .stats {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-    gap: 14px; margin: 20px 0 0;
-  }
-  .tile {
-    background: var(--surface); border: 1px solid var(--hair);
-    border-radius: 12px; box-shadow: var(--shadow); padding: 14px 16px 15px;
-  }
-  .tile .lab {
-    font-size: 11.5px; font-weight: 600; color: var(--muted);
-    letter-spacing: 0.02em; margin-bottom: 6px;
-  }
-  .tile .val {
-    font-size: 30px; font-weight: 650; letter-spacing: -0.02em;
-    line-height: 1.05; color: var(--ink);
-    font-variant-numeric: normal;
-  }
-  .tile.hero .val { font-size: 52px; letter-spacing: -0.03em; }
-  .tile .val.fail { color: var(--fail-ink); }
-  .tile .val.models {
-    font-size: 17px; font-weight: 600; line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-  .tile .sub { margin-top: 7px; font-size: 12px; color: var(--ink-2); }
-
   .signals { display: flex; flex-wrap: wrap; gap: 9px; margin: 14px 0 0; }
   .signal {
     font: inherit; font-size: 12px; cursor: pointer;
@@ -529,16 +503,6 @@ function countErrors(d) {
 }
 
 function runStats(eps) {
-  const total = eps.length;
-  const passed = eps.filter(s => s.data.verdict && s.data.verdict.success).length;
-  const failed = total - passed;
-  const rate = total ? Math.round((passed / total) * 100) : 0;
-
-  const models = [...new Set(eps.map(s =>
-    s.data.main_model === s.data.sub_model
-      ? String(s.data.main_model ?? "unknown")
-      : `${s.data.main_model ?? "?"} / ${s.data.sub_model ?? "?"}`))].sort();
-
   let malformed = 0, blocked = 0, errors = 0;
   for (const s of eps) {
     malformed += countMalformed(s.data);
@@ -559,35 +523,10 @@ function runStats(eps) {
   const worst = [...byScenario.values()].sort((a, b) =>
     (a.passed / a.total) - (b.passed / b.total) || b.total - a.total)[0] || null;
 
-  return {total, passed, failed, rate, models, malformed, blocked, errors, worst};
+  return {malformed, blocked, errors, worst};
 }
 
-function renderOverview(content, stats) {
-  const band = document.createElement("div");
-  band.innerHTML = `<div class="stats">
-    <div class="tile">
-      <div class="lab">Episodes</div>
-      <div class="val">${stats.total}</div>
-      <div class="sub">judged rollouts</div>
-    </div>
-    <div class="tile hero">
-      <div class="lab">Success rate</div>
-      <div class="val">${stats.rate}%</div>
-      <div class="sub">${stats.passed} of ${stats.total} passed</div>
-    </div>
-    <div class="tile">
-      <div class="lab">Failures</div>
-      <div class="val${stats.failed ? " fail" : ""}">${stats.failed}</div>
-      <div class="sub">${stats.failed ? "runs missed a gold write" : "none"}</div>
-    </div>
-    <div class="tile">
-      <div class="lab">Models</div>
-      <div class="val models">${stats.models.map(esc).join("<br>")}</div>
-      <div class="sub">main agent and specialists</div>
-    </div>
-  </div>`;
-  content.appendChild(band);
-
+function renderSignals(content, stats) {
   /* Signals only appear when they have something to report: a row of zeros
      is noise that trains you to stop reading the row. */
   const signals = [];
@@ -734,7 +673,7 @@ function renderRuns(content) {
 
   content.insertAdjacentHTML("beforeend", `<h2 class="sec">Runs</h2>`);
   const stats = runStats(eps);
-  renderOverview(content, stats);
+  renderSignals(content, stats);
 
   /* -- Table 1: the verdict matrix -- */
   const configs = [...new Set(eps.map(s => s.data.config))].sort((a, b) =>
