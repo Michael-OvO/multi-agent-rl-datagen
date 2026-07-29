@@ -682,15 +682,21 @@ function verdictBadge(ok, judge) {
    Only the first three lines answer "what went wrong", so they get pulled to
    the front and the attempt log goes behind a disclosure. */
 function parseRationale(text) {
-  const raw = String(text || "");
+  const raw = String(text || "") === "None" ? "" : String(text || "");
   const toolName = (raw.match(/tool name:\s*(\S+)/) || [])[1] || null;
 
   const args = [];
   const argBlock = raw.split(/tool args:\s*/)[1];
   if (argBlock) {
     for (const line of argBlock.split("\n")) {
-      if (!line.startsWith("-")) break;
-      args.push(line.slice(1).trim());
+      if (/^\s*List of matching attempts:/.test(line)) break;
+      if (line.startsWith("-")) {
+        args.push(line.slice(1).trim());
+      } else if (args.length && line.trim()) {
+        /* a wrapped value -- an email body, say -- belongs to the argument
+           above it, not to a new one */
+        args[args.length - 1] += "\n" + line;
+      }
     }
   }
 
@@ -1326,6 +1332,7 @@ function renderBreakdownDetail(content, s) {
   batchAppend(list, d.ledger.map(l => {
     const div = document.createElement("div");
     div.className = "turn";
+    div.dataset.status = "plain";
     div.innerHTML = `<div class="spk">main → ${esc(l.specialist)}</div>
       <div class="txt">${esc(l.brief ?? "")}
         <div class="report"><b>${esc(l.specialist)}:</b> ${esc(l.report ?? "")}

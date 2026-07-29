@@ -344,3 +344,31 @@ def test_the_shaping_signals_feature_survived_the_rebuild(viewer_html):
     assert "pivotAt" in viewer_html, "the pivot-marking loop is gone"
     assert "pivotflag" in viewer_html, "the pivot flag is gone"
     assert 'classList.add("pivot")' in viewer_html
+
+
+def test_the_gold_write_panel_keeps_multi_line_arguments(viewer_html):
+    """A wrapped value must not silently end the argument list.
+
+    An email body spanning lines used to break the loop, so every argument
+    after it vanished while the panel still read as the complete call.
+    """
+    fn = re.search(r"function parseRationale\(text\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "parseRationale() is missing"
+    body = fn.group(1)
+    assert "List of matching attempts:" in body, (
+        "the argument loop must run to the attempts log, not to the first "
+        "line that does not start with a dash")
+    assert 'args[args.length - 1] +=' in body, (
+        "a wrapped line must fold into the argument above it")
+    assert '=== "None"' in body, (
+        'a rationale of literal "None" must be treated as absent')
+
+
+def test_the_ledger_view_sets_a_rail_status(viewer_html):
+    """The Shipped-task ledger reuses .turn, so it needs a status too."""
+    fn = re.search(r"function renderBreakdownDetail\(content, s\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "renderBreakdownDetail() is missing"
+    assert 'dataset.status = "plain"' in fn.group(1), (
+        "ledger rows draw an uncoloured rail dot without an explicit status")
