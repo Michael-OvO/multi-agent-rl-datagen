@@ -372,3 +372,20 @@ def test_the_ledger_view_sets_a_rail_status(viewer_html):
     assert fn, "renderBreakdownDetail() is missing"
     assert 'dataset.status = "plain"' in fn.group(1), (
         "ledger rows draw an uncoloured rail dot without an explicit status")
+
+
+def test_no_view_still_wears_the_paper_costume(viewer_html):
+    """One surface, one design: no leftovers from the evidence-page era.
+
+    Searches the hand-written source: "Table 3:" and its kin can occur inside
+    a run's transcript text, which lives in the embedded snapshot.
+    """
+    source = viewer_source(viewer_html)
+    for relic in ('class="draftline"', 'class="colophon"', "Table 3:", "Table 4:"):
+        assert relic not in source, f"{relic} survived the redesign"
+
+
+def test_no_stat_tiles_anywhere(viewer_css):
+    """The boxed summary band was removed on 2026-07-28; keep it removed."""
+    for gone in (".stats", ".tile", ".tile.hero"):
+        assert gone + " {" not in viewer_css, f"{gone} came back"

@@ -137,21 +137,24 @@ sweep row files.
   }
 
   /* ---------- title block ---------- */
+  header .titlerow {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
   header h1 {
-    font-size: 21px; font-weight: 650; letter-spacing: -0.015em;
-    margin: 0 0 3px; line-height: 1.2;
+    font-size: 22px; font-weight: 650; letter-spacing: -0.02em;
+    margin: 0; line-height: 1.2;
   }
-  header .draftline { color: var(--ink-2); font-size: 12.5px; margin: 0; }
-  header .colophon { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
-  header .colophon .sep { color: var(--muted); padding: 0 7px; }
-  header .colophon button, header .colophon label {
-    font: inherit; color: inherit; background: var(--surface);
-    border: 1px solid var(--hair); border-radius: 7px; padding: 2.5px 10px;
-    cursor: pointer;
+  header .acts { display: flex; gap: 8px; }
+  header .acts button, header .acts label {
+    font: inherit; font-size: 12.5px; color: var(--ink-2);
+    background: var(--surface); border: 1px solid var(--hair);
+    border-radius: 8px; padding: 4px 12px; cursor: pointer;
   }
-  header .colophon button:hover, header .colophon label:hover {
+  header .acts button:hover, header .acts label:hover {
     border-color: var(--ink-2); color: var(--ink);
   }
+  header .source { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
   input[type="file"] { display: none; }
 
   nav#contents {
@@ -167,7 +170,7 @@ sweep row files.
   nav#contents .item:hover { color: var(--ink); }
 
   .lede { font-size: 13.5px; color: var(--ink-2); margin: 16px 0 4px; max-width: 78ch; }
-  .lede b, .runmeta b { color: var(--ink); font-weight: 600; }
+  .lede b { color: var(--ink); font-weight: 600; }
   .bad { color: var(--fail-ink); }
   .dim { color: var(--muted); }
   .warn-text { color: var(--warn-ink); }
@@ -282,13 +285,6 @@ sweep row files.
 
   /* ---------- run detail ---------- */
   .backline { margin: 0 0 18px; font-size: 12.5px; color: var(--ink-2); }
-  .runmeta { max-width: 84ch; margin: 8px 0 0; color: var(--ink-2); }
-  .rationale {
-    max-width: 84ch; margin: 10px 0 0; padding: 9px 12px;
-    background: var(--wash); border-radius: 8px;
-    color: var(--ink-2); font-size: 12.5px;
-    white-space: pre-wrap; overflow-wrap: anywhere;
-  }
 
   /* ---------- run header: pinned so context never scrolls away ---------- */
   .runbar {
@@ -441,11 +437,15 @@ sweep row files.
 <body>
 <div id="page">
   <header>
-    <h1>Trajectory evidence</h1>
-    <p class="draftline" id="draftline">multi-agent-rl-datagen — no data loaded</p>
-    <p class="colophon">
-      <label for="pick" tabindex="0" role="button">open files</label><input id="pick" type="file" accept=".json,application/json" multiple><span class="sep">·</span><button id="theme">theme</button>
-    </p>
+    <div class="titlerow">
+      <h1>Run dashboard</h1>
+      <div class="acts">
+        <label for="pick" tabindex="0" role="button">open files</label>
+        <input id="pick" type="file" accept=".json,application/json" multiple>
+        <button id="theme">theme</button>
+      </div>
+    </div>
+    <p class="source" id="draftline">multi-agent-rl-datagen — no data loaded</p>
   </header>
 
   <nav id="contents"></nav>
@@ -749,11 +749,11 @@ function render() {
 
   if (!sessions.length) {
     content.innerHTML = `<div class="abstract">
-      <h2>No artifacts loaded</h2>
-      <p>This file carries a snapshot of the repository's logs inside itself;
-      this copy's snapshot is empty. Refresh it with
-      <code>uv run python -m scripts.embed_logs</code>, or drop trajectory
-      JSON files anywhere on this page (or use <i>open files</i> above).</p></div>`;
+      <h2>No runs loaded</h2>
+      <p>This page carries its own data — a snapshot of the repository's logs
+      is embedded in the file — and this copy's snapshot is empty. Refresh it
+      with <code>uv run python -m scripts.embed_logs</code>, or drop trajectory
+      JSON files anywhere on this page.</p></div>`;
     return;
   }
   if (detail !== null && sessions[detail]) {
@@ -971,7 +971,8 @@ function renderBreakdowns(content) {
      <span class="mono">jobs/</span> — ${ok} success,
      <span class="${bds.length - ok ? "bad" : ""}">${bds.length - ok} failure</span>.
      The reward is AppWorld's own per-requirement check.</p>
-     <p class="lede">Verifier results by campaign and trial.</p>`);
+     <div class="panel-title">Verifier results
+       <span class="sub">— by campaign and trial; click a row for its ledger</span></div>`);
 
   const fbar = document.createElement("div");
   fbar.className = "filterline";
@@ -1032,9 +1033,8 @@ function renderSweeps(content) {
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Evidence files</h2>
      <p class="lede">The repository's measurement evidence from
-     <span class="mono">sweep/</span> — one summary file per claim (the
-     directory name is repo convention; these are not parameter sweeps).
-     Column heads sort; the blank restricts.</p>`);
+     <span class="mono">sweep/</span> — one summary file per claim. Click a
+     column head to sort.</p>`);
 
   const fbar = document.createElement("div");
   fbar.className = "filterline";
@@ -1060,7 +1060,8 @@ function renderSweeps(content) {
   let sortKey = null, asc = true, query = "";
 
   content.insertAdjacentHTML("beforeend",
-    `<p class="lede"><span class="mono">${esc(s.path)}</span></p>${
+    `<div class="panel-title">${esc(s.name)}
+       <span class="sub">— ${esc(s.path)}</span></div>${
      note ? `<p class="note">${esc(note)}</p>` : ""}`);
   const twrap = document.createElement("div");
   twrap.className = "tabwrap";
@@ -1310,21 +1311,23 @@ function turnNode(e) {
 function renderBreakdownDetail(content, s) {
   const d = s.data;
   backline(content, "back to the tables");
-  const meta = document.createElement("div");
-  meta.innerHTML = `
-    <h3 class="subsec">${esc(breakdownLabel(s))} — ${verdictBadge(!!d.success)}</h3>
-    <p class="path">${esc(s.path)}</p>
-    <p class="runmeta">Partial reward ${d.partial ?? "—"}${
-      d.passes != null ? ` (${d.passes} requirement${d.passes === 1 ? "" : "s"} passed,
-      ${d.failures ?? "?"} failed)` : ""};
-      ${d.delegations ?? d.ledger.length} delegations,
-      ${d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)} specialist turns,
-      ${d.ledger.reduce((n, l) => n + (l.blocked || 0), 0)} blocked.
-      ${d.answer != null ? `Final answer: <b>${esc(d.answer)}</b>.` : ""}</p>
-    ${(d.failed || []).length ? `<details class="calls"><summary>${d.failed.length}
+  const bar = document.createElement("div");
+  bar.className = "runbar";
+  bar.innerHTML = `<h3>${verdictBadge(!!d.success)}
+      <span>${esc(breakdownLabel(s))}</span></h3>
+    <div class="facts">
+      <span>partial <b>${d.partial ?? "—"}</b></span>${
+      d.passes != null ? `<span><b>${d.passes}</b> requirements passed</span>
+        <span><b>${d.failures ?? "?"}</b> failed</span>` : ""}
+      <span><b>${d.delegations ?? d.ledger.length}</b> delegations</span>
+      <span><b>${d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)}</b>
+        specialist turns</span>
+    </div>`;
+  content.appendChild(bar);
+  content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>${
+    (d.failed || []).length ? `<details class="calls"><summary>${d.failed.length}
       failed requirement${d.failed.length > 1 ? "s" : ""}</summary>
-      <pre class="blk">${esc(d.failed.join("\n\n"))}</pre></details>` : ""}`;
-  content.appendChild(meta);
+      <pre class="blk">${esc(d.failed.join("\n\n"))}</pre></details>` : ""}`);
 
   const list = document.createElement("div");
   list.className = "transcript";
