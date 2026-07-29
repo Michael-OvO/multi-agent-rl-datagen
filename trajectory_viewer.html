@@ -230,9 +230,23 @@ sweep row files.
   .signal:hover { border-color: var(--ink-2); }
   .signal.on { outline: 2px solid var(--ink); outline-offset: 1px; }
 
+  .panel-title {
+    font-size: 14px; font-weight: 650; color: var(--ink);
+    margin: 28px 0 9px; letter-spacing: -0.01em;
+  }
+  .panel-title .sub { font-weight: 400; color: var(--ink-2); font-size: 12.5px; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    margin: 0 0 10px; font-size: 12px; color: var(--ink-2);
+  }
+  .legend .key { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .dot {
+    width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+  }
+  .legend .dot.pass { background: var(--pass); }
+  .legend .dot.fail { background: var(--fail); }
+
   /* ---------- tables: soft framed panels, no sideways scrolling ---------- */
-  .tcap { margin: 26px 0 8px; font-size: 13px; color: var(--ink-2); }
-  .tcap b { font-weight: 600; color: var(--ink); }
   .tabwrap {
     overflow-x: auto; background: var(--surface);
     border: 1px solid var(--hair); border-radius: 10px;
@@ -262,7 +276,7 @@ sweep row files.
   .yes { color: var(--ink); }
   .no  { color: var(--fail-ink); }
   .runlab { color: var(--muted); font-size: 11px; }
-  .tnote { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 84ch; }
+  .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 84ch; }
 
   .mono, .call .sig, pre {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -622,9 +636,15 @@ function badge(kind, label) {
     ICONS[kind]}</span>${esc(label)}</span>`;
 }
 
+/* judge display names: only "scripted" (deterministic) and anything else
+   (Gaia2's soft judge, a model-as-checker) exist in practice. */
+function judgeLabel(judge) {
+  return judge && judge !== "scripted" ? "soft judge" : "scripted judge";
+}
+
 function verdictBadge(ok, judge) {
   const soft = judge && judge !== "scripted"
-    ? `<span class="tag">soft judge</span>` : "";
+    ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
   return badge(ok ? "pass" : "fail", ok ? "pass" : "fail") + soft;
 }
 
@@ -711,7 +731,6 @@ function renderRuns(content) {
     return;
   }
   const scenarios = [...new Set(eps.map(s => s.data.scenario_id))];
-  const softCount = eps.filter(s => (s.data.judge || "scripted") !== "scripted").length;
 
   content.insertAdjacentHTML("beforeend", `<h2 class="sec">Runs</h2>`);
   const stats = runStats(eps);
@@ -720,9 +739,25 @@ function renderRuns(content) {
   /* -- Table 1: the verdict matrix -- */
   const configs = [...new Set(eps.map(s => s.data.config))].sort((a, b) =>
     (a.startsWith("open") ? 0 : 1) - (b.startsWith("open") ? 0 : 1) || a.localeCompare(b));
+
+  /* Tagging every mark with its judge drowned the grid (264 tags on 314
+     marks). Only the minority judge is worth a tag; the majority becomes
+     the note's stated default instead. */
+  const judgeCounts = new Map();
+  for (const s of eps) {
+    const j = s.data.judge || "scripted";
+    judgeCounts.set(j, (judgeCounts.get(j) || 0) + 1);
+  }
+  const majorityJudge = [...judgeCounts].sort((a, b) => b[1] - a[1])[0][0];
+
   const wrap = document.createElement("div");
-  wrap.innerHTML = `<p class="tcap"><b>Table 1:</b> Verdicts by scenario and
-      configuration. Every mark opens its run's transcript.</p>
+  wrap.innerHTML = `<div class="panel-title">Verdicts by scenario and configuration
+       <span class="sub">— every mark opens that run's transcript</span></div>
+     <div class="legend">
+       <span class="key"><span class="dot pass"></span>pass</span>
+       <span class="key"><span class="dot fail"></span>fail</span>
+       <span class="key">— not run</span>
+     </div>
     <div class="tabwrap"><table class="tab">
     <thead><tr><th>scenario</th><th class="n">apps</th>${
       configs.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead>
@@ -737,21 +772,26 @@ function renderRuns(content) {
           if (!runs.length) return `<td class="wrapok"><span class="dim">—</span></td>`;
           return `<td class="wrapok">${runs.map(s => {
             const okr = !!(s.data.verdict && s.data.verdict.success);
+            const judge = s.data.judge || "scripted";
+            const tag = judge !== majorityJudge
+              ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
             return `<a class="xref" data-i="${sessions.indexOf(s)}"
               tabindex="0" role="button"
               title="${esc(String(s.data.answer ?? ""))}">${
-              verdictBadge(okr, s.data.judge)}${
-              s.data.label ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
+              badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${tag}${
+              runs.length > 1 && s.data.label
+                ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
           }).join('<span class="dim"> · </span>')}</td>`;
         }).join("")}</tr>`;
     }).join("")}</tbody></table></div>
-    <p class="tnote">✓ and ✗ are the benchmark's own write-action verdicts:
-      the judge compares the agent's write calls against the scenario's gold
-      writes, so ✗ means a gold write was missing, mismatched in its
-      arguments, duplicated, or a later phase never unlocked — not that the
-      harness errored.${softCount ? ` Runs tagged <i>soft judge</i> were scored by Gaia2's official
-      soft judge (gpt-5.6-sol as checker); the rest use the deterministic scripted
-      judge. Two marks in one cell are the same run under both judges.` : ""}</p>`;
+    <p class="note">A verdict is the benchmark's own write-action check: the
+      judge compares the agent's write calls against the scenario's gold
+      writes, so a failure means a gold write was missing, its arguments were
+      wrong, it was duplicated, or a later phase never unlocked — not that the
+      harness errored. Verdicts are scored by Gaia2's official
+      ${judgeLabel(majorityJudge)} (${esc(majorityJudge)} as checker) by
+      default; a mark tagged with a different judge used that judge instead.
+      Two marks in one cell are the same run under both judges.</p>`;
   wrap.querySelectorAll("a[data-i]").forEach(a =>
     a.onclick = () => openDetail(Number(a.dataset.i)));
   content.appendChild(wrap);
@@ -761,7 +801,7 @@ function renderRuns(content) {
   const judges = [...new Set(eps.map(s => s.data.judge || "scripted"))];
 
   content.insertAdjacentHTML("beforeend",
-    `<p class="tcap"><b>Table 2:</b> All runs, with cost counters read from
+    `<p class="lede">All runs, with cost counters read from
      each trajectory: delegations, specialist turns, waits, blocked calls,
      and malformed protocol lines.</p>`);
   const fbar = document.createElement("div");
@@ -854,7 +894,7 @@ function renderBreakdowns(content) {
      <span class="mono">jobs/</span> — ${ok} success,
      <span class="${bds.length - ok ? "bad" : ""}">${bds.length - ok} failure</span>.
      The reward is AppWorld's own per-requirement check.</p>
-     <p class="tcap"><b>Table 3:</b> Verifier results by campaign and trial.</p>`);
+     <p class="lede">Verifier results by campaign and trial.</p>`);
 
   const fbar = document.createElement("div");
   fbar.className = "filterline";
@@ -943,8 +983,8 @@ function renderSweeps(content) {
   let sortKey = null, asc = true, query = "";
 
   content.insertAdjacentHTML("beforeend",
-    `<p class="tcap"><b>Table 4:</b> <span class="mono">${esc(s.path)}</span></p>${
-     note ? `<p class="tnote">${esc(note)}</p>` : ""}`);
+    `<p class="lede"><span class="mono">${esc(s.path)}</span></p>${
+     note ? `<p class="note">${esc(note)}</p>` : ""}`);
   const twrap = document.createElement("div");
   twrap.className = "tabwrap";
   content.appendChild(twrap);
@@ -973,7 +1013,7 @@ function renderSweeps(content) {
         return `<td class="${num ? "n" : ""}" title="${esc(text)}">${esc(text.slice(0, 120))}</td>`;
       }).join("")}</tr>`).join("")
     }</tbody></table>` + (data.length > 2000
-      ? `<p class="tnote">first 2000 matching rows shown</p>` : "");
+      ? `<p class="note">first 2000 matching rows shown</p>` : "");
     twrap.querySelectorAll("th").forEach(th => th.onclick = () => {
       const k = th.dataset.k;
       asc = (sortKey === k) ? !asc : true;
@@ -1032,14 +1072,14 @@ function renderEpisode(content, s) {
       ${d.answer != null ? `Final answer: <b>${esc(d.answer)}</b>.` : ""}</p>
     ${d.verdict && d.verdict.rationale && d.verdict.rationale !== "None"
       ? `<div class="rationale">Judge's rationale — ${esc(String(d.verdict.rationale).slice(0, 1600))}</div>`
-      : (!okr ? `<p class="tnote">The scripted judge reports no rationale;
+      : (!okr ? `<p class="note">The scripted judge reports no rationale;
          ✗ failure means the agent's write calls did not match the scenario's
          gold writes exactly — a write missing, its arguments off, or a later
          phase never unlocked. The transcript's tool calls below are the
          evidence.</p>` : "")}
     ${(d.blocked_reasons || []).length
-      ? `<p class="tnote">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>` : ""}
-    ${d.credit ? `<p class="tnote">Shaping signals (beside the verdict, never
+      ? `<p class="note">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>` : ""}
+    ${d.credit ? `<p class="note">Shaping signals (beside the verdict, never
       instead of it): partial reward <b>${d.credit.partial_reward}</b>
       (coverage ${d.credit.coverage}, exact-argument fidelity
       ${d.credit.fidelity} over ${d.credit.gold_total} gold writes)${

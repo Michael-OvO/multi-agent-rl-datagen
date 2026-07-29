@@ -256,3 +256,40 @@ def test_stat_tiles_do_not_use_tabular_figures(viewer_css):
     assert "tabular-nums" not in tile.group(1)
     assert "font-variant-numeric: normal" in tile.group(1), (
         "the body sets tabular-nums globally; tiles must opt out")
+
+
+def test_academic_captions_are_gone(viewer_html):
+    """No reader of a dashboard counts tables by number.
+
+    Searches the hand-written source: a judge's rationale in the embedded
+    snapshot can contain the words this test forbids.
+    """
+    source = viewer_source(viewer_html)
+    assert not re.search(r"<b>Table \d+:</b>", source)
+    assert 'class="tcap"' not in source
+
+
+def test_the_grid_ships_a_legend(viewer_html):
+    assert 'class="legend"' in viewer_html
+
+
+def test_the_grid_tags_only_the_minority_judge(viewer_html):
+    """264 "soft judge" tags on 314 badges is not an annotation, it's noise.
+
+    The grid must call badge() directly (not verdictBadge()) so it can tag
+    only the judge that is NOT the scenario set's majority judge -- the
+    majority becomes the note's stated default instead of a tag repeated on
+    84% of cells. softCount, which used to gate the note's soft-judge
+    sentence, is unused now that the note always states a default.
+    """
+    source = viewer_source(viewer_html)
+    grid = re.search(
+        r"-- Table 1: the verdict matrix --\s*\*/(.*?)-- Table 2:", source, re.S)
+    assert grid, "the grid-building block moved; update this test's anchors"
+    body = grid.group(1)
+    assert "verdictBadge(" not in body, (
+        "the grid must call badge() directly so it can control tagging")
+    assert "badge(" in body
+    assert "majorityJudge" in body and "judgeLabel(" in body
+    assert "softCount" not in source, (
+        "softCount is unused once the grid stops tagging every cell")
