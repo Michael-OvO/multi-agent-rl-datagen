@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0",
+  "task_id": "CHANGEME",
+  "task_version": "0.1.0",
+  "status": "draft",
+  "purpose": {
+    "origin": "ground-up",
+    "benchmark_derivation": false,
+    "author_principal": "CHANGEME",
+    "capability_claim": "CHANGEME",
+    "counterfactual": "CHANGEME",
+    "non_goals": []
+  },
+  "instruction": {
+    "path": "instruction.md",
+    "sha256": "CHANGEME",
+    "defined_terms": {
+      "update": "CHANGEME",
+      "done": "CHANGEME",
+      "retry": "CHANGEME"
+    },
+    "ambiguity_review": {
+      "status": "pending",
+      "reviewers": [],
+      "agreement": "CHANGEME",
+      "evidence": "audit/ambiguity-review.json"
+    }
+  },
+  "objective_contract": {
+    "success": "All requirements pass and no forbidden side effect occurs.",
+    "failure": "Any missing requirement, invalid cardinality, premature conditional action, or forbidden side effect.",
+    "conditional_semantics": {
+      "baseline": "Creation or first observation establishes the baseline.",
+      "update": "A later observed transition away from the baseline.",
+      "exact_once": "One successful side effect per distinct obligation or observed trigger."
+    },
+    "coordination_efficiency": {
+      "enabled": true,
+      "target_parameter": "delegation_target",
+      "delegation_target": 1,
+      "target_derivation": "CHANGEME",
+      "adjustable": true,
+      "hard_cap": false,
+      "completion_gated": true,
+      "above_target": "continue-and-penalize",
+      "reward_formula": "CHANGEME"
+    },
+    "requirements": [
+      {
+        "id": "R1",
+        "statement": "CHANGEME",
+        "preconditions": [],
+        "trigger": "CHANGEME",
+        "allowed_side_effects": [],
+        "forbidden_side_effects": [],
+        "postconditions": [],
+        "cardinality": "exactly-one",
+        "verifier_check": "CHANGEME",
+        "negative_case": "CHANGEME"
+      }
+    ]
+  },
+  "roles": [
+    {
+      "name": "main",
+      "kind": "coordinator",
+      "permissions": [],
+      "private_information": [],
+      "necessity_test": "tests/test_role_main.py"
+    },
+    {
+      "name": "specialist-a",
+      "kind": "specialist",
+      "permissions": [
+        "CHANGEME"
+      ],
+      "private_information": [
+        "CHANGEME"
+      ],
+      "necessity_test": "CHANGEME"
+    },
+    {
+      "name": "specialist-b",
+      "kind": "specialist",
+      "permissions": [
+        "CHANGEME"
+      ],
+      "private_information": [
+        "CHANGEME"
+      ],
+      "necessity_test": "CHANGEME"
+    }
+  ],
+  "world": {
+    "implementation": "environment/",
+    "deterministic_replay": true,
+    "seed": "CHANGEME",
+    "clock": "simulated",
+    "reset_command": "CHANGEME",
+    "state_export_command": "CHANGEME",
+    "fault_injection": "CHANGEME",
+    "agent_isolation": "process",
+    "secret_absent_from_agent_namespace": true,
+    "security_boundary_test": "CHANGEME"
+  },
+  "generator": {
+    "implementation": "generator/",
+    "command": "CHANGEME",
+    "schema": "CHANGEME",
+    "records_rejections": true
+  },
+  "verifier": {
+    "implementation": "verifier/",
+    "command": "CHANGEME",
+    "independent_from_generator": true,
+    "terminal_state_primary": true,
+    "checks_forbidden_side_effects": true,
+    "critical_mutation_kill_rate": 1.0,
+    "overall_mutation_kill_rate": 0.95,
+    "subjective_component": false,
+    "human_validation": null
+  },
+  "reference_solution": {
+    "implementation": "solution/",
+    "command": "CHANGEME",
+    "independent_from_verifier": true
+  },
+  "commands": {
+    "setup": "CHANGEME",
+    "validate": "./validate.sh",
+    "smoke": "CHANGEME",
+    "test": "CHANGEME",
+    "oracle": "CHANGEME",
+    "baseline": "CHANGEME",
+    "adversarial": "CHANGEME",
+    "run": "./run.sh"
+  },
+  "artifacts": {
+    "requirements_trace": "audit/requirements-trace.json",
+    "design_provenance": "audit/design-provenance.json",
+    "threat_model": "audit/threat-model.md",
+    "verifier_validation": "audit/verifier-validation.json",
+    "mutation_report": "audit/mutation-report.json",
+    "run_report": "audit/run-report.json",
+    "known_limitations": "audit/known-limitations.md"
+  },
+  "acceptance": {
+    "positive_cases_pass": false,
+    "negative_cases_fail": false,
+    "do_nothing_measured": false,
+    "reference_passes": false,
+    "role_necessity_passes": false,
+    "clean_room_replay_passes": false,
+    "no_placeholders": false
+  }
+}

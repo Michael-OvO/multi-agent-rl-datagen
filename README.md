@@ -13,7 +13,12 @@ capability taxonomy consolidated to three trainable abilities, a second
 substrate (Gaia2) admitted and mined, and the honesty penalty measured. The method itself is
 [`skills/constraint-forged-multi-agent-tasks/SKILL.md`](skills/constraint-forged-multi-agent-tasks/SKILL.md),
 which is the canonical statement and the one to read if you are repeating this on
-a different substrate. Polished reports are available in
+a different substrate. For task families deliberately built from first
+principles instead of inherited from a benchmark, use
+[`skills/build-ground-up-multi-agent-tasks/SKILL.md`](skills/build-ground-up-multi-agent-tasks/SKILL.md);
+it requires independent generator/reference/verifier implementations,
+adversarial and mutation review, versioned audit evidence, and clean-room
+one-command delivery. Polished reports are available in
 [English](docs/multi_agent_rl_data_generation_en.tex) and
 [Chinese](docs/multi_agent_rl_data_generation_zh.tex) LaTeX, compiled to
 `output/pdf/` (build them with `bash scripts/build_report.sh`).
@@ -169,7 +174,9 @@ scale.
 |---|---|
 | `forge/appworld/` | the pipeline: `select` (roster from the task) · `seams` (cross-app information gate) · `partition` (constraints) · `runtime` (Main + specialists) · `sandbox` (what specialist code may touch) · `reference` (the solutions) · `validity` (which rendered cells are usable RL data) · `harbor` (packaging) · `cli` |
 | `forge/abilities.py` | the three trainable abilities (discovery, context transfer, delegation economy), each pinned to one constraint knob; yield per ability |
-| `forge/gaia2/` | second substrate, mining only: rosters and information seams from Gaia2 gold write actions via state provenance |
+| `forge/gaia2/` | second substrate: `mine` (rosters and seams from gold write actions via state provenance) · `runtime` (Main + specialists with the WAIT verb Gaia2's simulated clock requires) · `are_world` (adapter over Meta's official Agents Research Environments harness; needs `.venv-gaia2`, see below) · `harbor` + `cli` (packaging) |
+| `forge/models.py` | model classes and the parity rule: a specialist below the Main's model class refuses to run, in the sweep and in the shipped sidecar alike; overridable only by an explicit flag (`--allow-sub-downgrade`, or `MAF_ALLOW_SUB_DOWNGRADE=1` in a task's compose) so a downgrade is always a labelled experiment |
+| `trajectory_viewer.html` | single-page viewer for episode trajectories, sidecar breakdowns and sweep rows — one file, no server; connect the repository folder once and it reads current artifacts directly on later opens (subject to browser permission), with the embedded snapshot retained only as a fallback |
 | `forge/maf/` | the earlier from-scratch forge; `parallel-scheduling` ships, two dimensions are quarantined (below) |
 | `tasks/` | rendered Harbor tasks |
 | `sweep/` | measurement evidence — one file per claim |
@@ -274,6 +281,43 @@ uv run python -m scripts.gaia2_admission_probe       # which scenarios carry a p
 uv run python -m scripts.gaia2_render_probe          # the ability grid, priced (no LLM)
 uv run python -m scripts.appworld_knob_sweep --tasks 3 --out sweep/appworld_knobs_v5.json
 ```
+
+**Run a Gaia2 cell.** The official harness (Meta's Agents Research
+Environments, import name `are.simulation`) needs pydantic 2 and AppWorld pins
+pydantic 1, so it lives in its own environment — mirroring how AppWorld itself
+lives in a sidecar container:
+
+```bash
+uv venv .venv-gaia2 --python 3.11
+VIRTUAL_ENV=.venv-gaia2 uv pip install meta-agents-research-environments==1.2.0 openai==2.49.0
+
+.venv-gaia2/bin/python -m scripts.gaia2_cell_run \
+    --scenario gaia2_data/mini/scenario_universe_30_68r6vs.json \
+    --ability control            # or capability-discovery / context-transfer / delegation-economy
+```
+
+For `delegation-economy`, `bN` is an efficiency target, not a hard cap. By
+default `N` comes from the scenario's causal write/read structure; override it
+for an experiment with `--economy-target 5`. Delegations beyond the target are
+still allowed and only lower the completion-gated auxiliary economy reward.
+
+Every Gaia2 agent follows the versioned `objective-actions-v1` execution
+contract: conditional writes wait for an observed trigger, creation establishes
+the monitoring baseline, later transitions are updates, and each distinct
+obligation or trigger receives exactly one successful side effect. Compatible
+overlapping instructions use one write unless the user explicitly requires
+separate actions. New trajectories record the contract version so they are not
+silently compared with earlier prompt conditions.
+
+Each run writes a full trajectory (every message, delegation, tool call and
+wait) to `output/rollouts/`, judged by Gaia2's own write-action verifier
+(scripted by default; `--judge-model` runs the official soft judge). Open
+`trajectory_viewer.html`, click **choose repository folder** once, and select this
+repository; it then reads every current trajectory, sweep file, and sidecar
+breakdown directly without rebuilding the page. Gaia2 Harbor tasks render with
+`uv run python -m forge.gaia2.cli render --scenario <file>` — unlike AppWorld's,
+they carry their whole world in `environment/scenario.json`, so a rendered task
+rebuilds identically from its own directory.
 
 **The pipeline:**
 

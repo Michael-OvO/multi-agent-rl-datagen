@@ -5,6 +5,12 @@ description: Use when building RL training tasks for multi-agent capabilities (t
 
 # Constraint-Forged Multi-Agent Tasks
 
+For a task family whose instruction, world, generator, reference solution, and
+verifier must all be invented from scratch, use
+`build-ground-up-multi-agent-tasks` instead. This skill is exclusively the
+inherited-task/inherited-verifier path; do not weaken its admission rule to make
+room for ground-up construction.
+
 ## The rule
 
 **Admit an existing agentic task database. Mine its seams. Manufacture
@@ -400,6 +406,45 @@ decoration. A knob that moves the score by breaking the task is worse.**
 | **gradient** | ≥2 models must separate. All-0 carries as little signal as all-1. |
 | **no dictation** | The instruction states the goal and the action surface, never a procedure. `theory-of-mind` stated its own optimal algorithm and nobody noticed for months. |
 | **leak audit** | Assert what is actually in the agent's image, by parsing the Dockerfile's COPY directives. |
+
+## Measured on the second substrate (Gaia2, 2026-07-28)
+
+The first full campaign on an inherited substrate with a simulated clock —
+148 cells over 37 admitted scenarios, `sweep/gaia2_full_campaign.json` —
+paid for these rules. Each names its evidence.
+
+**Admission must measure judge-gated dynamics.** When the substrate's world
+schedules later phases only after its judge matches the agent's earlier
+turns against gold, episode *dynamics* — not just verdicts — couple to
+judge strictness. Mine it mechanically (`forge/gaia2/mine.py`,
+`conditioned_env_events`): 32 of 37 seamful scenarios were gated, and 0 of
+128 gated cells passed under either judge configuration while the ungated
+pool passed at 9 of 20. A gated scenario is a different experiment; admit
+it as one or not at all.
+
+**The interface must carry the substrate's whole truth.** Render argument
+descriptions in specialist catalogs (the valid enums live there); state the
+simulated clock in every role's prompt (an untold specialist books the
+model's real-world date); instruct do-the-doable with a named gap, never
+"tools unavailable"; reject checkably false zero-call outage claims without
+charging the budget; ground private-reasoning models' execution state.
+Every rule traces to an audited trajectory in `output/rollouts/`.
+
+**Budgets are targets, not walls.** A delegation budget below the gold
+solution's app-visit floor made 29 of 37 economy cells unwinnable by
+arithmetic — a perfect Main surrendering honestly is configuration failure
+wearing the agent's clothes. Derive the target from the gold causal
+structure, let exceeding it decay a completion-gated auxiliary reward, and
+never block execution with it (`build-ground-up-multi-agent-tasks` states
+the general form).
+
+**Failed episodes are the training data.** The binary verdict averaged
+0.061 over the campaign; the graded partial-credit floor averaged 0.25.
+Stamp partial credit and first-fault pivots beside the verdict
+(`forge/gaia2/credit.py`, `sweep/gaia2_credit.json`), and validate the
+annotator like a verifier: blind to verdicts, calibrated on successes, and
+checked against hand-audited trajectories — the check caught two real
+annotator defects and one wrong human expectation before it ran clean.
 
 ## Failure modes this skill was built from
 
