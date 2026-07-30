@@ -15,7 +15,7 @@ all three are deterministic probes.
    |---|---|---|---|
    | `capability-discovery` | *whom* to delegate to | visibility = names | docs off is the knob; budget off |
    | `context-transfer` | *what* to put in the brief | the partition itself | docs on, budget off |
-   | `delegation-economy` | *when* to spawn / stop | finite budget = roster size | docs on (discovery neutralised) |
+   | `delegation-economy` | *when* to spawn / stop | task-derived soft `bN` target | docs on (discovery neutralised) |
 
    Selection criteria (external evidence, see WRITEUP-adjacent discussion):
    largest measured failure mass (MAST, NeurIPS 2025: specification +
@@ -108,9 +108,12 @@ family:
 | parallel width | 2 | **2–12** |
 
 These are longer-horizon, wider tasks: a star Main gets up to 12
-parallelizable gold writes in one fan-out, and the delegation-economy
-budget (roster size) now binds against a real cost surface rather than a
-2-specialist toy.
+parallelizable gold writes in one fan-out. The later runtime implementation
+replaced the original roster-size hard budget with an adjustable,
+causal-phase heuristic target: independent same-frontier actions regroup by
+app, reply/wait barriers force a new visit, and alternative provenance
+sources charge only one read. Exceeding `bN` never blocks completion; it
+smoothly lowers a completion-gated auxiliary economy reward.
 
 **The ability lens is wired into acceptance:** `cli judge` now reports
 yield per ability on top of yield per config. Re-reading the committed v5
@@ -159,6 +162,35 @@ rule is finding a real structural property of the ARE apps, not noise. Four
 splits remain unfetched (`ambiguity`, `execution`, `search`, `time` — the
 full versions); `scripts/gaia2_fetch.py --split <name>` now takes any of
 them.
+
+## Objective action contract (`objective-actions-v1`)
+
+Conditional language and repeated writes now have one literal execution
+contract, shared byte-for-byte by the in-process Main, every specialist, and
+the shipped Harbor instruction:
+
+1. A conditional action becomes due only after its trigger is observed in a
+   user message, environment notification, or tool result.
+2. In monitoring tasks, creation or first observation establishes the
+   baseline. “Update” and “change” mean a later observed transition unless the
+   user explicitly includes the initial state.
+3. Each distinct obligation or observed trigger gets exactly one successful
+   side effect. Only an explicitly failed or rejected call may be retried.
+4. One write may satisfy overlapping instructions. A second write that merely
+   repeats the same fact is forbidden unless the user explicitly requires
+   separate actions, recipients, times, or repetitions.
+5. Before writing, the agent uses its transcript as a ledger: name the
+   obligation or trigger, establish that it is due, and establish that no
+   successful write already satisfied it.
+
+This contract does not rewrite Gaia2's task or verifier. It makes the policy's
+interpretation explicit and records its version in new trajectories, because a
+prompt-policy change creates a different experimental condition. Conversely,
+an inherited verifier's raw counter mismatch proves divergence from its oracle;
+it does not by itself prove a semantic user-instruction violation. If the task
+text still permits materially different side effects, that cell is ambiguous
+and must be quarantined or human-adjudicated rather than used as a clean
+negative training example.
 
 ## What this iteration does *not* claim
 

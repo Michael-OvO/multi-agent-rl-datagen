@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T00:00:00Z",
+  "title": "Design System: rl-datagen — Trajectory evidence viewer",
+  "extensions": {
+    "colorMeta": {
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#ffffff", "darkValue": "#101114", "tonalRamp": ["#101114", "#2a2d33", "#464a51", "#64686f", "#84888f", "#a6aab0", "#cbced3", "#ffffff"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#16181d", "darkValue": "#e8eaed", "tonalRamp": ["#16181d", "#2e3138", "#4d5158", "#676c73", "#868c94", "#aab0b7", "#ced2d7", "#eef0f2"] },
+      "ink-secondary": { "role": "neutral", "displayName": "Secondary Ink", "canonical": "#4d5158", "darkValue": "#aab0b7", "tonalRamp": ["#16181d", "#2e3138", "#4d5158", "#676c73", "#868c94", "#aab0b7", "#ced2d7", "#eef0f2"] },
+      "faint": { "role": "neutral", "displayName": "Faint Ink", "canonical": "#676c73", "darkValue": "#868c94", "tonalRamp": ["#16181d", "#2e3138", "#4d5158", "#676c73", "#868c94", "#aab0b7", "#ced2d7", "#eef0f2"] },
+      "rule": { "role": "neutral", "displayName": "Table Rule (55% ink)", "canonical": "rgba(22, 24, 29, 0.55)", "darkValue": "rgba(232, 234, 237, 0.5)", "tonalRamp": ["rgba(22,24,29,1)", "rgba(22,24,29,0.8)", "rgba(22,24,29,0.65)", "rgba(22,24,29,0.55)", "rgba(22,24,29,0.4)", "rgba(22,24,29,0.28)", "rgba(22,24,29,0.14)", "rgba(22,24,29,0.06)"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline (14% ink)", "canonical": "rgba(22, 24, 29, 0.14)", "darkValue": "rgba(232, 234, 237, 0.14)", "tonalRamp": ["rgba(22,24,29,0.55)", "rgba(22,24,29,0.4)", "rgba(22,24,29,0.28)", "rgba(22,24,29,0.2)", "rgba(22,24,29,0.14)", "rgba(22,24,29,0.09)", "rgba(22,24,29,0.06)", "rgba(22,24,29,0.035)"] },
+      "wash": { "role": "neutral", "displayName": "Wash", "canonical": "rgba(22, 24, 29, 0.035)", "darkValue": "rgba(232, 234, 237, 0.05)", "tonalRamp": ["rgba(22,24,29,0.28)", "rgba(22,24,29,0.2)", "rgba(22,24,29,0.14)", "rgba(22,24,29,0.1)", "rgba(22,24,29,0.07)", "rgba(22,24,29,0.05)", "rgba(22,24,29,0.035)", "rgba(22,24,29,0.02)"] },
+      "signal-red": { "role": "primary", "displayName": "Signal Red", "canonical": "#b42318", "darkValue": "#f2655c", "tonalRamp": ["#3d0c08", "#5e120c", "#8a1a12", "#b42318", "#d4372a", "#f2655c", "#f79289", "#fbc8c3"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The page title only; once per page. 21px/650, -0.015em." },
+      "headline": { "displayName": "Headline", "purpose": "Section headings (h2.sec), 16px/650." },
+      "title": { "displayName": "Title", "purpose": "Subsection headings (h3.subsec), 15px/650." },
+      "body": { "displayName": "Body", "purpose": "All prose at 13.5px/1.55, antialiased, tabular-nums globally; table cells and transcript text 13px; measures clamp 66–84ch. Key counts emphasized as bold digits (the Bold-Figure Rule)." },
+      "label": { "displayName": "Label", "purpose": "Table headers (11.5px/500, faint, sentence case) and margin speaker labels (11.5px/550, faint, right-aligned) with 10.5px timestamps. No small caps, no italics anywhere." },
+      "mono": { "displayName": "Mono", "purpose": "Confined to code, tool-call signatures, pre output, and .path file citations (11–12px)." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "settle", "value": "settle 0.22s cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "The one authored moment: #content fades up 4px on each navigation, restarted per render; disabled under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "720px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Evidence Table with Caption and Note",
+      "kind": "custom",
+      "refersTo": "table-evidence",
+      "description": "The primary component: caption above, faint sentence-case header row, three 1px horizontal rules, typeset verdicts, dagger + note for qualification.",
+      "html": "<p class=\"ds-tcap\"><b>Table 1:</b> verdicts by run.</p><table class=\"ds-tab\"><thead><tr><th>run</th><th>task</th><th class=\"ds-n\">turns</th><th>verdict</th></tr></thead><tbody><tr class=\"ds-click\" tabindex=\"0\"><td>ep-014</td><td>calendar merge</td><td class=\"ds-n\">23</td><td><span class=\"ds-yes\">✓ success<span class=\"ds-dag\">†</span></span></td></tr><tr class=\"ds-click\" tabindex=\"0\"><td>ep-015</td><td>ride booking</td><td class=\"ds-n\">31</td><td><span class=\"ds-no\">✗ failure<span class=\"ds-dag\">†</span></span></td></tr></tbody></table><p class=\"ds-tnote\">† judged by Gaia2's official soft judge.</p>",
+      "css": ".ds-tcap { font: 13px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; color: var(--ink-2, #4d5158); margin: 0 0 8px; } .ds-tcap b { font-weight: 600; color: var(--ink, #16181d); } .ds-tab { border-collapse: collapse; width: 100%; border-top: 1px solid var(--rule, rgba(22,24,29,0.55)); border-bottom: 1px solid var(--rule, rgba(22,24,29,0.55)); font: 13px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--ink, #16181d); } .ds-tab th { text-align: left; font-weight: 500; font-size: 11.5px; color: var(--faint, #676c73); padding: 8px 16px 7px 0; border-bottom: 1px solid var(--hair, rgba(22,24,29,0.14)); white-space: nowrap; } .ds-tab td { padding: 6px 16px 6px 0; vertical-align: baseline; white-space: nowrap; } .ds-tab th.ds-n, .ds-tab td.ds-n { text-align: right; } .ds-click { cursor: pointer; } .ds-tab tbody tr:hover td { background: var(--wash, rgba(22,24,29,0.035)); } .ds-click:focus-visible { outline: 2px solid var(--ink, #16181d); outline-offset: 2px; } .ds-yes { color: var(--ink, #16181d); } .ds-no { color: var(--red, #b42318); } .ds-dag { font-size: 0.85em; vertical-align: super; line-height: 0; } .ds-tnote { font: 12px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif; color: var(--faint, #676c73); margin: 8px 0 0; }"
+    },
+    {
+      "name": "Section Tabs",
+      "kind": "nav",
+      "refersTo": "xref-link",
+      "description": "Three unnumbered text tabs on a hairline baseline; the active tab is weight 600 ink with a 2px ink underline.",
+      "html": "<nav class=\"ds-tabs\"><a class=\"ds-tabitem ds-on\" tabindex=\"0\">Runs</a><a class=\"ds-tabitem\" tabindex=\"0\">Shipped-task runs</a><a class=\"ds-tabitem\" tabindex=\"0\">Sweep evidence</a></nav>",
+      "css": ".ds-tabs { font: 13.5px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; border-bottom: 1px solid var(--hair, rgba(22,24,29,0.14)); } .ds-tabitem { display: inline-block; margin-right: 24px; border-bottom: 2px solid transparent; padding: 2px 0 7px; color: var(--ink-2, #4d5158); cursor: pointer; text-decoration: none; } .ds-tabitem.ds-on { font-weight: 600; color: var(--ink, #16181d); border-bottom-color: var(--ink, #16181d); } .ds-tabitem:hover { color: var(--ink, #16181d); } .ds-tabitem:focus-visible { outline: 2px solid var(--ink, #16181d); outline-offset: 2px; }"
+    },
+    {
+      "name": "Filter Line",
+      "kind": "input",
+      "refersTo": "filter-input",
+      "description": "Search and select as underline-only blanks, radius 0, with the running count flush right in faint ink.",
+      "html": "<div class=\"ds-filterline\"><label>find <input type=\"search\" class=\"ds-blank\" placeholder=\"task or file\"></label><label>section <select class=\"ds-blank\"><option>all</option><option>runs</option></select></label><span class=\"ds-count\">14 shown</span></div>",
+      "css": ".ds-filterline { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; font: 12.5px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; color: var(--ink-2, #4d5158); } .ds-blank { font: inherit; color: var(--ink, #16181d); background: transparent; border: none; border-bottom: 1px solid var(--hair, rgba(22,24,29,0.14)); border-radius: 0; padding: 1px 2px; } .ds-blank:focus { border-bottom-color: var(--ink, #16181d); outline: none; } .ds-blank:focus-visible { outline: 2px solid var(--ink, #16181d); outline-offset: 2px; } .ds-filterline input[type=search] { min-width: 200px; } .ds-count { margin-left: auto; color: var(--faint, #676c73); }"
+    },
+    {
+      "name": "Cross-reference Link",
+      "kind": "nav",
+      "refersTo": "xref-link",
+      "description": "Ink-colored text with a hairline underline that darkens to ink on hover; identical for anchors and .xref spans.",
+      "html": "<a class=\"ds-xref\" href=\"#\" tabindex=\"0\">← Runs (esc)</a>",
+      "css": ".ds-xref { color: inherit; text-decoration: none; cursor: pointer; border-bottom: 1px solid var(--hair, rgba(22,24,29,0.14)); font: 12.5px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; } .ds-xref:hover { border-bottom-color: var(--ink, #16181d); } .ds-xref:focus-visible { outline: 2px solid var(--ink, #16181d); outline-offset: 2px; }"
+    },
+    {
+      "name": "Transcript Turn",
+      "kind": "custom",
+      "refersTo": "table-evidence",
+      "description": "Signature component: quiet 11.5px/550 faint margin speaker with a 10.5px timestamp, pre-wrapped 13px body text, wash rule between turns; failing speaker turns signal red at 650.",
+      "html": "<div class=\"ds-turn\"><div class=\"ds-spk\">user agent<span class=\"ds-t\">14:02:11</span></div><div class=\"ds-txt\">Booked the 9:15 ride and updated the shared calendar.</div></div><div class=\"ds-turn ds-fail\"><div class=\"ds-spk\">judge<span class=\"ds-t\">14:02:40</span></div><div class=\"ds-txt\">Constraint violated: the meeting was moved without consent.</div></div>",
+      "css": ".ds-turn { display: grid; grid-template-columns: 132px minmax(0,1fr); gap: 0 20px; padding: 8px 0; border-bottom: 1px solid var(--wash, rgba(22,24,29,0.06)); font: 13px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; color: var(--ink, #16181d); } .ds-spk { color: var(--faint, #676c73); font-size: 11.5px; font-weight: 550; text-align: right; padding-top: 2px; } .ds-spk .ds-t { display: block; font-weight: 400; font-size: 10.5px; color: var(--faint, #676c73); } .ds-txt { white-space: pre-wrap; overflow-wrap: anywhere; } .ds-fail .ds-spk { color: var(--red, #b42318); font-weight: 650; }"
+    },
+    {
+      "name": "Colophon Text Action",
+      "kind": "button",
+      "refersTo": "xref-link",
+      "description": "The header's only actions — \"open files\" and \"theme\" — as plain text with hairline underlines, separated by a faint middle dot. No folder connection exists; the embedded snapshot plus drop/pick is the whole loading model.",
+      "html": "<p class=\"ds-colophon\"><button class=\"ds-act\">open files</button><span class=\"ds-sep\">·</span><button class=\"ds-act\">theme</button></p>",
+      "css": ".ds-colophon { font: 12.5px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; color: var(--ink-2, #4d5158); margin: 0; } .ds-act { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; border-bottom: 1px solid var(--hair, rgba(22,24,29,0.14)); border-radius: 0; } .ds-act:hover { border-bottom-color: var(--ink, #16181d); color: var(--ink, #16181d); } .ds-act:focus-visible { outline: 2px solid var(--ink, #16181d); outline-offset: 2px; } .ds-sep { color: var(--faint, #676c73); padding: 0 7px; }"
+    },
+    {
+      "name": "Path Citation",
+      "kind": "custom",
+      "refersTo": "xref-link",
+      "description": "The page's citation device: a faint 11.5px mono file path under any datum drawn from a file.",
+      "html": "<p class=\"ds-path\">tasks/appworld-star-docs-binf-2a163ab_1/environment/server.py</p>",
+      "css": ".ds-path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--faint, #676c73); word-break: break-all; margin: 3px 0 0; }"
+    },
+    {
+      "name": "Lede with Bold Figures",
+      "kind": "custom",
+      "refersTo": "table-evidence",
+      "description": "Summary sentences carry key counts as weight-600 ink digits inside secondary-ink prose (the Bold-Figure Rule); never color, never spelled out.",
+      "html": "<p class=\"ds-lede\"><b>8</b> judged episodes across <b>3</b> scenarios; failures cite their transcripts below.</p>",
+      "css": ".ds-lede { font: 13.5px/1.55 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, Roboto, system-ui, sans-serif; color: var(--ink-2, #4d5158); max-width: 78ch; margin: 0; } .ds-lede b { color: var(--ink, #16181d); font-weight: 600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Evidence Section, Modern Rendition",
+    "overview": "This surface presents run trajectories the way a report presents results: numbered tables with captions above them, daggers and table notes for qualifications, a contents line of three sections, and file citations under every claim. The observability-console arrangement — cards, chips, stat tiles, colored lanes — is refused entirely. The material is white ground and cool ink, set in the system's modern sans; monospace is confined to code, tool-call signatures, and file paths. There is exactly one accent, signal red, spent only on failure and fault. Depth is flat; structure comes from hairline rules. Motion is a single authored moment: each navigation settles into place. Provenance: the concept-seed scripts could not run (no Node.js); the hand was dealt by hand, disclosed, and the user chose the proceedings/evidence direction explicitly. On 2026-07-28 the user redirected the rendition (\"modern text, modern feel, no folder-connect step\"): the evidence-page structure, accent discipline, and no-chrome refusal carried over; the bookish serif, small caps, italic headers, spelled-out numbers, and the File System Access folder connection were retired.",
+    "keyCharacteristics": [
+      "Neutral ink-on-white with a single failure accent, both themes first-class",
+      "Hairline table grammar: 1px rules top, bottom, and under the header; nothing vertical",
+      "Captions above tables (\"Table N: …\"), dagger + note for qualification",
+      "One modern sans for everything; monospace confined to code, calls, and paths",
+      "Flat, radius-free, shadow-free; one 0.22 s settle motion",
+      "Everything keyboard-reachable with one shared focus outline",
+      "Zero-click data: the snapshot is embedded in the file itself"
+    ],
+    "rules": [
+      { "name": "The Signal Red Rule", "body": "Red is spent only on failure and fault. If a thing is not wrong, it is ink.", "section": "colors" },
+      { "name": "The Hairline Rule", "body": "Tables carry exactly three 1px rules: rule-strength top and bottom, hairline under the header row. No vertical rules, no cell borders, no zebra striping, no boxes.", "section": "colors" },
+      { "name": "The Confined Monospace Rule", "body": "Monospace appears only in code, tool-call signatures, and file paths. Prose, labels, numbers, and verdicts are sans.", "section": "typography" },
+      { "name": "The Bold-Figure Rule", "body": "Key counts in prose are digits emphasized with weight (<b>8</b> judged episodes), never color, never spelled out.", "section": "typography" },
+      { "name": "The No-Chrome Rule", "body": "Nothing on this page is a tile, card, chip, badge, or lane. If information needs grouping, it gets a rule or a caption, not a box.", "section": "elevation" },
+      { "name": "The One Motion Rule", "body": "The settle is the only motion in the system. New interactions get state changes (underline darkening, wash hover), not animation.", "section": "components" }
+    ],
+    "dos": [
+      "Do set all text in the system sans at 13.5px/1.55 with tabular-nums; clamp reading measures to 66–84ch.",
+      "Do give every new table the evidence treatment: caption above (\"Table N: …\"), faint 11.5px header row, three 1px horizontal rules, right-aligned numeric columns, and a .tnote + dagger for qualifications.",
+      "Do cite sources: any datum drawn from a file carries a faint 11.5px mono .path line.",
+      "Do style new inputs as blanks — transparent, hairline underline, radius 0, darkening to ink on focus.",
+      "Do make every interactive element focusable with the shared outline and Enter/Space-actionable; preserve Escape/back scroll restoration.",
+      "Do define both light and dark values for any new color, keyed off the existing ink/paper tints."
+    ],
+    "donts": [
+      "Don't introduce cards, chips, stat tiles, badges, colored lanes, or any boxed grouping — the surface's founding refusal.",
+      "Don't spend red on anything but failure and fault.",
+      "Don't use border-radius, box-shadow, vertical table rules, zebra striping, or background panels anywhere.",
+      "Don't set prose, labels, or numbers in monospace; it is reserved for code, call signatures, and paths.",
+      "Don't add motion beyond the single settle, or bypass its reduced-motion guard.",
+      "Don't reintroduce permission-gated data sources; the embedded snapshot (plus drop/pick) is the whole loading model."
+    ]
+  }
+}

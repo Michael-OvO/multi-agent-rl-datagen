@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Constructing Multi-Agent RL Post-Training Data</title>
+
+<!-- Typography: Switzer (neo-grotesk) throughout, JetBrains Mono for labels, data and paths -->
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@300,400,500,600,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+/* ===========================================
+   THEME TOKENS
+   Chrome is monochrome by design; colour is
+   reserved for data marks only.
+   =========================================== */
+:root {
+    /* Surfaces */
+    --canvas:      #F7F7F5;   /* slide plane */
+    --paper:       #FFFFFF;   /* cards, chart surfaces */
+    --stage-bg:    #E8E8E4;   /* letterbox around the stage */
+    --slide-bg:    var(--canvas);
+
+    /* Ink */
+    --ink:         #0D0D0D;
+    --ink-2:       #5B5B57;
+    --ink-3:       #898781;
+    --rule:        #E2E1DC;
+    --rule-soft:   #EDECE8;
+
+    /* Data: single-hue sequential ramp (blue), contrast-checked against both surfaces */
+    --blue-100:    #cde2fb;
+    --blue-250:    #86b6ef;
+    --blue-400:    #3987e5;
+    --blue-550:    #1c5cab;
+    --blue-650:    #104281;
+
+    /* Data: reserved status roles — never used as a series colour */
+    --critical:    #d03b3b;
+    --good:        #0ca30c;
+    --good-text:   #006300;
+
+    /* Type */
+    --sans: 'Switzer', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Motion */
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --dur:  0.72s;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ===========================================
+   FIXED 16:9 STAGE — MANDATORY BASE STYLES
+   Slides authored at 1920x1080, scaled whole.
+   =========================================== */
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+img, video, canvas, svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+@media print {
+    html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+    .deck-viewport { position: static; overflow: visible; background: #fff; }
+    .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+    .slide {
+        position: relative; display: block !important; visibility: visible !important;
+        opacity: 1 !important; pointer-events: auto !important;
+        width: 1920px; height: 1080px; break-after: page; page-break-after: always;
+    }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    .deck-controls { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+/* ===========================================
+   REVEAL ANIMATION
+   Every animated element carries .reveal and an
+   optional --d delay. Triggered by .visible.
+   =========================================== */
+.reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+    transition-delay: var(--d, 0s);
+}
+.slide.visible .reveal { opacity: 1; transform: none; }
+
+.grow { transform: scaleX(0); transform-origin: left center;
+        transition: transform 0.9s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .grow { transform: scaleX(1); }
+
+.pop { opacity: 0; transform: scale(0.6);
+       transition: opacity 0.5s var(--ease), transform 0.5s var(--ease);
+       transition-delay: var(--d, 0s); }
+.slide.visible .pop { opacity: 1; transform: none; }
+
+/* ===========================================
+   SLIDE SCAFFOLD
+   =========================================== */
+.pad {
+    position: absolute;
+    inset: 88px 128px 104px 128px;
+    font-family: var(--sans);
+    color: var(--ink);
+}
+.pad.center { display: flex; flex-direction: column; justify-content: center; }
+
+.foot {
+    position: absolute;
+    left: 128px; right: 128px; bottom: 46px;
+    display: flex; align-items: baseline; justify-content: space-between;
+    font-family: var(--mono); font-size: 15px; color: var(--ink-3);
+    border-top: 1px solid var(--rule-soft);
+    padding-top: 15px;
+}
+.foot .ev b { font-weight: 500; color: var(--ink-2); }
+
+.eyebrow {
+    font-family: var(--mono);
+    font-size: 15px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 30px;
+}
+.eyebrow .n { color: var(--ink); font-weight: 500; }
+
+h1 { font-size: 112px; font-weight: 500; letter-spacing: -0.042em; line-height: 1.0; }
+h2 { font-size: 64px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.08; max-width: 1560px; }
+h3 { font-size: 29px; font-weight: 600; letter-spacing: -0.012em; line-height: 1.2; }
+
+.lead   { font-size: 38px; font-weight: 400; line-height: 1.34; color: var(--ink-2); letter-spacing: -0.014em; }
+.body   { font-size: 24px; font-weight: 400; line-height: 1.55; color: var(--ink-2); }
+.small  { font-size: 20px; font-weight: 400; line-height: 1.5;  color: var(--ink-3); }
+.mono   { font-family: var(--mono); font-size: 19px; color: var(--ink-2); letter-spacing: -0.01em; }
+strong  { font-weight: 600; color: var(--ink); }
+
+.hr { height: 1px; background: var(--rule); border: 0; }
+
+/* ===========================================
+   TITLE SLIDE
+   =========================================== */
+.title-slide { background: var(--paper); }
+.title-slide .pad { inset: 88px 128px 250px 128px; }
+.wash {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(1100px 720px at 80% 6%,  rgba(57,135,229,0.13), transparent 62%),
+      radial-gradient(900px 620px at 98% 60%, rgba(16,66,129,0.09),  transparent 60%),
+      radial-gradient(760px 560px at 62% 98%, rgba(134,182,239,0.14), transparent 64%);
+}
+.title-rule { width: 132px; height: 2px; background: var(--ink); margin-bottom: 42px; }
+.title-meta {
+    position: absolute; left: 128px; right: 128px; bottom: 88px;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    font-family: var(--mono); font-size: 18px; color: var(--ink-3);
+}
+.title-meta .stack { display: flex; flex-direction: column; gap: 9px; }
+.title-meta b { font-weight: 500; color: var(--ink); }
+
+/* ===========================================
+   LAYOUT HELPERS
+   =========================================== */
+.cols { display: flex; gap: 56px; }
+.col  { flex: 1; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px; }
+
+.card {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 30px 32px;
+}
+.card .k {
+    font-family: var(--mono); font-size: 14px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 16px;
+}
+.card p { font-size: 21px; line-height: 1.5; color: var(--ink-2); margin-top: 13px; }
+/* Ability cards: pin the knob paragraph so the three dividers land on one line. */
+.card p.knob-line { min-height: 96px; }
+
+/* Numbered requirement / spec rows */
+.rows { display: flex; flex-direction: column; }
+.row-item {
+    display: grid; grid-template-columns: 74px 1fr; gap: 26px;
+    padding: 21px 0; border-top: 1px solid var(--rule);
+    align-items: start;
+}
+.rows .row-item:last-child { border-bottom: 1px solid var(--rule); }
+.row-item .idx { font-family: var(--mono); font-size: 19px; color: var(--ink-3); padding-top: 7px; }
+.row-item .ttl { font-size: 29px; font-weight: 600; letter-spacing: -0.014em; }
+.row-item .dsc { font-size: 21px; line-height: 1.45; color: var(--ink-2); margin-top: 8px; }
+
+/* Booktabs-style tables */
+table.tb { width: 100%; border-collapse: collapse; font-size: 22px; }
+table.tb th {
+    font-family: var(--mono); font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 400; text-align: left;
+    padding: 0 18px 13px 0; border-bottom: 1px solid var(--ink);
+}
+table.tb td {
+    padding: 16px 18px 16px 0; border-bottom: 1px solid var(--rule-soft);
+    color: var(--ink-2); vertical-align: baseline;
+}
+table.tb td.k { color: var(--ink); font-weight: 500; }
+table.tb td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 20px; color: var(--ink); }
+table.tb tr:last-child td { border-bottom: none; }
+
+/* Stat tiles */
+.stat .v { font-size: 84px; font-weight: 500; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat .l { font-size: 19px; color: var(--ink-3); margin-top: 13px; line-height: 1.4; }
+.stat.crit .v { color: var(--critical); }
+.stat.blue .v { color: var(--blue-650); }
+
+/* Chips */
+.chip {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 15px; letter-spacing: 0.03em;
+    border: 1px solid var(--rule); border-radius: 999px; padding: 8px 15px;
+    background: var(--paper); color: var(--ink-2);
+}
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); }
+.chip.is-crit { border-color: rgba(208,59,59,0.4); color: var(--critical); }
+.chip.is-crit .dot { background: var(--critical); }
+.chip.is-good { border-color: rgba(12,163,12,0.4); color: var(--good-text); }
+.chip.is-good .dot { background: var(--good); }
+
+/* Callout band */
+.callout {
+    padding: 26px 32px; background: var(--paper);
+    border: 1px solid var(--rule); border-left: 3px solid var(--ink);
+    border-radius: 0 12px 12px 0;
+}
+.callout.blue { border-left-color: var(--blue-550); }
+
+/* ===========================================
+   THE PIPELINE SPINE
+   =========================================== */
+.pipe { display: flex; align-items: stretch; }
+.pipe .stage {
+    flex: 1; background: var(--paper); border: 1px solid var(--rule);
+    padding: 24px 16px 26px; text-align: center;
+}
+.pipe .stage:first-child { border-radius: 12px 0 0 12px; }
+.pipe .stage:last-child  { border-radius: 0 12px 12px 0; }
+.pipe .stage + .stage { border-left: none; }
+.pipe .stage .no { font-family: var(--mono); font-size: 13px; color: var(--ink-3); letter-spacing: .12em; }
+.pipe .stage .n  { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin-top: 9px; }
+.pipe .stage .d  { font-size: 16px; color: var(--ink-3); margin-top: 10px; line-height: 1.34; }
+.pipe .stage.build { background: rgba(57,135,229,0.075); }
+.pipe .stage.build .n { color: var(--blue-650); }
+
+/* Stage marker used on each stage slide */
+.stage-mark { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
+.stage-mark i {
+    width: 34px; height: 5px; border-radius: 3px; background: var(--rule); display: inline-block;
+}
+.stage-mark i.on { background: var(--ink); }
+.stage-mark i.build { background: var(--blue-550); }
+
+/* ===========================================
+   CHART: DOT PLOT
+   =========================================== */
+.dotplot { position: relative; height: 560px; padding-top: 34px; }
+.dp-axis { position: absolute; left: 0; top: 34px; bottom: 118px; width: 116px; }
+.dp-tick {
+    position: absolute; right: 20px; transform: translateY(-50%);
+    font-family: var(--mono); font-size: 17px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+}
+.dp-plot { position: absolute; left: 116px; right: 0; top: 34px; bottom: 118px; }
+.dp-grid { position: absolute; left: 0; right: 0; height: 1px; background: var(--rule-soft); }
+.dp-grid.floor { background: var(--critical); opacity: 0.55; }
+.dp-grid.ceil  { background: var(--ink); opacity: 0.35; }
+.dp-band {
+    position: absolute; left: 0; right: 0;
+    background: rgba(57,135,229,0.055);
+}
+/* Legend sits above the plot, right-aligned — never in a cluster's or label's way. */
+.dp-legend {
+    position: absolute; left: 116px; right: 0; top: 0;
+    display: flex; gap: 32px; justify-content: flex-end;
+    font-family: var(--mono); font-size: 15px; color: var(--ink-3);
+}
+.dp-legend span { display: inline-flex; align-items: center; gap: 9px; }
+.dp-legend i { width: 22px; height: 2px; display: inline-block; }
+.dp-col { position: absolute; top: 0; bottom: 0; }
+/* Label spans exactly its own column, so adjacent columns cannot overlap. */
+.dp-label {
+    position: absolute; top: 100%; left: 0; right: 0;
+    text-align: center; padding: 22px 8px 0;
+}
+.dp-label .cfg  { font-family: var(--mono); font-size: 19px; color: var(--ink); }
+.dp-label .role { font-size: 18px; color: var(--ink-2); margin-top: 8px; }
+.dp-label .mean { font-family: var(--mono); font-size: 17px; color: var(--ink-3); margin-top: 5px; font-variant-numeric: tabular-nums; }
+.dp-cluster { position: absolute; left: 50%; transform: translate(-50%, -50%); display: flex; gap: 4px; }
+/* .pop sets a bare scale(); re-compose it with the centring translate. */
+.dp-cluster.pop { transform: translate(-50%, -50%) scale(0.6); }
+.slide.visible .dp-cluster.pop { transform: translate(-50%, -50%) scale(1); }
+.dp-dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--blue-550);
+    box-shadow: 0 0 0 2px var(--canvas);
+}
+.dp-dot.below { background: var(--critical); }
+.dp-dot.open  { background: var(--ink); }
+
+/* ===========================================
+   CHART: HORIZONTAL BARS
+   =========================================== */
+.bars { display: flex; flex-direction: column; gap: 24px; }
+.bar-row { display: grid; grid-template-columns: 320px 1fr 124px; align-items: center; gap: 24px; }
+.bar-row .lbl { font-family: var(--mono); font-size: 18px; color: var(--ink-2); text-align: right; line-height: 1.35; }
+.bar-track { position: relative; height: 32px; background: var(--rule-soft); border-radius: 4px; }
+.bar-fill  { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--blue-550); }
+.bar-fill.crit { background: var(--critical); }
+.bar-fill.mid  { background: var(--blue-400); }
+.bar-fill.dim  { background: #B9B8B2; }
+.bar-row .val { font-family: var(--mono); font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bar-floor { position: absolute; top: -9px; bottom: -9px; width: 2px; background: var(--critical); }
+.bar-floor .cap {
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 14px; color: var(--critical); white-space: nowrap;
+    padding-bottom: 7px;
+}
+
+/* ===========================================
+   CHART: MATRIX HEATMAP
+   One hue, light->dark; every cell direct-labelled
+   so identity never rests on colour alone.
+   =========================================== */
+.matrix { display: grid; grid-template-columns: 250px repeat(6, 1fr); gap: 6px; }
+.mx-h {
+    font-family: var(--mono); font-size: 15px; color: var(--ink-3);
+    line-height: 1.25; padding: 0 4px 13px; text-align: center; align-self: end;
+}
+.mx-rh { font-family: var(--mono); font-size: 19px; color: var(--ink); display: flex; align-items: center; justify-content: flex-end; padding-right: 22px; }
+.mx-c {
+    height: 64px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 22px; font-variant-numeric: tabular-nums;
+    border: 1px solid rgba(13,13,13,0.06);
+}
+
+/* Funnels */
+.funnel { display: flex; flex-direction: column; gap: 11px; }
+.fn-row { display: grid; grid-template-columns: 290px 1fr; align-items: center; gap: 24px; }
+.fn-row .lbl { font-family: var(--mono); font-size: 18px; color: var(--ink-2); text-align: right; }
+.fn-bar {
+    height: 58px; border-radius: 6px; display: flex; align-items: center;
+    padding-left: 22px; color: #fff; font-family: var(--mono); font-size: 21px;
+    font-variant-numeric: tabular-nums; transform-origin: left center;
+}
+
+/* Knob / spec list */
+.knobs { display: flex; flex-direction: column; }
+.knob { display: grid; grid-template-columns: 210px 1fr; gap: 26px; padding: 19px 0; border-top: 1px solid var(--rule-soft); }
+.knobs .knob:last-child { border-bottom: 1px solid var(--rule-soft); }
+.knob .n { font-family: var(--mono); font-size: 19px; color: var(--ink); }
+.knob .d { font-size: 20px; color: var(--ink-2); line-height: 1.42; }
+
+/* ===========================================
+   DECK CHROME (outside the slide design system)
+   =========================================== */
+.deck-controls {
+    display: flex; align-items: center; gap: 16px;
+    font-family: var(--mono); font-size: 13px; color: #6b6b66;
+    background: rgba(255,255,255,0.86);
+    border: 1px solid rgba(13,13,13,0.10);
+    border-radius: 999px; padding: 7px 16px;
+    backdrop-filter: blur(8px);
+    opacity: 0; transition: opacity 0.35s ease;
+}
+.deck-controls:hover, .deck-controls.show { opacity: 1; }
+.deck-controls button {
+    border: none; background: none; cursor: pointer; color: #6b6b66;
+    font-family: var(--mono); font-size: 15px; padding: 2px 6px; line-height: 1;
+}
+.deck-controls button:hover { color: #0D0D0D; }
+.deck-progress {
+    position: fixed; left: 0; top: 0; height: 2px; z-index: 1001;
+    background: var(--ink); transition: width 0.45s var(--ease);
+}
+
+/* Inline editing affordance */
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle {
+    position: fixed; top: 18px; left: 18px; z-index: 10001;
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid rgba(13,13,13,0.12); background: rgba(255,255,255,0.92);
+    cursor: pointer; font-size: 17px; line-height: 1;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+}
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { border-color: var(--blue-550); }
+body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5); outline-offset: 3px; }
+</style>
+</head>
+<body>
+
+<div class="deck-progress" id="deckProgress"></div>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- ============================================================
+     01 — TITLE
+     ============================================================ -->
+<section class="slide title-slide active">
+    <div class="wash"></div>
+    <div class="pad center">
+        <div class="title-rule reveal" style="--d:.05s"></div>
+        <div class="eyebrow reveal" style="--d:.10s">Method · pipeline · measured yield</div>
+        <h1 class="reveal" style="--d:.16s">Constructing multi-agent<br>RL post-training data<br>with verifiable rewards.</h1>
+        <div class="lead reveal" style="--d:.30s; margin-top:44px; max-width:1180px">
+            A seven-stage pipeline that turns single-agent agentic benchmarks into multi-agent
+            coordination tasks — and measures, per task, which of them carry trainable signal.
+        </div>
+    </div>
+    <div class="title-meta">
+        <div class="stack reveal" style="--d:.44s">
+            <span>Substrates carried end to end &nbsp;·&nbsp; <b>AppWorld</b> &nbsp;·&nbsp; <b>Gaia2 / Meta Agents Research Environments</b></span>
+            <span>10 rendered container tasks &nbsp;·&nbsp; 148 specified cells &nbsp;·&nbsp; 261 graded trajectories</span>
+        </div>
+        <div class="reveal" style="--d:.50s">→&nbsp; arrow keys</div>
+    </div>
+</section>
+
+<!-- ============================================================
+     02 — WHAT ONE UNIT OF THE DATA MUST CONTAIN
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">02</span> &nbsp;/&nbsp; The specification</div>
+        <h2 class="reveal" style="--d:.06s">What one unit of this data has to contain.</h2>
+
+        <div class="rows" style="margin-top:40px">
+            <div class="row-item reveal" style="--d:.12s">
+                <div class="idx">01</div>
+                <div><div class="ttl">An executable world with inspectable state</div>
+                     <div class="dsc">Not a transcript, not a description. The reward has to be computable from what actually changed.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.17s">
+                <div class="idx">02</div>
+                <div><div class="ttl">A role partition</div>
+                     <div class="dsc">Who may act on what, who may know what, and who may speak to whom. This is what makes the episode multi-agent rather than one agent with sub-calls.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.22s">
+                <div class="idx">03</div>
+                <div><div class="ttl">A task with ground truth the roles must jointly satisfy</div>
+                     <div class="dsc">No single role can complete it alone — otherwise the partition is decoration and the episode teaches nothing about coordination.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.27s">
+                <div class="idx">04</div>
+                <div><div class="ttl">A reward computed from terminal world state</div>
+                     <div class="dsc">Not from an opinion about the transcript. This is the requirement that decides the entire architecture.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.32s">
+                <div class="idx">05</div>
+                <div><div class="ttl">Enough decision density to carry credit</div>
+                     <div class="dsc">The coordinator's high-consequence turns — whom to call, what to tell them, when to stop — have to be frequent enough that a GRPO-family update can attribute outcome to them.</div></div>
+            </div>
+        </div>
+
+        <div class="lead reveal" style="--d:.40s; margin-top:36px; font-size:29px; max-width:1620px">
+            Miss <strong>#4</strong> and the reward is unverifiable. Miss <strong>#5</strong> and there is nothing to optimise.
+            Everything downstream is built to guarantee those two.
+        </div>
+    </div>
+    <div class="foot"><span class="ev">the quality bar, stated before anything is built</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     03 — THE ARCHITECTURAL DECISION (dark)
+     ============================================================ -->
+<section class="slide" style="--slide-bg:#0D0D0D">
+    <div class="pad" style="color:#fff">
+        <div class="eyebrow reveal" style="color:#8A8A85"><span class="n" style="color:#fff">03</span> &nbsp;/&nbsp; The decision everything follows from</div>
+        <h2 class="reveal" style="--d:.06s; color:#fff; max-width:1620px">Coordination has no off-the-shelf verifier. There are exactly two ways to get one.</h2>
+
+        <div class="grid-2" style="margin-top:52px; gap:36px">
+            <div class="reveal" style="--d:.14s; padding:34px 38px; border:1px solid rgba(255,255,255,0.16); border-radius:14px; height:396px">
+                <div style="font-family:var(--mono); font-size:14px; letter-spacing:.16em; text-transform:uppercase; color:#FF8C86; margin-bottom:18px">Option A — design a coordination judge</div>
+                <div style="font-size:29px; font-weight:600; letter-spacing:-0.015em; margin-bottom:18px">You write the reward, so your tests agree with your errors.</div>
+                <div style="font-size:21px; line-height:1.55; color:#B9B8B2">
+                    The failure mode is silent. A hand-written coordination reward on this project's first task family returned
+                    <strong style="color:#fff">exactly 1.0 on 12 of 12 runs</strong> — zero variance, zero advantage, zero gradient —
+                    because the task instruction stated its own optimal algorithm. Nothing in the reward reports that. Every gate was green.
+                </div>
+            </div>
+            <div class="reveal" style="--d:.22s; padding:34px 38px; border:1px solid rgba(127,199,255,0.4); border-radius:14px; background:rgba(57,135,229,0.08); height:396px">
+                <div style="font-family:var(--mono); font-size:14px; letter-spacing:.16em; text-transform:uppercase; color:#7FC7FF; margin-bottom:18px">Option B — inherit a programmatic verifier</div>
+                <div style="font-size:29px; font-weight:600; letter-spacing:-0.015em; margin-bottom:18px">Change only <em>who can act</em>. The reward keeps a validity someone else established.</div>
+                <div style="font-size:21px; line-height:1.55; color:#B9B8B2">
+                    The task, the ground truth, the world and the judge all come from a single-agent benchmark that already has them.
+                    A badly chosen constraint makes the task too easy or too hard — <strong style="color:#fff">and that is a thing you can measure.</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="reveal" style="--d:.32s; margin-top:44px; padding-top:32px; border-top:1px solid rgba(255,255,255,0.16)">
+            <div style="font-size:34px; font-weight:500; letter-spacing:-0.02em; line-height:1.3; color:#fff; max-width:1640px">
+                So the pipeline manufactures <strong style="color:#7FC7FF">constraints</strong>, never rewards.
+                <span style="color:#8A8A85">No stage that follows can write to the judge — which is checkable by reading the code, not by trusting the claim.</span>
+            </div>
+        </div>
+    </div>
+    <div class="foot" style="border-color:rgba(255,255,255,0.14)">
+        <span class="ev" style="color:#8A8A85"><b style="color:#B9B8B2">sweep/tom_degeneracy.json</b></span>
+        <span class="pg" style="color:#8A8A85"></span>
+    </div>
+</section>
+
+<!-- ============================================================
+     04 — THE PIPELINE
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">04</span> &nbsp;/&nbsp; The pipeline</div>
+        <h2 class="reveal" style="--d:.06s">Seven stages. Three build; four measure.</h2>
+
+        <div class="pipe reveal" style="--d:.14s; margin-top:48px">
+            <div class="stage"><div class="no">01</div><div class="n">ADMIT</div><div class="d">does the substrate qualify</div></div>
+            <div class="stage"><div class="no">02</div><div class="n">MINE</div><div class="d">which tasks can carry a partition</div></div>
+            <div class="stage build"><div class="no">03</div><div class="n">PARTITION</div><div class="d">construct the role structure</div></div>
+            <div class="stage build"><div class="no">04</div><div class="n">TARGET</div><div class="d">one ability per cell</div></div>
+            <div class="stage build"><div class="no">05</div><div class="n">EXECUTE</div><div class="d">runtime, sandbox, packaging</div></div>
+            <div class="stage"><div class="no">06</div><div class="n">GRADE</div><div class="d">inherited verifier + shaping</div></div>
+            <div class="stage"><div class="no">07</div><div class="n">ACCEPT</div><div class="d">the quality gate</div></div>
+        </div>
+
+        <div class="grid-3" style="margin-top:52px">
+            <div class="card reveal" style="--d:.24s; height:266px">
+                <div class="k">What is inherited</div>
+                <h3>Task · ground truth · world · judge</h3>
+                <p>Four things that would otherwise each need designing and validating. All four arrive already validated by the benchmark's authors.</p>
+            </div>
+            <div class="card reveal" style="--d:.30s; height:266px; border-color:rgba(28,92,171,0.4)">
+                <div class="k">What is constructed</div>
+                <h3>The role structure, and only that</h3>
+                <p>Access, information, topology, budget. Four families of constraint, none of which has a path to the reward function.</p>
+            </div>
+            <div class="card reveal" style="--d:.36s; height:266px">
+                <div class="k">What is measured</div>
+                <h3>Yield, per cell, at five seeds</h3>
+                <p>The output is a fraction of usable cells, not a promise of quality. A cell that fails the gate is discarded rather than shipped.</p>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev">forge/appworld · forge/gaia2 &nbsp;·&nbsp; 14.4k lines Python &nbsp;·&nbsp; 557 tests passing, 2 deliberate xfails</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     05 — STAGE 1: ADMIT
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="stage-mark reveal"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="eyebrow reveal" style="--d:.03s"><span class="n">Stage 01</span> &nbsp;/&nbsp; Admit</div>
+        <h2 class="reveal" style="--d:.06s">Four requirements a substrate has to clear.</h2>
+
+        <div class="grid-4" style="margin-top:44px">
+            <div class="card reveal" style="--d:.12s; height:284px">
+                <div class="k">Requirement 01</div>
+                <h3>A verifier you did not write</h3>
+                <p>Free, and already validated by somebody else — that is the whole of its value. Without it you are designing the reward again.</p>
+            </div>
+            <div class="card reveal" style="--d:.17s; height:284px">
+                <div class="k">Requirement 02</div>
+                <h3>Real, executable, installable</h3>
+                <p>Not a description of a world. If you cannot <span class="mono" style="font-size:16px">pip install</span> or <span class="mono" style="font-size:16px">docker pull</span> it, you will end up building it.</p>
+            </div>
+            <div class="card reveal" style="--d:.22s; height:284px">
+                <div class="k">Requirement 03</div>
+                <h3>A reference solution per task</h3>
+                <p>Derives the role roster <em>and</em> proves the task is solvable. Without it you are guessing which tasks qualify.</p>
+            </div>
+            <div class="card reveal" style="--d:.27s; height:284px">
+                <div class="k">Requirement 04</div>
+                <h3>Seams</h3>
+                <p>An action surface that divides along role boundaries — apps, services, repositories, teams. No seams, no partition.</p>
+            </div>
+        </div>
+
+        <div class="cols" style="margin-top:44px; gap:64px">
+            <div class="col reveal" style="--d:.34s">
+                <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:14px">Admitted and carried end to end</div>
+                <table class="tb">
+                    <tr><td class="k">AppWorld</td><td>9 apps · 457 APIs · 732 tasks · a programmatic state-based oracle with no model in it, which also catches side effects</td></tr>
+                    <tr><td class="k">Gaia2 / Meta ARE</td><td>1,120 scenarios · write-action verifiers · built explicitly for RL with verifiable rewards</td></tr>
+                </table>
+            </div>
+            <div class="col reveal" style="--d:.40s">
+                <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:14px">Also clears the bar</div>
+                <div class="body" style="font-size:22px">SWE-smith &nbsp;·&nbsp; τ-bench &nbsp;·&nbsp; R2E-Gym</div>
+                <div class="hr" style="margin:22px 0"></div>
+                <div class="body" style="font-size:21px">
+                    Admission is <strong>necessary, not sufficient</strong>. A database can ship a perfect verifier and still have every task
+                    collapse into a single seam. Stage 2 measures that rather than assuming it.
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev">skills/constraint-forged-multi-agent-tasks/SKILL.md — admission test and disqualifiers</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     06 — STAGE 2: MINE
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="stage-mark reveal"><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="eyebrow reveal" style="--d:.03s"><span class="n">Stage 02</span> &nbsp;/&nbsp; Mine</div>
+        <h2 class="reveal" style="--d:.06s">Derive the roster from the task. Require a fact to cross between roles.</h2>
+
+        <div class="body reveal" style="--d:.11s; margin-top:22px; max-width:1640px">
+            Two rules, both computed from the benchmark's own ground truth. <strong>Roster</strong> = the set of apps the reference solution touches, so
+            role assignment is a property of the task rather than a choice. <strong>Seam</strong> = proof that a value produced in one app is consumed in another,
+            so the partition forces communication instead of merely permitting it.
+        </div>
+
+        <div class="cols" style="margin-top:38px; gap:68px">
+            <div class="col">
+                <div class="mono reveal" style="--d:.16s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
+                    AppWorld — AST data-flow over reference code
+                </div>
+                <div class="funnel">
+                    <div class="fn-row reveal" style="--d:.20s">
+                        <div class="lbl">ground-truth tasks</div>
+                        <div class="fn-bar grow" style="--d:.24s; background:var(--blue-400); width:100%">147</div>
+                    </div>
+                    <div class="fn-row reveal" style="--d:.25s">
+                        <div class="lbl">roster ≥ 2 apps</div>
+                        <div class="fn-bar grow" style="--d:.31s; background:var(--blue-550); width:35%">51&nbsp; <span style="opacity:.7">35%</span></div>
+                    </div>
+                    <div class="fn-row reveal" style="--d:.30s">
+                        <div class="lbl">a fact provably crosses</div>
+                        <div class="fn-bar grow" style="--d:.38s; background:var(--blue-650); width:26.5%">39</div>
+                    </div>
+                </div>
+                <div class="body reveal" style="--d:.44s; margin-top:28px; font-size:21px">
+                    96 of 147 are single-app puzzles and are rejected — the strict filter matters, because every substrate has
+                    infrastructure that masquerades as a collaborator.
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="mono reveal" style="--d:.20s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
+                    Gaia2 — state provenance over gold write actions
+                </div>
+                <div class="funnel">
+                    <div class="fn-row reveal" style="--d:.24s">
+                        <div class="lbl">scenarios mined</div>
+                        <div class="fn-bar grow" style="--d:.28s; background:var(--blue-400); width:100%">320</div>
+                    </div>
+                    <div class="fn-row reveal" style="--d:.29s">
+                        <div class="lbl">roster ≥ 2 apps</div>
+                        <div class="fn-bar grow" style="--d:.35s; background:var(--blue-550); width:84%">269&nbsp; <span style="opacity:.7">84%</span></div>
+                    </div>
+                    <div class="fn-row reveal" style="--d:.34s">
+                        <div class="lbl">seamful &nbsp;·&nbsp; 37 unique</div>
+                        <div class="fn-bar grow" style="--d:.42s; background:var(--blue-650); width:14.7%">47</div>
+                    </div>
+                </div>
+                <div class="body reveal" style="--d:.48s; margin-top:28px; font-size:21px">
+                    No reference code here — ground truth is gold writes plus initial state. A seam is a written argument that
+                    <strong>exists in another app's state, is absent from the target's, and was not in the user instruction.</strong>
+                    The rule ports; the mechanic is rebuilt.
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>appworld_span.json</b> · <b>appworld_seams.json</b> · <b>gaia2_mini_admission.json</b> · <b>gaia2_adaptability_admission.json</b></span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     07 — STAGE 3: PARTITION
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="stage-mark reveal"><i></i><i></i><i class="build"></i><i></i><i></i><i></i><i></i></div>
+        <div class="eyebrow reveal" style="--d:.03s"><span class="n">Stage 03</span> &nbsp;/&nbsp; Partition</div>
+        <h2 class="reveal" style="--d:.06s">Construct the role structure by restricting access, not by adding reward.</h2>
+
+        <div class="cols" style="margin-top:36px; gap:76px">
+            <div class="col" style="flex:1.1">
+                <svg viewBox="0 0 720 420" style="width:100%; height:auto" aria-label="Star partition: a coordinator with no API access delegating to app-bound specialists, above an untouched verifier">
+                    <g stroke="#C9C8C2" stroke-width="1.5" fill="none">
+                        <path class="reveal" style="--d:.28s" d="M250 116 C 370 116, 380 72, 470 72"/>
+                        <path class="reveal" style="--d:.34s" d="M250 130 C 370 130, 380 192, 470 192"/>
+                        <path class="reveal" style="--d:.40s" d="M250 144 C 370 144, 380 312, 470 312"/>
+                    </g>
+                    <g class="reveal" style="--d:.14s">
+                        <rect x="10" y="76" width="240" height="112" rx="12" fill="#fff" stroke="#0D0D0D" stroke-width="1.5"/>
+                        <text x="130" y="114" text-anchor="middle" font-family="Switzer, sans-serif" font-size="26" font-weight="600" fill="#0D0D0D">Coordinator</text>
+                        <text x="130" y="144" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13.5" fill="#d03b3b">zero API access</text>
+                        <text x="130" y="166" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13.5" fill="#898781">sees the whole task</text>
+                    </g>
+                    <g class="reveal" style="--d:.44s">
+                        <rect x="470" y="28" width="240" height="88" rx="12" fill="#fff" stroke="#E2E1DC"/>
+                        <text x="590" y="62" text-anchor="middle" font-family="Switzer, sans-serif" font-size="21" font-weight="600" fill="#0D0D0D">specialist · phone</text>
+                        <text x="590" y="88" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" fill="#898781">one app · sees only its brief</text>
+                    </g>
+                    <g class="reveal" style="--d:.50s">
+                        <rect x="470" y="148" width="240" height="88" rx="12" fill="#fff" stroke="#E2E1DC"/>
+                        <text x="590" y="182" text-anchor="middle" font-family="Switzer, sans-serif" font-size="21" font-weight="600" fill="#0D0D0D">specialist · venmo</text>
+                        <text x="590" y="208" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" fill="#898781">one app · sees only its brief</text>
+                    </g>
+                    <g class="reveal" style="--d:.56s">
+                        <rect x="470" y="268" width="240" height="88" rx="12" fill="#fff" stroke="#E2E1DC"/>
+                        <text x="590" y="302" text-anchor="middle" font-family="Switzer, sans-serif" font-size="21" font-weight="600" fill="#0D0D0D">specialist · … n</text>
+                        <text x="590" y="328" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12.5" fill="#898781">one app · sees only its brief</text>
+                    </g>
+                    <g class="reveal" style="--d:.64s">
+                        <line x1="10" y1="388" x2="710" y2="388" stroke="#E2E1DC" stroke-dasharray="4 5"/>
+                        <text x="360" y="412" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13.5" fill="#006300">the benchmark's own verifier — read-only, below the line</text>
+                    </g>
+                </svg>
+            </div>
+
+            <div class="col">
+                <div class="mono reveal" style="--d:.14s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:6px">
+                    Four constraint families
+                </div>
+                <div class="knobs">
+                    <div class="knob reveal" style="--d:.20s"><div class="n">access</div><div class="d">which apps a role may call at all — the coordinator gets none</div></div>
+                    <div class="knob reveal" style="--d:.25s"><div class="n">information</div><div class="d">role names only, or each specialist's real API catalogue</div></div>
+                    <div class="knob reveal" style="--d:.30s"><div class="n">topology</div><div class="d">who may address whom — star ships; chain is specified and unshipped</div></div>
+                    <div class="knob reveal" style="--d:.35s"><div class="n">budget</div><div class="d">a delegation target <span class="mono" style="font-size:17px">bN</span> derived from the task's causal structure</div></div>
+                </div>
+                <div class="callout blue reveal" style="--d:.44s; margin-top:30px">
+                    <div class="body" style="font-size:22px; color:var(--ink)">
+                        The coordinator cannot act, so every effect in the world is produced by a specialist that never saw the task.
+                        <strong>The only channel between intent and effect is the brief</strong> — which is exactly the thing being trained.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>forge/appworld/partition.py</b> — 130 lines, and no path from any knob to the reward</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     08 — STAGE 4: TARGET
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="stage-mark reveal"><i></i><i></i><i></i><i class="build"></i><i></i><i></i><i></i></div>
+        <div class="eyebrow reveal" style="--d:.03s"><span class="n">Stage 04</span> &nbsp;/&nbsp; Target</div>
+        <h2 class="reveal" style="--d:.06s">Each cell prices exactly one ability.</h2>
+
+        <div class="body reveal" style="--d:.11s; margin-top:20px; max-width:1660px">
+            Three abilities sit at the intersection of the <strong>largest measured failure mass</strong>, <strong>demonstrated RL trainability</strong>,
+            and <strong>verification the inherited oracle already provides</strong>. Each is pinned to one knob, with the others held at neutral.
+        </div>
+
+        <div class="grid-3" style="margin-top:36px">
+            <div class="card reveal" style="--d:.16s; height:376px">
+                <div class="k">Ability 01 · <em>whom</em> to delegate to</div>
+                <h3>capability-discovery</h3>
+                <p class="knob-line"><strong>Knob:</strong> information = names. The coordinator knows its specialists exist but not what they can do.</p>
+                <div class="hr" style="margin:18px 0 18px"></div>
+                <p style="font-size:18px"><strong>Failure mass:</strong> MAST inter-agent misalignment, 36.9% of 1,600+ annotated failures.<br>
+                   <strong>Trains:</strong> ToolRL (NeurIPS 2025) — GRPO on tool selection, +17% / +15%.</p>
+            </div>
+            <div class="card reveal" style="--d:.22s; height:376px">
+                <div class="k">Ability 02 · <em>what</em> goes in the brief</div>
+                <h3>context-transfer</h3>
+                <p class="knob-line"><strong>Knob:</strong> the partition alone. Catalogues on, budget off — only briefing quality varies.</p>
+                <div class="hr" style="margin:18px 0 18px"></div>
+                <p style="font-size:18px"><strong>Failure mass:</strong> MAST specification + misalignment ≈ 79%; agent-to-agent is every model's weakest Gaia2 category.<br>
+                   <strong>Trains:</strong> SWEET-RL — turn-level credit on collaborative tasks.</p>
+            </div>
+            <div class="card reveal" style="--d:.28s; height:376px">
+                <div class="k">Ability 03 · <em>when</em> to spawn and stop</div>
+                <h3>delegation-economy</h3>
+                <p class="knob-line"><strong>Knob:</strong> a soft <span class="mono" style="font-size:17px">bN</span> target from the causal write/read structure. Catalogues on, so discovery is neutralised.</p>
+                <div class="hr" style="margin:18px 0 18px"></div>
+                <p style="font-size:18px"><strong>Failure mass:</strong> MAST step repetition 15.7% + termination unawareness 12.4%.<br>
+                   <strong>Trains:</strong> Uno-Orchestra (2026) — Agentic-GRPO for selective delegation.</p>
+            </div>
+        </div>
+
+        <div class="cols reveal" style="--d:.38s; margin-top:34px; gap:48px">
+            <div class="col" style="flex:1.4">
+                <div class="callout">
+                    <div class="body" style="font-size:22px; color:var(--ink)">
+                        <strong>The one-knob rule.</strong> A knob delta is a per-ability price only while the other knobs sit at neutral.
+                        A names + budget cell moves two abilities at once and its delta prices neither, so the renderer will not emit one —
+                        and a stray sweep row is classified into exactly one bucket rather than double-counted.
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="body" style="font-size:21px">
+                    Theory-of-mind and failure-recovery stay <strong>quarantined</strong>: no free oracle exists for either, and building one is
+                    precisely the failure mode this architecture exists to avoid.
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>forge/abilities.py</b> &nbsp;·&nbsp; skills/trainable-abilities/SKILL.md</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     09 — STAGE 5: EXECUTE
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="stage-mark reveal"><i></i><i></i><i></i><i></i><i class="build"></i><i></i><i></i></div>
+        <div class="eyebrow reveal" style="--d:.03s"><span class="n">Stage 05</span> &nbsp;/&nbsp; Execute</div>
+        <h2 class="reveal" style="--d:.06s">Roll the episode out for real, and record every decision.</h2>
+
+        <div class="cols" style="margin-top:38px; gap:60px">
+            <div class="col" style="flex:1.15">
+                <div class="mono reveal" style="--d:.12s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
+                    The delegation loop, per turn
+                </div>
+                <div class="rows">
+                    <div class="row-item reveal" style="--d:.16s" style="grid-template-columns:74px 1fr">
+                        <div class="idx">→</div>
+                        <div><div class="ttl" style="font-size:25px">Coordinator writes a brief</div>
+                             <div class="dsc" style="font-size:19px">Natural language, addressed to one role. This is the trained artifact.</div></div>
+                    </div>
+                    <div class="row-item reveal" style="--d:.21s">
+                        <div class="idx">→</div>
+                        <div><div class="ttl" style="font-size:25px">Specialist writes code against its one app</div>
+                             <div class="dsc" style="font-size:19px">A real LLM doing real work — not a scripted stub, so the brief has to actually be sufficient.</div></div>
+                    </div>
+                    <div class="row-item reveal" style="--d:.26s">
+                        <div class="idx">→</div>
+                        <div><div class="ttl" style="font-size:25px">Sandbox adjudicates the code</div>
+                             <div class="dsc" style="font-size:19px">A static gate over what model-written code may touch; refusals are recorded with reasons.</div></div>
+                    </div>
+                    <div class="row-item reveal" style="--d:.31s">
+                        <div class="idx">→</div>
+                        <div><div class="ttl" style="font-size:25px">Report returns to the coordinator</div>
+                             <div class="dsc" style="font-size:19px">Brief, code, verdict and report are all persisted to a per-episode ledger.</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="mono reveal" style="--d:.20s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
+                    What makes the rollout reproducible
+                </div>
+                <table class="tb reveal" style="--d:.24s">
+                    <tr><td class="k">Sidecar container</td><td>the benchmark runs isolated behind a service boundary; the package pins the same versions the sweep measured</td></tr>
+                    <tr><td class="k">Execution contract</td><td><span class="mono" style="font-size:17px">objective-actions-v1</span> — conditional writes wait for an observed trigger; one obligation, one side effect. Versioned, so a prompt change is a labelled experiment</td></tr>
+                    <tr><td class="k">Model parity</td><td>a specialist below the coordinator's model class refuses to run unless an explicit flag labels the downgrade</td></tr>
+                    <tr><td class="k">Substrate isolation</td><td>Gaia2's harness needs pydantic 2 and AppWorld pins pydantic 1, so each gets its own environment</td></tr>
+                    <tr><td class="k">Packaging</td><td>rendered to Harbor; a Gaia2 task carries its whole world in <span class="mono" style="font-size:17px">scenario.json</span> and rebuilds from its own directory</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev">forge/*/runtime.py · sandbox.py · container/ · harbor.py &nbsp;·&nbsp; 261 trajectories recorded to date</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     10 — STAGE 6: GRADE
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="stage-mark reveal"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+        <div class="eyebrow reveal" style="--d:.03s"><span class="n">Stage 06</span> &nbsp;/&nbsp; Grade</div>
+        <h2 class="reveal" style="--d:.06s">The inherited verifier gives the reward. A shaping layer gives the gradient.</h2>
+
+        <div class="cols" style="margin-top:40px; gap:56px">
+            <div class="col">
+                <div class="card reveal" style="--d:.14s; height:auto; border-color:var(--ink)">
+                    <div class="k">The reward — unmodified, terminal-state</div>
+                    <h3>The benchmark's own verifier</h3>
+                    <p>AppWorld checks world state and side effects with no model in the loop. Gaia2 checks gold write actions.
+                       Neither was written here, neither is touched here, and neither can be reached from any constraint knob.</p>
+                    <p style="color:var(--ink-3); font-size:19px">This is the only signal permitted near a gradient.</p>
+                </div>
+
+                <div class="callout reveal" style="--d:.24s; margin-top:26px">
+                    <div class="body" style="font-size:21px">
+                        A binary pass/fail on a 16-write task is a <strong>very sparse reward</strong>. That is a credit-assignment problem, not a
+                        reason to invent a coordination judge — so the shaping is computed <em>beside</em> the verdict, never instead of it.
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="mono reveal" style="--d:.20s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
+                    Deterministic shaping signals · no model involved
+                </div>
+                <table class="tb reveal" style="--d:.24s">
+                    <tr><td class="k">coverage</td><td>fraction of gold write actions the episode reached at all</td></tr>
+                    <tr><td class="k">fidelity</td><td>fraction of those reached with exactly correct arguments</td></tr>
+                    <tr><td class="k">partial reward</td><td>the two combined, so a failed episode with a correct prefix is not flattened to zero</td></tr>
+                    <tr><td class="k">pivot</td><td>the index of the <em>first</em> fault, and its kind</td></tr>
+                    <tr><td class="k">economy reward</td><td>completion-gated auxiliary term on delegation count; exceeding <span class="mono" style="font-size:17px">bN</span> never blocks completion</td></tr>
+                </table>
+                <div class="callout blue reveal" style="--d:.34s; margin-top:28px">
+                    <div class="body" style="font-size:22px; color:var(--ink)">
+                        <strong>Pivot enables prefix replay.</strong> Freeze <span class="mono" style="font-size:19px">events[:pivot]</span>,
+                        resample the suffix. A 20-step episode that failed at step 6 becomes 14 steps of targeted training data
+                        instead of one discarded rollout.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>forge/gaia2/credit.py</b> — 210 lines, deterministic &nbsp;·&nbsp; <b>sweep/gaia2_credit.json</b></span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     11 — STAGE 7: ACCEPT
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="stage-mark reveal"><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i></div>
+        <div class="eyebrow reveal" style="--d:.03s"><span class="n">Stage 07</span> &nbsp;/&nbsp; Accept</div>
+        <h2 class="reveal" style="--d:.06s">The quality gate: a cell ships only if its score sits strictly between floor and control.</h2>
+
+        <div class="cols" style="margin-top:36px; gap:72px">
+            <div class="col" style="flex:0.78">
+                <div style="position:relative; height:430px; margin-left:34px">
+                    <div class="reveal" style="--d:.16s; position:absolute; left:0; right:0; top:22px; height:2px; background:var(--ink)"></div>
+                    <div class="reveal" style="--d:.16s; position:absolute; left:0; top:-12px; font-family:var(--mono); font-size:16px; color:var(--ink)">unconstrained control</div>
+                    <div class="reveal" style="--d:.22s; position:absolute; left:0; right:0; top:24px; height:280px; background:rgba(57,135,229,0.09); border-radius:6px"></div>
+                    <div class="reveal" style="--d:.28s; position:absolute; left:26px; top:136px; font-size:32px; font-weight:600; color:var(--blue-650); letter-spacing:-0.02em">VALID</div>
+                    <div class="reveal" style="--d:.28s; position:absolute; left:26px; top:180px; font-size:19px; color:var(--ink-2); max-width:280px">the constraint bit, and the task survived it</div>
+                    <div class="reveal" style="--d:.20s; position:absolute; left:0; right:0; top:304px; height:2px; background:var(--critical)"></div>
+                    <div class="reveal" style="--d:.20s; position:absolute; left:0; top:316px; font-family:var(--mono); font-size:16px; color:var(--critical)">do-nothing floor</div>
+                    <div class="reveal" style="--d:.34s; position:absolute; left:0; right:0; top:344px; height:86px; background:rgba(208,59,59,0.06); border-radius:6px"></div>
+                    <div class="reveal" style="--d:.38s; position:absolute; left:26px; top:374px; font-size:21px; color:var(--critical); font-weight:600">DEGENERATE</div>
+                </div>
+            </div>
+
+            <div class="col" style="flex:1.22">
+                <div class="body reveal" style="--d:.12s; font-size:24px; margin-bottom:28px">
+                    Without this stage a generator cannot distinguish four situations that all print a number:
+                    <strong>the task is unsolvable · the constraint never bit · the harness is broken · coordination was actually learned.</strong>
+                </div>
+                <table class="tb reveal" style="--d:.22s">
+                    <tr><td class="k">VALID</td><td>floor &lt; score &lt; control — usable RL data</td></tr>
+                    <tr><td class="k">DEGENERATE</td><td>score ≤ floor — no signal above doing nothing</td></tr>
+                    <tr><td class="k">NO_BITE</td><td>score ≥ control — the constraint changed nothing</td></tr>
+                    <tr><td class="k">NO_VARIANCE</td><td>every replicate identical — no advantage to learn from</td></tr>
+                    <tr><td class="k">CONTROL_FAILED</td><td>the control is on the floor — the cell is unmeasurable</td></tr>
+                </table>
+                <div class="callout blue reveal" style="--d:.32s; margin-top:26px">
+                    <div class="body" style="font-size:22px; color:var(--ink)">
+                        <strong>Five replicates minimum.</strong> A single draw has no variance to read, so
+                        <span class="mono" style="font-size:19px">SEEDS_FOR_YIELD = 5</span> refuses to report a one-seed run as a yield.
+                        Floor and control are both probed per task, not assumed.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>forge/appworld/validity.py</b> — substrate-independent: it needs only a score, a floor and a control</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     12 — CONTROLS
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">12</span> &nbsp;/&nbsp; Data-quality controls</div>
+        <h2 class="reveal" style="--d:.06s">Six checks that run on every build.</h2>
+
+        <div class="body reveal" style="--d:.11s; margin-top:16px; max-width:1640px">
+            Inheriting a verifier buys a correct judge. It buys nothing about the <em>world</em> around it — so each of these
+            probes a way the environment could be paying for the wrong behaviour. All six are deterministic; none uses a model.
+        </div>
+
+        <div class="grid-3" style="margin-top:28px">
+            <div class="card reveal" style="--d:.16s; height:262px; border-color:rgba(208,59,59,0.4)">
+                <div class="k">Control 01 · reward-protocol audit</div>
+                <h3>Honest failure must not cost more than doing nothing</h3>
+                <p>Measured: a truthful prose surrender scored <strong style="color:var(--critical)">0.167</strong> against a <strong>0.333</strong> floor,
+                   on 3 of 3 tasks — the environment paid more for a false <span class="mono" style="font-size:16px">completed</span>.</p>
+            </div>
+            <div class="card reveal" style="--d:.21s; height:284px">
+                <div class="k">the fix, at the protocol layer</div>
+                <h3>A surrender verb, never a judge change</h3>
+                <p>The contract gained <span class="mono" style="font-size:16px">FAIL ::</span>, routed to
+                   <span class="mono" style="font-size:16px">status='fail'</span> — a channel that prices at exactly the floor.
+                   Any substrate where honest failure scores below its floor now fails admission.</p>
+            </div>
+            <div class="card reveal" style="--d:.26s; height:284px">
+                <div class="k">Control 02 · injection probe</div>
+                <h3>A brief must not extract the reward token</h3>
+                <p>Adversarial briefs are run against every specialist to check that a coordinator cannot talk its way to the answer
+                   instead of coordinating for it.</p>
+            </div>
+            <div class="card reveal" style="--d:.31s; height:284px">
+                <div class="k">Control 03 · floor &amp; control probes</div>
+                <h3>Both reference points are measured per task</h3>
+                <p>The do-nothing floor and the unconstrained ceiling are rolled out, never assumed. Only tasks whose control succeeds
+                   can price a knob at all.</p>
+            </div>
+            <div class="card reveal" style="--d:.36s; height:284px">
+                <div class="k">Control 04 · parity &amp; drift</div>
+                <h3>The shipped task is the measured task</h3>
+                <p>A gate fails the build if a committed container task no longer matches its generator; the model-parity rule blocks a
+                   silent specialist downgrade.</p>
+            </div>
+            <div class="card reveal" style="--d:.41s; height:284px">
+                <div class="k">Control 05 · degeneracy quarantine</div>
+                <h3>Zero-variance dimensions are pinned as failing</h3>
+                <p style="font-size:20px">Two degenerate dimensions are kept rather than deleted, with
+                   <span class="mono" style="font-size:16px">xfail(strict=True)</span> on their self-check — a permanent regression test
+                   against shipping a reward that discriminates nothing.</p>
+            </div>
+        </div>
+
+        <div class="reveal" style="--d:.48s; margin-top:22px; display:flex; gap:14px; align-items:center">
+            <span class="chip is-good"><span class="dot"></span>557 tests passing</span>
+            <span class="chip"><span class="dot"></span>2 deliberate xfails</span>
+            <span class="chip"><span class="dot"></span>25 evidence files, one per claim</span>
+            <span class="small" style="margin-left:10px">every number in the write-up names the file that produced it</span>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>appworld_honesty.json</b> · <b>appworld_injection.json</b> · <b>appworld_donothing.json</b> · <b>tom_degeneracy.json</b></span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     13 — RESULT: APPWORLD KNOB PRICES
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">13</span> &nbsp;/&nbsp; Result — AppWorld</div>
+        <h2 class="reveal" style="--d:.06s">What each constraint costs, priced against a measured ceiling and floor.</h2>
+
+        <div class="cols" style="margin-top:26px; gap:56px">
+            <div class="col" style="flex:1.5">
+                <div class="dotplot reveal" style="--d:.14s">
+                    <div class="dp-legend">
+                        <span><i style="background:#0D0D0D"></i>control ceiling 1.000</span>
+                        <span style="color:var(--critical)"><i style="background:#d03b3b"></i>do-nothing floor 0.333</span>
+                    </div>
+                    <div class="dp-axis">
+                        <div class="dp-tick" style="top:0%">1.000</div>
+                        <div class="dp-tick" style="top:16.7%">0.833</div>
+                        <div class="dp-tick" style="top:33.3%">0.667</div>
+                        <div class="dp-tick" style="top:66.7%">0.333</div>
+                        <div class="dp-tick" style="top:83.3%">0.167</div>
+                    </div>
+                    <div class="dp-plot">
+                        <div class="dp-band" style="top:0%; height:66.7%"></div>
+                        <div class="dp-grid ceil"  style="top:0%"></div>
+                        <div class="dp-grid floor" style="top:66.7%"></div>
+
+                        <div class="dp-col" style="left:0%; width:33.3%">
+                            <div class="dp-cluster pop" style="--d:.28s; top:0%">
+                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
+                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
+                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
+                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
+                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
+                            </div>
+                            <div class="dp-label"><div class="cfg">open</div><div class="role">the control</div><div class="mean">mean 1.000</div></div>
+                        </div>
+
+                        <div class="dp-col" style="left:33.3%; width:33.3%">
+                            <div class="dp-cluster pop" style="--d:.38s; top:0%">
+                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
+                                <span class="dp-dot"></span><span class="dp-dot"></span>
+                            </div>
+                            <div class="dp-cluster pop" style="--d:.44s; top:16.7%">
+                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
+                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
+                            </div>
+                            <div class="dp-cluster pop" style="--d:.50s; top:33.3%">
+                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
+                            </div>
+                            <div class="dp-label"><div class="cfg">star-docs</div><div class="role">context-transfer</div><div class="mean">mean 0.855</div></div>
+                        </div>
+
+                        <div class="dp-col" style="left:66.7%; width:33.3%">
+                            <div class="dp-cluster pop" style="--d:.56s; top:0%">
+                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
+                            </div>
+                            <div class="dp-cluster pop" style="--d:.60s; top:16.7%"><span class="dp-dot"></span></div>
+                            <div class="dp-cluster pop" style="--d:.64s; top:66.7%"><span class="dp-dot"></span></div>
+                            <div class="dp-cluster pop" style="--d:.68s; top:83.3%">
+                                <span class="dp-dot below"></span><span class="dp-dot below"></span><span class="dp-dot below"></span>
+                                <span class="dp-dot below"></span><span class="dp-dot below"></span><span class="dp-dot below"></span>
+                                <span class="dp-dot below"></span><span class="dp-dot below"></span><span class="dp-dot below"></span>
+                            </div>
+                            <div class="dp-label"><div class="cfg">star-names</div><div class="role">capability-discovery</div><div class="mean">mean 0.445</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="body reveal" style="--d:.22s; font-size:23px">
+                    3 tasks × 5 seeds = <strong>15 rollouts per configuration</strong>. Coordinator
+                    <span class="mono" style="font-size:19px">gpt-5.6-sol</span>, specialists
+                    <span class="mono" style="font-size:19px">gpt-4.1</span>. Every dot is one rollout.
+                </div>
+                <div class="hr reveal" style="--d:.28s; margin:26px 0"></div>
+                <div class="body reveal" style="--d:.32s; font-size:23px">
+                    Removing the coordinator's tools and forcing it to delegate costs <strong>0.145</strong>.
+                    The control held 1.000 on all 15; <span class="mono" style="font-size:19px">star-docs</span> landed below it on
+                    <strong>10 of 15</strong>, spread 0.667–1.000. That spread is the signal — a constraint that always ties the ceiling
+                    teaches nothing.
+                </div>
+                <div class="hr reveal" style="--d:.40s; margin:26px 0"></div>
+                <div class="reveal" style="--d:.44s">
+                    <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:14px">Yield, at five seeds</div>
+                    <table class="tb">
+                        <tr><td class="k">context-transfer</td><td class="num">3 / 3</td></tr>
+                        <tr><td class="k">capability-discovery</td><td class="num">2 / 3</td></tr>
+                        <tr><td class="k" style="color:var(--blue-650)">shipped cells usable</td><td class="num" style="color:var(--blue-650)">5 / 6</td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>sweep/appworld_knobs_v5.json</b> &nbsp;·&nbsp; floor from <b>appworld_donothing.json</b> &nbsp;·&nbsp; verdicts from validity.py</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     14 — RESULT: GAIA2 CORPUS
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">14</span> &nbsp;/&nbsp; Result — Gaia2 corpus</div>
+        <h2 class="reveal" style="--d:.06s">A second substrate through the same pipeline, unchanged above the glue layer.</h2>
+
+        <div class="body reveal" style="--d:.11s; margin-top:22px; max-width:1640px">
+            The point of a second substrate is to test whether the pipeline is a method or an AppWorld wrapper.
+            Stages 1, 3, 4 and 7 ran <strong>without modification</strong>; stages 2, 5 and 6 needed new mechanics for the same rules.
+        </div>
+
+        <div class="cols" style="margin-top:38px; gap:68px">
+            <div class="col">
+                <div class="mono reveal" style="--d:.16s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
+                    Task structure the mining recovers
+                </div>
+                <table class="tb reveal" style="--d:.20s">
+                    <tr><th></th><th>AppWorld family</th><th>Gaia2 seamful</th></tr>
+                    <tr><td class="k">roster size</td><td class="num">2</td><td class="num">3 – 7</td></tr>
+                    <tr><td class="k">gold writes per task</td><td class="num">short scripts</td><td class="num">5 – 16</td></tr>
+                    <tr><td class="k">forced sequencing (DAG depth)</td><td class="num">shallow</td><td class="num">2 – 4</td></tr>
+                    <tr><td class="k">parallel width</td><td class="num">2</td><td class="num">2 – 12</td></tr>
+                </table>
+                <div class="body reveal" style="--d:.30s; margin-top:24px; font-size:21px">
+                    Materially longer-horizon and wider: a coordinator can face <strong>up to 12 parallelisable gold writes in a single fan-out</strong>,
+                    which is exactly the decision density requirement #5 asked for.
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="grid-2 reveal" style="--d:.24s">
+                    <div class="stat blue"><div class="v">37</div><div class="l">unique seamful scenarios<br>across two splits</div></div>
+                    <div class="stat blue"><div class="v">148</div><div class="l">specified cells — a shared control<br>plus one per ability, per scenario</div></div>
+                </div>
+                <div class="hr reveal" style="--d:.32s; margin:32px 0"></div>
+                <div class="body reveal" style="--d:.36s; font-size:21px">
+                    Both splits show the same dominant seam edges — Contacts / InternalContacts → Cabs / Messages — which indicates the
+                    provenance rule is recovering a <strong>real structural property of the app graph</strong> rather than noise.
+                </div>
+                <div class="small reveal" style="--d:.42s; margin-top:20px">
+                    The heuristic under-reports by construction: exact string matching, so a date reformatted in transit is invisible, and
+                    values appearing in three or more apps are treated as ambient. It is a tested heuristic's output, not a dependency proof.
+                </div>
+                <div class="reveal" style="--d:.48s; margin-top:22px; display:flex; gap:12px; flex-wrap:wrap">
+                    <span class="chip"><span class="dot"></span>GPT-5 high: 42% pass@1 single-agent</span>
+                    <span class="chip"><span class="dot"></span>4 of 6 splits still unfetched</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>sweep/gaia2_cells.json</b> · <b>gaia2_cells_adaptability.json</b> &nbsp;·&nbsp; forge/gaia2/mine.py · structure.py</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     15 — RESULT: GAIA2 CAMPAIGN
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">15</span> &nbsp;/&nbsp; Result — Gaia2 campaign, first pass</div>
+        <h2 class="reveal" style="--d:.06s">All 148 cells rolled out. At one seed the knobs do not separate.</h2>
+
+        <div class="cols" style="margin-top:36px; gap:60px">
+            <div class="col" style="flex:1.4">
+                <div class="mono reveal" style="--d:.12s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:22px">
+                    Mean partial reward &nbsp;·&nbsp; 37 scenarios per cell type &nbsp;·&nbsp; axis 0 → 0.40
+                </div>
+                <div class="bars reveal" style="--d:.16s">
+                    <div class="bar-row" style="grid-template-columns:230px 1fr 200px">
+                        <div class="lbl">control</div>
+                        <div class="bar-track"><div class="bar-fill dim grow" style="--d:.24s; width:62.8%"></div></div>
+                        <div class="val">0.251 &nbsp;<span style="color:var(--ink-3); font-size:17px">2/37</span></div>
+                    </div>
+                    <div class="bar-row" style="grid-template-columns:230px 1fr 200px">
+                        <div class="lbl">discovery</div>
+                        <div class="bar-track"><div class="bar-fill mid grow" style="--d:.30s; width:61.8%"></div></div>
+                        <div class="val">0.247 &nbsp;<span style="color:var(--ink-3); font-size:17px">3/37</span></div>
+                    </div>
+                    <div class="bar-row" style="grid-template-columns:230px 1fr 200px">
+                        <div class="lbl">context</div>
+                        <div class="bar-track"><div class="bar-fill mid grow" style="--d:.36s; width:63.3%"></div></div>
+                        <div class="val">0.253 &nbsp;<span style="color:var(--ink-3); font-size:17px">2/37</span></div>
+                    </div>
+                    <div class="bar-row" style="grid-template-columns:230px 1fr 200px">
+                        <div class="lbl">economy</div>
+                        <div class="bar-track"><div class="bar-fill mid grow" style="--d:.42s; width:70.5%"></div></div>
+                        <div class="val">0.282 &nbsp;<span style="color:var(--ink-3); font-size:17px">2/37</span></div>
+                    </div>
+                </div>
+
+                <div class="callout reveal" style="--d:.50s; margin-top:34px">
+                    <div class="body" style="font-size:22px">
+                        <strong>34 of 37 scenarios fail under all four cells.</strong> One succeeds under all four; two split.
+                        Under the acceptance rule this is a <span class="mono" style="font-size:19px">CONTROL_FAILED</span> corpus at one seed —
+                        the cells are unmeasurable, not negative, and none of them ships until the replicates land.
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="body reveal" style="--d:.22s; font-size:23px">
+                    Gaia2 is a materially harder substrate than AppWorld, and the single-agent control shows it:
+                    <strong>2 of 37</strong>, against AppWorld's 15 of 15.
+                </div>
+                <div class="hr reveal" style="--d:.30s; margin:26px 0"></div>
+                <div class="reveal" style="--d:.34s">
+                    <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:14px">A confound still in the data</div>
+                    <div class="body" style="font-size:21px">
+                        Reply-conditioned scenarios were graded by Gaia2's official soft judge and unconditioned ones by the scripted verifier:
+                        <strong>0 of 128 soft-judged cells passed, 9 of 20 scripted cells did.</strong>
+                        Judge and scenario difficulty are entangled, so that split does not yet indict either — separating them is the next probe.
+                    </div>
+                </div>
+                <div class="hr reveal" style="--d:.42s; margin:26px 0"></div>
+                <div class="reveal" style="--d:.46s; display:flex; gap:12px; flex-wrap:wrap">
+                    <span class="chip"><span class="dot"></span>3.9 h wall clock</span>
+                    <span class="chip"><span class="dot"></span>single seed</span>
+                    <span class="chip"><span class="dot"></span>148 / 148 cells run</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>sweep/gaia2_full_campaign.json</b> — 148 rows, deduplicated to the newest run per (scenario, ability)</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     16 — RESULT: THE SHAPING SIGNAL
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">16</span> &nbsp;/&nbsp; Result — what the shaping layer recovers</div>
+        <h2 class="reveal" style="--d:.06s">The pass rate did not move. <em>Which failure happens</em> moved sharply.</h2>
+
+        <div class="body reveal" style="--d:.11s; margin-top:18px; max-width:1660px">
+            Count of episodes whose <em>first</em> fault was of each kind. This is the argument for shaping: a binary verdict called all four
+            cell types identical, while the first-fault distribution separates them cleanly.
+        </div>
+
+        <div class="reveal" style="--d:.18s; margin-top:30px">
+            <div class="matrix">
+                <div></div>
+                <div class="mx-h">environment<br>stop</div>
+                <div class="mx-h">malformed</div>
+                <div class="mx-h">surrender</div>
+                <div class="mx-h">wrong<br>arguments</div>
+                <div class="mx-h">refusal</div>
+                <div class="mx-h">false<br>outage</div>
+
+                <div class="mx-rh">control</div>
+                <div class="mx-c" style="background:#104281; color:#fff">19</div>
+                <div class="mx-c" style="background:#256abf; color:#fff">13</div>
+                <div class="mx-c" style="background:#b7d3f6">4</div>
+                <div class="mx-c" style="background:#fbfbfa; color:#B4B3AD">0</div>
+                <div class="mx-c" style="background:#fbfbfa; color:#B4B3AD">0</div>
+                <div class="mx-c" style="background:#fbfbfa; color:#B4B3AD">0</div>
+
+                <div class="mx-rh">discovery</div>
+                <div class="mx-c" style="background:#cde2fb">3</div>
+                <div class="mx-c" style="background:#9ec5f4">7</div>
+                <div class="mx-c" style="background:#e2eefd">1</div>
+                <div class="mx-c" style="background:#2a78d6; color:#fff">11</div>
+                <div class="mx-c" style="background:#3987e5; color:#fff">9</div>
+                <div class="mx-c" style="background:#6da7ec">6</div>
+
+                <div class="mx-rh">context</div>
+                <div class="mx-c" style="background:#86b6ef">6</div>
+                <div class="mx-c" style="background:#9ec5f4">7</div>
+                <div class="mx-c" style="background:#b7d3f6">4</div>
+                <div class="mx-c" style="background:#184f95; color:#fff">17</div>
+                <div class="mx-c" style="background:#e2eefd">1</div>
+                <div class="mx-c" style="background:#e2eefd">1</div>
+
+                <div class="mx-rh">economy</div>
+                <div class="mx-c" style="background:#9ec5f4">5</div>
+                <div class="mx-c" style="background:#256abf; color:#fff">13</div>
+                <div class="mx-c" style="background:#fbfbfa; color:#B4B3AD">0</div>
+                <div class="mx-c" style="background:#184f95; color:#fff">17</div>
+                <div class="mx-c" style="background:#e2eefd">1</div>
+                <div class="mx-c" style="background:#fbfbfa; color:#B4B3AD">0</div>
+            </div>
+        </div>
+
+        <div class="grid-3 reveal" style="--d:.44s; margin-top:24px">
+            <div class="card">
+                <div class="k">The control</div>
+                <p style="margin-top:0"><strong>32 of 36 faults are “never got going”</strong> — the environment stopped it, or its output was malformed.
+                   These are harness-shaped failures, not coordination failures.</p>
+            </div>
+            <div class="card" style="border-color:rgba(28,92,171,0.4)">
+                <div class="k">The partitioned cells</div>
+                <p style="margin-top:0">Faults move to <strong>wrong arguments, refusal and false outage</strong> — a specialist acting on an
+                   underspecified brief, or the coordinator inventing a reason the world is unavailable.</p>
+            </div>
+            <div class="card">
+                <div class="k">Why it matters for training</div>
+                <p style="margin-top:0">Those are the coordinator's own errors, they are localised to a specific turn, and the pivot index makes
+                   that turn <strong>addressable by prefix replay</strong>.</p>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>sweep/gaia2_credit.json</b> &nbsp;·&nbsp; darker cell = more episodes &nbsp;·&nbsp; every cell direct-labelled</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     17 — THE CORPUS TODAY
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">17</span> &nbsp;/&nbsp; Inventory</div>
+        <h2 class="reveal" style="--d:.06s">What the pipeline has produced so far.</h2>
+
+        <div class="grid-4 reveal" style="--d:.14s; margin-top:56px">
+            <div class="stat"><div class="v">10</div><div class="l">rendered container tasks<br>runnable from a clean checkout</div></div>
+            <div class="stat"><div class="v">148</div><div class="l">specified Gaia2 cells<br>across 37 seamful scenarios</div></div>
+            <div class="stat"><div class="v">261</div><div class="l">graded trajectories<br>every message, delegation and tool call</div></div>
+            <div class="stat"><div class="v">25</div><div class="l">evidence files<br>one per claim in the write-up</div></div>
+        </div>
+
+        <div class="hr reveal" style="--d:.24s; margin:52px 0"></div>
+
+        <div class="cols" style="gap:64px">
+            <div class="col reveal" style="--d:.28s">
+                <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:18px">Shipped and verified</div>
+                <table class="tb">
+                    <tr><td class="k">6 AppWorld container tasks</td><td>3 tasks × 2 configurations, oracle-verified passing</td></tr>
+                    <tr><td class="k">3 Gaia2 container tasks</td><td>self-contained worlds; rebuild identically from their own directory</td></tr>
+                    <tr><td class="k">5 of 6 AppWorld cells</td><td>usable RL data by the acceptance rule, at five replicates</td></tr>
+                </table>
+            </div>
+            <div class="col reveal" style="--d:.36s">
+                <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:18px">Codebase</div>
+                <table class="tb">
+                    <tr><td class="k">14.4k lines Python</td><td>two substrate implementations over one shared method core</td></tr>
+                    <tr><td class="k">557 tests, 2 xfails</td><td>the xfails pin the quarantined degenerate dimensions</td></tr>
+                    <tr><td class="k">1 trajectory viewer</td><td>single-file, offline: briefs, specialist code, sandbox verdicts, verifier breakdowns</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev">tasks/ · output/rollouts/ · sweep/ · forge/ · trajectory_viewer.html</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     18 — THE METHOD, PACKAGED
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">18</span> &nbsp;/&nbsp; Portability</div>
+        <h2 class="reveal" style="--d:.06s">The method is written down as an executable procedure, not a description.</h2>
+
+        <div class="body reveal" style="--d:.11s; margin-top:22px; max-width:1560px">
+            Three skills, ~1,000 lines. This is the part that survives if both substrates are replaced — and the reason a third substrate
+            is a week of work rather than a rewrite.
+        </div>
+
+        <div class="grid-3" style="margin-top:38px">
+            <div class="card reveal" style="--d:.16s; height:384px">
+                <div class="k">576 lines · the canonical path</div>
+                <h3>constraint-forged-<br>multi-agent-tasks</h3>
+                <p>The inherited-task, inherited-verifier procedure: admission test, both mining rules, the four constraint families,
+                   the acceptance gate, and the disqualifiers in the order they bite.</p>
+                <p style="color:var(--ink-3); font-size:19px">Substrate-independent — it names AppWorld only as an example.</p>
+            </div>
+            <div class="card reveal" style="--d:.22s; height:384px">
+                <div class="k">373 lines · the other path</div>
+                <h3>build-ground-up-<br>multi-agent-tasks</h3>
+                <p>For inventing a task family from first principles, where you <em>do</em> design the verifier — so agreement between world
+                   and judge is not independent evidence.</p>
+                <p style="color:var(--ink-3); font-size:19px">Requires independent generator / reference / verifier implementations, mutation tests,
+                   adversarial review, and clean-room one-command replay.</p>
+            </div>
+            <div class="card reveal" style="--d:.28s; height:384px">
+                <div class="k">53 lines · the selection rule</div>
+                <h3>trainable-abilities</h3>
+                <p>Which abilities are worth rendering cells for, the external evidence that each matters and each trains, and the
+                   one-knob rule that keeps a cell pricing exactly one of them.</p>
+                <p style="color:var(--ink-3); font-size:19px">Applies on any substrate — it never names one.</p>
+            </div>
+        </div>
+
+        <div class="callout reveal" style="--d:.38s; margin-top:32px">
+            <div class="body" style="font-size:23px; color:var(--ink)">
+                <strong>The two paths never mix evidence.</strong> A claim about an inherited verifier may not borrow credibility from one
+                you designed yourself — the ground-up path carries its own, much heavier, audit burden precisely because it lacks the
+                external validation the inherited path gets for free.
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev">skills/ — the canonical statement of the method</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     19 — SCALE
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">19</span> &nbsp;/&nbsp; Scale economics</div>
+        <h2 class="reveal" style="--d:.06s">Everything upstream of rollout is free. Rollout is the entire cost.</h2>
+
+        <div class="cols" style="margin-top:42px; gap:68px">
+            <div class="col">
+                <table class="tb reveal" style="--d:.14s">
+                    <tr><th>stage</th><th>marginal cost</th></tr>
+                    <tr><td class="k">world</td><td>free — <span class="mono" style="font-size:19px">pip install</span></td></tr>
+                    <tr><td class="k">verifier</td><td>free — the benchmark's own <span class="mono" style="font-size:19px">evaluate()</span></td></tr>
+                    <tr><td class="k">task + ground truth</td><td>free — 732 AppWorld tasks, 1,120 Gaia2 scenarios</td></tr>
+                    <tr><td class="k">mining + partition + render</td><td>seconds, deterministic, no model calls</td></tr>
+                    <tr><td class="k" style="color:var(--critical)">specialist rollouts</td><td style="color:var(--critical)"><strong>the whole budget</strong></td></tr>
+                </table>
+
+                <div class="reveal" style="--d:.26s; margin-top:36px; display:flex; gap:52px">
+                    <div class="stat crit"><div class="v">4.2<span style="font-size:42px">h</span></div><div class="l">worst measured single rollout<br>≈ 229 s per specialist turn</div></div>
+                    <div class="stat"><div class="v">30k</div><div class="l">TPM ceiling it was sleeping against —<br>an account limit, not an inherent cost</div></div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="callout blue reveal" style="--d:.22s">
+                    <div class="body" style="font-size:24px; color:var(--ink)">
+                        <strong>The binding constraint is not compute.</strong> Only tasks whose unconstrained control <em>succeeds</em> can price a knob —
+                        and that filter needs real rollouts. It cannot be derived by inspection, which is why corpus size and usable corpus size
+                        are different numbers.
+                    </div>
+                </div>
+
+                <div class="body reveal" style="--d:.32s; margin-top:32px; font-size:22px">
+                    <strong>Available today by reconfiguring real tasks rather than inventing them:</strong>
+                    39 AppWorld tasks × 2 shipped configurations = 78 variants plus 39 free controls, and 148 Gaia2 cells already specified.
+                </div>
+
+                <div class="body reveal" style="--d:.40s; margin-top:24px; font-size:22px">
+                    Extrapolating the measured seam rate across Gaia2's full 1,120 scenarios suggests <strong>~120 further seamful candidates</strong>
+                    before any parameterisation — an extrapolation, not a measurement, and four of six splits are still unfetched.
+                </div>
+
+                <div class="small reveal" style="--d:.48s; margin-top:22px">
+                    Prefix replay changes this economics directly: a failed 20-step episode currently costs a full rollout and yields one
+                    negative example; with a pivot index it yields a targeted resample of the suffix.
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev"><b>sweep/appworld_rate_limit_cost.json</b> &nbsp;·&nbsp; <b>appworld_span.json</b></span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     20 — ROADMAP
+     ============================================================ -->
+<section class="slide">
+    <div class="pad">
+        <div class="eyebrow reveal"><span class="n">20</span> &nbsp;/&nbsp; Next</div>
+        <h2 class="reveal" style="--d:.06s">Five things, in the order they unblock the rest.</h2>
+
+        <div class="rows" style="margin-top:38px">
+            <div class="row-item reveal" style="--d:.12s">
+                <div class="idx">01</div>
+                <div><div class="ttl">Five replicates across the Gaia2 grid</div>
+                     <div class="dsc">The acceptance rule cannot report a yield at one seed. This is the expensive step and it gates every claim about the second substrate.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.17s">
+                <div class="idx">02</div>
+                <div><div class="ttl">Disentangle judge from difficulty</div>
+                     <div class="dsc">Run the scripted verifier and the soft judge over the <em>same</em> scenarios. Right now the 0/128 versus 9/20 split has two explanations and no way to choose.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.22s">
+                <div class="idx">03</div>
+                <div><div class="ttl">A second AppWorld task family</div>
+                     <div class="dsc">Five seeds priced the 0.145 partition cost against sampling noise, not against task variation. One family cannot separate “the partition costs 0.145” from “this family costs 0.145”.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.27s">
+                <div class="idx">04</div>
+                <div><div class="ttl">Measure the seam classifier's own error rate</div>
+                     <div class="dsc">The rule that decides which tasks coordinate is a designed classifier whose precision and recall are unmeasured. It is not safer for being an AST pass rather than a model — it is unvalidated in the same way, merely more greppable.</div></div>
+            </div>
+            <div class="row-item reveal" style="--d:.32s">
+                <div class="idx">05</div>
+                <div><div class="ttl">Per-capability attribution, with the teacher measured first</div>
+                     <div class="dsc">A teacher model reading the ledger can attribute a failure to decomposition, routing or briefing — and unlike hand-written arithmetic, its agreement with human labels is checkable. Keep the terminal state check as the only training reward; use the teacher for diagnosis and curriculum, and measure it before it goes anywhere near a gradient.</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="foot"><span class="ev">each item names the evidence file it would produce</span><span class="pg"></span></div>
+</section>
+
+<!-- ============================================================
+     21 — CLOSE (dark)
+     ============================================================ -->
+<section class="slide" style="--slide-bg:#0D0D0D">
+    <div class="pad center" style="color:#fff">
+        <div class="eyebrow reveal" style="color:#8A8A85">In one line</div>
+        <div class="reveal" style="--d:.10s; font-size:60px; font-weight:500; letter-spacing:-0.03em; line-height:1.16; max-width:1560px">
+            Inherit the verifier. Manufacture only the constraints.<br>
+            <span style="color:#8A8A85">Then measure, per task, whether what you built<br>carries a gradient — and discard what does not.</span>
+        </div>
+
+        <div class="reveal" style="--d:.24s; margin-top:64px; padding-top:40px; border-top:1px solid rgba(255,255,255,0.16); display:flex; gap:76px">
+            <div>
+                <div style="font-size:52px; font-weight:500; letter-spacing:-0.03em; font-variant-numeric:tabular-nums">2</div>
+                <div style="font-size:18px; color:#8A8A85; margin-top:10px">substrates carried<br>end to end</div>
+            </div>
+            <div>
+                <div style="font-size:52px; font-weight:500; letter-spacing:-0.03em; font-variant-numeric:tabular-nums">7</div>
+                <div style="font-size:18px; color:#8A8A85; margin-top:10px">pipeline stages, four<br>of them measurements</div>
+            </div>
+            <div>
+                <div style="font-size:52px; font-weight:500; letter-spacing:-0.03em; font-variant-numeric:tabular-nums">5 / 6</div>
+                <div style="font-size:18px; color:#8A8A85; margin-top:10px">shipped cells usable,<br>at five replicates</div>
+            </div>
+            <div>
+                <div style="font-size:52px; font-weight:500; letter-spacing:-0.03em; font-variant-numeric:tabular-nums">0</div>
+                <div style="font-size:18px; color:#8A8A85; margin-top:10px">reward functions<br>written by hand</div>
+            </div>
+        </div>
+    </div>
+    <div class="foot" style="border-color:rgba(255,255,255,0.14)">
+        <span class="ev" style="color:#8A8A85">multi-agent-rl-datagen &nbsp;·&nbsp; every number names the file that produced it</span>
+        <span class="pg" style="color:#8A8A85"></span>
+    </div>
+</section>
+
+</main>
+</div>
+
+<!-- Deck chrome — lives outside the slide design system -->
+<nav class="deck-controls" id="deckControls" aria-label="Slide navigation">
+    <button id="btnPrev" aria-label="Previous slide">←</button>
+    <span id="deckCount">1 / 21</span>
+    <button id="btnNext" aria-label="Next slide">→</button>
+</nav>
+
+<div class="edit-hotzone" aria-hidden="true"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)">✏️</button>
+
+<script>
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   Fixed 1920x1080 stage, uniformly scaled.
+   =========================================== */
+class SlidePresentation {
+    constructor() {
+        this.slides   = Array.from(document.querySelectorAll('.slide'));
+        this.stage    = document.getElementById('deckStage');
+        this.progress = document.getElementById('deckProgress');
+        this.counter  = document.getElementById('deckCount');
+        this.controls = document.getElementById('deckControls');
+        this.current  = 0;
+
+        this.stampPageNumbers();
+        this.setupStageScale();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheelNav();
+        this.setupButtons();
+        this.setupChromeReveal();
+        this.showSlide(this.readHash());
+
+        window.addEventListener('hashchange', () => this.showSlide(this.readHash()));
+    }
+
+    /* Fill each slide's footer page number from its index. */
+    stampPageNumbers() {
+        const total = this.slides.length;
+        this.slides.forEach((slide, i) => {
+            const pg = slide.querySelector('.pg');
+            if (pg) pg.textContent = String(i + 1).padStart(2, '0') + ' / ' + total;
+        });
+    }
+
+    /* Scale the whole stage; letterbox rather than reflow. */
+    setupStageScale() {
+        const scale = () => {
+            const factor = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            const x = (window.innerWidth  - 1920 * factor) / 2;
+            const y = (window.innerHeight - 1080 * factor) / 2;
+            this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+        };
+        scale();
+        window.addEventListener('resize', scale);
+    }
+
+    setupKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            if (e.target.getAttribute && e.target.getAttribute('contenteditable') === 'true') return;
+            switch (e.key) {
+                case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
+                    e.preventDefault(); this.next(); break;
+                case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+                    e.preventDefault(); this.prev(); break;
+                case 'Home': e.preventDefault(); this.showSlide(0); break;
+                case 'End':  e.preventDefault(); this.showSlide(this.slides.length - 1); break;
+            }
+        });
+    }
+
+    setupTouchNav() {
+        let x0 = null, y0 = null;
+        document.addEventListener('touchstart', (e) => {
+            x0 = e.changedTouches[0].clientX; y0 = e.changedTouches[0].clientY;
+        }, { passive: true });
+        document.addEventListener('touchend', (e) => {
+            if (x0 === null) return;
+            const dx = e.changedTouches[0].clientX - x0;
+            const dy = e.changedTouches[0].clientY - y0;
+            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) { dx < 0 ? this.next() : this.prev(); }
+            x0 = y0 = null;
+        }, { passive: true });
+    }
+
+    setupWheelNav() {
+        let locked = false;
+        window.addEventListener('wheel', (e) => {
+            if (locked || Math.abs(e.deltaY) < 24) return;
+            locked = true;
+            e.deltaY > 0 ? this.next() : this.prev();
+            setTimeout(() => { locked = false; }, 700);
+        }, { passive: true });
+    }
+
+    setupButtons() {
+        document.getElementById('btnPrev').addEventListener('click', () => this.prev());
+        document.getElementById('btnNext').addEventListener('click', () => this.next());
+    }
+
+    /* Show the nav pill briefly on mouse movement, then let it fade. */
+    setupChromeReveal() {
+        let t = null;
+        window.addEventListener('mousemove', () => {
+            this.controls.classList.add('show');
+            clearTimeout(t);
+            t = setTimeout(() => this.controls.classList.remove('show'), 2200);
+        });
+    }
+
+    readHash() {
+        const n = parseInt((location.hash || '').replace('#', ''), 10);
+        return Number.isFinite(n) ? n - 1 : 0;
+    }
+
+    next() { this.showSlide(this.current + 1); }
+    prev() { this.showSlide(this.current - 1); }
+
+    showSlide(index) {
+        this.current = Math.max(0, Math.min(index, this.slides.length - 1));
+        this.slides.forEach((slide, i) => {
+            const on = i === this.current;
+            slide.classList.toggle('active',  on);
+            slide.classList.toggle('visible', on);
+        });
+        /* Match the letterbox to the slide's own background so dark slides read full-bleed. */
+        const bg = getComputedStyle(this.slides[this.current]).backgroundColor;
+        document.documentElement.style.setProperty('--stage-bg', bg);
+
+        const dark = this.current === 2 || this.current === 20;
+        this.progress.style.width = ((this.current + 1) / this.slides.length * 100) + '%';
+        this.progress.style.background = dark ? '#fff' : '#0D0D0D';
+        this.counter.textContent = (this.current + 1) + ' / ' + this.slides.length;
+        history.replaceState(null, '', '#' + (this.current + 1));
+    }
+}
+
+/* ===========================================
+   INLINE TEXT EDITING
+   Hover the top-left corner or press E.
+   Edits persist to localStorage per slide.
+   =========================================== */
+const EDITABLE = '.slide h1, .slide h2, .slide h3, .slide p, .slide .lead, .slide .body, ' +
+                 '.slide .small, .slide td, .slide .ttl, .slide .dsc, .slide .l, .slide .v';
+
+class InlineEditor {
+    constructor() {
+        this.isActive = false;
+        this.key = 'marl-deck-edits-v2';
+        this.restore();
+    }
+
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        document.getElementById('editToggle').classList.toggle('active', this.isActive);
+        document.querySelectorAll(EDITABLE).forEach(el => {
+            el.setAttribute('contenteditable', this.isActive ? 'true' : 'false');
+            if (this.isActive && !el.dataset.editBound) {
+                el.dataset.editBound = '1';
+                el.addEventListener('input', () => this.persist());
+            }
+        });
+    }
+
+    /* Key edits by slide index + element position so order changes do not scramble them. */
+    persist() {
+        const out = {};
+        document.querySelectorAll('.slide').forEach((slide, si) => {
+            slide.querySelectorAll(EDITABLE).forEach((el, ei) => { out[si + ':' + ei] = el.innerHTML; });
+        });
+        try { localStorage.setItem(this.key, JSON.stringify(out)); } catch (e) { /* quota — ignore */ }
+    }
+
+    restore() {
+        let saved;
+        try { saved = JSON.parse(localStorage.getItem(this.key) || '{}'); } catch (e) { return; }
+        if (!saved || !Object.keys(saved).length) return;
+        document.querySelectorAll('.slide').forEach((slide, si) => {
+            slide.querySelectorAll(EDITABLE).forEach((el, ei) => {
+                const v = saved[si + ':' + ei];
+                if (typeof v === 'string') el.innerHTML = v;
+            });
+        });
+    }
+}
+
+const deck   = new SlidePresentation();
+const editor = new InlineEditor();
+
+/* Edit affordance: JS hover with a grace period (a CSS sibling selector
+   breaks here because pointer-events:none severs the hover chain). */
+(() => {
+    const hotzone = document.querySelector('.edit-hotzone');
+    const toggle  = document.getElementById('editToggle');
+    let hideTimer = null;
+
+    const show = () => { clearTimeout(hideTimer); toggle.classList.add('show'); };
+    const hide = () => {
+        hideTimer = setTimeout(() => { if (!editor.isActive) toggle.classList.remove('show'); }, 400);
+    };
+
+    hotzone.addEventListener('mouseenter', show);
+    hotzone.addEventListener('mouseleave', hide);
+    toggle.addEventListener('mouseenter', show);
+    toggle.addEventListener('mouseleave', hide);
+    hotzone.addEventListener('click', () => editor.toggleEditMode());
+    toggle.addEventListener('click',  () => editor.toggleEditMode());
+
+    document.addEventListener('keydown', (e) => {
+        if ((e.key === 'e' || e.key === 'E') && e.target.getAttribute('contenteditable') !== 'true') {
+            editor.toggleEditMode();
+        }
+    });
+})();
+</script>
+</body>
+</html>
