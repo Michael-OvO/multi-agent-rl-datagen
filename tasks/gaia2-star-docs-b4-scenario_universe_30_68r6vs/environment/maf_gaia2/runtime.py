@@ -81,6 +81,12 @@ OBJECTIVE_ACTION_CONTRACT = """Objective action contract (literal rules, not sug
 #: sentinels in forge/appworld/runtime.py.
 ENV_STOP = "(environment stopped)"
 
+#: Answers that commit a turn while telling the user nothing. Gaia2's own
+#: reports read "Consultations with Vigdis Rasmussen ... have been scheduled
+#: on Friday October 18, 2024"; "completed" cannot match that.
+_THIN_REPORTS = frozenset({"completed", "complete", "done", "ok", "finished",
+                           "task completed", "all done", ""})
+
 #: Ceiling on one WAIT, in simulated seconds. Waiting jumps the clock, so a
 #: large value costs nothing in wall-clock; the cap exists because the first
 #: measured episodes showed a Main asking for a full day in one verb --
@@ -466,6 +472,36 @@ def run_specialist(
     return NO_ANSWER
 
 
+#: The turn-commit contract. Gaia2 counts turns by the agent's messages to
+#: the user: when the Nth lands, the judge validates turn N and calls
+#: env.stop() if it does not match. Measured 2026-07-30 over the v2 campaign:
+#: 88 of 108 fatally stopped cells had committed a turn first, so casual
+#: progress updates were killing episodes outright.
+TURN_RULE = """
+HOW REPORTING TO THE USER WORKS -- read this twice, it decides most episodes.
+Every message you send the user (USER :: and DONE ::) COMMITS the work you \
+have done so far for review and advances this world to its next phase. It is \
+not chat. Measured consequence: 88 of 108 killed episodes died immediately \
+after a message to the user, because the work committed did not yet match \
+what was asked.
+
+So:
+- NEVER send progress updates, acknowledgements, or "I have started" notes. A \
+  premature report ends the episode with the task unfinished.
+- Send a report only when everything the user's current request asked for is \
+  actually DONE -- every message sent, every booking made, every event created.
+- Make the report substantive: NAME every person, item, event and time you \
+  acted on -- "Consultations with Vigdis Rasmussen, Birgitta Kjaer and Astrid \
+  Jensen have been scheduled on Friday October 18, 2024", never "scheduled the \
+  consultations as requested". Your report is compared against a reference \
+  report of the same work, so a summary that omits the names does not match, \
+  and a bare "completed" or "done" is not a report at all.
+- After you report, the world may move: replies, confirmations, or a new \
+  request can arrive. If they do, keep working -- the episode is not over \
+  until you are told it is or nothing more arrives.
+"""
+
+
 def _main_system(world, constraints: Constraints, catalogs: dict[str, str] | None) -> str:
     open_control = constraints.main_has_apis
 
@@ -525,6 +561,7 @@ a simulated world with a clock. The current simulated time is \
 {roster_note}{listing}
 {budget}
 {OBJECTIVE_ACTION_CONTRACT}
+{TURN_RULE}
 {acting}
     WAIT <seconds>                           let simulated time pass until the \
 next notification or the timeout
@@ -575,6 +612,7 @@ def run_main(
     log.event(world, "user", content=task)
     log.user_turns += 1
     answer: str | None = None  # the current turn's outcome, returned at the end
+    thin_report_corrected = False
 
     for _ in range(max_steps):
         if _deliver(world, log, world.drain(), msgs):
@@ -591,6 +629,19 @@ def run_main(
             log.event(world, "surrender", reason=reason)
         elif out.startswith("DONE"):
             answer = out.split("::", 1)[1].strip() if "::" in out else "completed"
+            # The DONE text IS the message the user receives, and the oracle's
+            # own report carries specifics. A bare token commits the turn with
+            # an empty report, which the judge cannot match.
+            if (not thin_report_corrected
+                    and answer.strip().lower().rstrip(".") in _THIN_REPORTS):
+                thin_report_corrected = True
+                log.malformed += 1
+                msgs.append({"role": "user", "content":
+                    "That DONE text is what the user will read, and it says "
+                    "nothing. Reply DONE again with a substantive report of "
+                    "what you actually did -- names, times, identifiers -- or "
+                    "keep working if the task is not finished."})
+                continue
             world.send_user(answer)
             log.event(world, "done", answer=answer)
         elif out.startswith("WAIT"):
@@ -701,7 +752,10 @@ def run_main(
                   arrived=[m_.text for m_ in arrived if m_.kind != "stop"])
         if _deliver(world, log, arrived, msgs):
             return answer
-        if not any(m_.kind == "user" for m_ in arrived):
+        # A notification counts as much as a user message: the world often
+        # answers a completed phase with a reply or confirmation, and the
+        # next phase of work hangs off it.
+        if not any(m_.kind in ("user", "notification") for m_ in arrived):
             return answer
 
     return answer if answer is not None else OUT_OF_STEPS

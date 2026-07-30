@@ -122,11 +122,11 @@ def test_the_wait_verb_jumps_time_and_delivers_what_arrived():
         [Msg("notification", "Cabs: ride status updated")],
         [],
     ))
-    client = FakeClient(["WAIT 600", "DONE :: completed"])
+    client = FakeClient(["WAIT 600", "DONE :: booked the 12:45 cab, ride 91346c"])
     log = EpisodeLog()
     answer = run_main(client, world, "order a cab", STAR_DOCS, log)
 
-    assert answer == "completed"
+    assert answer == "booked the 12:45 cab, ride 91346c"
     assert world.waited[0] == 600
     assert any("Cabs: ride status updated" in seen for seen in client.seen), \
         "the notification never reached the Main's transcript"
@@ -137,10 +137,10 @@ def test_the_wait_verb_jumps_time_and_delivers_what_arrived():
 
 def test_a_timed_out_wait_says_so_instead_of_pretending_progress():
     world = FakeWorld(wait_script=([], []))
-    client = FakeClient(["WAIT 60", "DONE :: completed"])
+    client = FakeClient(["WAIT 60", "DONE :: booked the 12:45 cab, ride 91346c"])
     answer = run_main(client, world, "task", STAR_DOCS, EpisodeLog())
 
-    assert answer == "completed"
+    assert answer == "booked the 12:45 cab, ride 91346c"
     assert any("No notification arrived" in seen for seen in client.seen)
 
 
@@ -148,7 +148,7 @@ def test_a_notification_arriving_between_steps_is_delivered_unprompted():
     world = FakeWorld(drain_script=(
         [Msg("notification", "EmailClientApp: New email received")],
     ))
-    client = FakeClient(["DONE :: completed"])
+    client = FakeClient(["DONE :: booked the 12:45 cab, ride 91346c"])
     run_main(client, world, "task", STAR_DOCS, EpisodeLog())
 
     assert any("EmailClientApp: New email received" in seen
@@ -161,7 +161,7 @@ def test_a_notification_arriving_between_steps_is_delivered_unprompted():
 def test_a_delegation_outside_the_topology_is_blocked_not_obeyed():
     world = FakeWorld()
     client = FakeClient(["DELEGATE Venmo :: do something",
-                         "DONE :: completed"])
+                         "DONE :: booked the 12:45 cab, ride 91346c"])
     log = EpisodeLog()
     run_main(client, world, "task", STAR_DOCS, log)
 
@@ -174,7 +174,7 @@ def test_the_delegation_target_is_soft_and_work_continues_past_it():
                         visibility=Visibility.DOCS,
                         delegation_budget=len(ROSTER))
     client = FakeClient(["DELEGATE Contacts :: a", "DELEGATE Cabs :: b",
-                         "DELEGATE Contacts :: c", "DONE :: completed"])
+                         "DELEGATE Contacts :: c", "DONE :: booked the 12:45 cab, ride 91346c"])
     log = EpisodeLog()
     run_main(client, FakeWorld(), "task", tight, log)
 
@@ -220,13 +220,14 @@ def test_a_follow_up_user_turn_continues_the_episode_after_done():
         [Msg("user", "also cancel tomorrow's ride")],
         [],
     ))
-    client = FakeClient(["DONE :: booked", "DONE :: cancelled"])
+    client = FakeClient(["DONE :: booked the ride for 12:45", "DONE :: cancelled tomorrow's ride"])
     log = EpisodeLog()
     answer = run_main(client, world, "book a ride", STAR_DOCS, log)
 
-    assert answer == "cancelled"
+    assert answer == "cancelled tomorrow's ride"
     assert log.user_turns == 2
-    assert world.sent_to_user == ["booked", "cancelled"]
+    assert world.sent_to_user == ["booked the ride for 12:45",
+                                 "cancelled tomorrow's ride"]
 
 
 # -- the OPEN control holds the tools itself --------------------------------
@@ -236,7 +237,7 @@ def test_the_open_control_calls_tools_itself_and_cannot_delegate():
     world = FakeWorld()
     client = FakeClient(['CALL Contacts__lookup :: {"name": "Kai"}',
                         "DELEGATE Contacts :: lookup Kai",
-                         "DONE :: completed"])
+                         "DONE :: booked the 12:45 cab, ride 91346c"])
     log = EpisodeLog()
     run_main(client, world, "task", control_for(ROSTER), log)
 
@@ -249,7 +250,7 @@ def test_the_open_control_calls_tools_itself_and_cannot_delegate():
 
 
 def test_a_downgraded_specialist_is_refused_before_any_model_runs():
-    client = FakeClient(["DONE :: completed"])
+    client = FakeClient(["DONE :: booked the 12:45 cab, ride 91346c"])
     with raises(ValueError, match="below the Main's"):
         run_main(client, FakeWorld(), "task", STAR_DOCS, EpisodeLog(),
                  model="gpt-5.6-sol", sub_model="gpt-4.1")
@@ -257,12 +258,12 @@ def test_a_downgraded_specialist_is_refused_before_any_model_runs():
 
 
 def test_the_explicit_downgrade_flag_lets_the_labelled_experiment_run():
-    client = FakeClient(["DONE :: completed"])
+    client = FakeClient(["DONE :: booked the 12:45 cab, ride 91346c"])
     world = FakeWorld(wait_script=([],))
     answer = run_main(client, world, "task", STAR_DOCS, EpisodeLog(),
                       model="gpt-5.6-sol", sub_model="gpt-4.1",
                       allow_sub_downgrade=True)
-    assert answer == "completed"
+    assert answer == "booked the 12:45 cab, ride 91346c"
 
 
 def test_the_specialist_is_told_the_simulated_clock_not_left_to_guess():
@@ -295,7 +296,7 @@ def test_the_main_is_told_specialists_cannot_wait_or_schedule():
     # The other half of the same finding: the refusing briefs asked for
     # "send at 07:00" and "monitor replies" -- work no specialist can do.
     # The official harness keeps all temporality with the delegating agent.
-    client = FakeClient(["DONE :: completed"])
+    client = FakeClient(["DONE :: booked the 12:45 cab, ride 91346c"])
     run_main(client, FakeWorld(wait_script=([],)), "task", STAR_DOCS, EpisodeLog())
     system = client.systems[0]
     assert "cannot wait, monitor, or" in system
@@ -310,7 +311,7 @@ def test_every_agent_gets_the_same_objective_action_contract():
     must share one generic baseline/transition/exact-once contract; a cab-only
     correction would merely overfit that trajectory.
     """
-    main_client = FakeClient(["DONE :: completed"])
+    main_client = FakeClient(["DONE :: booked the 12:45 cab, ride 91346c"])
     run_main(
         main_client,
         FakeWorld(wait_script=([],)),
@@ -342,6 +343,45 @@ def test_every_agent_gets_the_same_objective_action_contract():
     assert "never repeat a successful write" in OBJECTIVE_ACTION_CONTRACT
     assert "BOOKED" not in OBJECTIVE_ACTION_CONTRACT
     assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v1"
+
+
+def test_the_main_is_told_that_reporting_commits_the_turn():
+    # Measured 2026-07-30: 88 of 108 fatally stopped v2 cells had messaged the
+    # user first. Gaia2 counts turns by those messages and stops the world when
+    # a committed turn does not match the oracle, so casual progress updates
+    # were killing episodes. The contract has to say so.
+    client = FakeClient(["DONE :: booked the 12:45 cab, ride 91346c"])
+    run_main(client, FakeWorld(wait_script=([],)), "task", STAR_DOCS, EpisodeLog())
+    system = client.systems[0]
+    assert "COMMITS the work" in system
+    assert "NEVER send progress updates" in system
+
+
+def test_a_bare_completed_is_pushed_back_before_it_commits_the_turn():
+    # The DONE text is literally what the user receives, and Gaia2's own
+    # reports carry specifics ("Consultations with Vigdis Rasmussen ... have
+    # been scheduled"). "completed" commits a turn with an empty report.
+    client = FakeClient(["DONE :: completed",
+                         "DONE :: messaged both colleagues and booked the 12:45 cab"])
+    world = FakeWorld(wait_script=([],))
+    log = EpisodeLog()
+    answer = run_main(client, world, "task", STAR_DOCS, log)
+    assert answer == "messaged both colleagues and booked the 12:45 cab"
+    assert world.sent_to_user == [answer], "the thin report must never reach the user"
+    assert any("says\nnothing" in s or "says nothing" in s for s in client.seen)
+
+
+def test_a_notification_after_a_report_keeps_the_episode_alive():
+    # The world answers a completed phase with a reply, and the next phase of
+    # work hangs off it; returning at that moment abandons the task.
+    client = FakeClient(["DONE :: scheduled all three consultations for Friday",
+                         "DONE :: rescheduled Birgitta to 9 AM Saturday"])
+    world = FakeWorld(wait_script=(
+        [Msg("notification", "Calendar: attendee requested a new time")], []))
+    log = EpisodeLog()
+    answer = run_main(client, world, "task", STAR_DOCS, log)
+    assert answer == "rescheduled Birgitta to 9 AM Saturday"
+    assert len(world.sent_to_user) == 2
 
 
 def test_a_zero_call_final_claiming_outage_is_rejected_and_retried():
@@ -446,7 +486,7 @@ def test_an_unparseable_specialist_line_is_recorded_not_just_corrected():
 
 def test_a_malformed_control_call_leaves_a_trajectory_event():
     client = FakeClient(["CALL Contacts__lookup :: not json",
-                         "DONE :: completed"])
+                         "DONE :: booked the 12:45 cab, ride 91346c"])
     log = EpisodeLog()
     run_main(client, FakeWorld(), "task", control_for(ROSTER), log)
     malformed = [e for e in log.events
@@ -465,7 +505,7 @@ def test_the_trajectory_serializes_every_event_in_order():
     ))
     client = FakeClient(
         main_replies=["DELEGATE Contacts :: find Kai's address",
-                      "WAIT 300", "DONE :: completed"],
+                      "WAIT 300", "DONE :: booked the 12:45 cab, ride 91346c"],
         specialist_replies=['CALL Contacts__lookup :: {"name": "Kai"}',
                             "FINAL: 12 Rose Lane"])
     log = EpisodeLog()
