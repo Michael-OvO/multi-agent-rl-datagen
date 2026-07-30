@@ -1,0 +1,137 @@
+{
+ "kind": "gaia2-episode",
+ "scenario_id": "scenario_universe_26_naxywx",
+ "category": "adaptability",
+ "ability": null,
+ "config": "open-docs-binf",
+ "roster": [
+  "Cabs",
+  "Chats",
+  "Contacts",
+  "Emails",
+  "InternalContacts",
+  "RentAFlat"
+ ],
+ "conditioned_env_events": 2,
+ "delegation_target_heuristic": 6,
+ "main_model": "gpt-5.6-sol",
+ "sub_model": "gpt-5.6-sol",
+ "answer": "(environment stopped)",
+ "judge": "gpt-5.6-sol",
+ "label": "v2",
+ "started_at": "2026-07-29 12:13:26",
+ "verdict": {
+  "success": false,
+  "rationale": "Failure: Agent did not perform the following oracle tool call:\ntool name: MessagingAppV2__send_message\ntool args:\n-user_id: 1b800fa6-2085-4bdd-a015-596069548f14\n-content: Could you add the apartment search that we discussed to my calendar, including the address.\n-attachment_path: None\n\nList of matching attempts:\n-Failure matching agent event (ID: Event-USER-08331aca-6157-4c4e-83f7-5f6cccf1a854) with oracle event (ID: OracleEvent-AGENT-fa02932d-1496-4691-809b-87f8381b18e9), reason: already matched\n-Failure matching agent event (ID: AGENT-Chats.send_message-e85b675f-3d47-4c2d-91e6-c7b782b670bc) with oracle event (ID: OracleEvent-AGENT-fa02932d-1496-4691-809b-87f8381b18e9), reason: tool judge reject\n-Failure matching agent event (ID: AGENT-Cabs.order_ride-607a8e5e-c7ec-459f-9895-9b3da6d59456) with oracle event (ID: OracleEvent-AGENT-fa02932d-1496-4691-809b-87f8381b18e9), reason: already matched",
+  "exception": null
+ },
+ "seconds": 19.9,
+ "objective_action_contract": "objective-actions-v1",
+ "events": [
+  {
+   "type": "user",
+   "sim_time": "2024-10-15 07:00:00",
+   "content": "Received at: 2024-10-15 07:00:00\nSender: User\nMessage: Send a message to Kofi Ogunlesi on Chats asking them to add the apartment search we discussed to my calendar, including the address. Order a default cab from my address to Fosswinckels gate 10, Bergen at 12 PM today. After the message is sent to Kofi, tell me the contents of the message that was sent to Kofi on Chats. If the event titled apartment search is added to my calendar by Kofi Ogunlesi with a location that's different from the destination of the cab ride, cancel that ride and order a new one with the same time and start location, but change the destination to the location of the event. Then, send Kofi Ogunlesi an email letting them know I've ordered a cab to that address. If you change the cab destination, let me know the new location you changed it to.\nAlready read: True\nRead at: 2024-10-15 07:00:00"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:04",
+   "content": "CALL Contacts__get_current_user_details :: {}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:04",
+   "tool": "Contacts__get_current_user_details",
+   "args": {},
+   "status": "ok",
+   "result": "\"\\nContact ID: 6af1b27be83e46b696f10ab5034d3ee0\\nFirst Name: \\u00c5se\\nLast Name: Kjellstad\\nGender: Gender.FEMALE\\nAge: 60\\nNationality: Norwegian\\nCity Living: Oslo\\nCountry: Norway\\nStatus: Status.RETIRED\\nJob: Former Film Critic\\nDescription: \\u00c5se Kjellstad is a retired film critic who has spent her life immersed in the world of cinema. Born and raised in Oslo, Norway, she developed a passion for European films at a young age and went on to study film theory at the University of Oslo. After graduating, she began writing film reviews for a local newspaper and eventually became a prominent voice in Norwegian film criticism.\\nPhone: +4761433123\\nEmail: akjellstad@gaia2mail.com\\nIs User: True\\nAddress: Frognerveien 34, 0266 Oslo, Norway\\n\""
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:07",
+   "content": "CALL Chats__lookup_user_id :: {\"user_name\":\"Kofi Ogunlesi\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:07",
+   "tool": "Chats__lookup_user_id",
+   "args": {
+    "user_name": "Kofi Ogunlesi"
+   },
+   "status": "ok",
+   "result": "{\n \"Kofi Ogunlesi\": \"1b800fa6-2085-4bdd-a015-596069548f14\"\n}"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:11",
+   "content": "CALL Chats__send_message :: {\"user_id\":\"1b800fa6-2085-4bdd-a015-596069548f14\",\"content\":\"Please add the apartment search we discussed to my calendar, including the address.\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:11",
+   "tool": "Chats__send_message",
+   "args": {
+    "user_id": "1b800fa6-2085-4bdd-a015-596069548f14",
+    "content": "Please add the apartment search we discussed to my calendar, including the address."
+   },
+   "status": "ok",
+   "result": "7e630b385eda435ea2fb8bc292df93be"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:14",
+   "content": "CALL Cabs__order_ride :: {\"start_location\":\"Frognerveien 34, 0266 Oslo, Norway\",\"end_location\":\"Fosswinckels gate 10, Bergen\",\"service_type\":\"Default\",\"ride_time\":\"2024-10-15 12:00:00\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:14",
+   "tool": "Cabs__order_ride",
+   "args": {
+    "start_location": "Frognerveien 34, 0266 Oslo, Norway",
+    "end_location": "Fosswinckels gate 10, Bergen",
+    "service_type": "Default",
+    "ride_time": "2024-10-15 12:00:00"
+   },
+   "status": "ok",
+   "result": "\"\\n        Ride ID: bdb334f16ef717285d6df8ae9b12de76\\n        Status: BOOKED\\n        Service Type: Default\\n        Start Location: Frognerveien 34, 0266 Oslo, Norway\\n        End Location: Fosswinckels gate 10, Bergen\\n        Distance: 17.82977100341096 kms\\n        Price: $17.83\\n        Duration: 0.48879155003501773 mins\\n        Timestamp: 1728993600.0\\n        Delay: 0.11666666666666667 mins\\n        \""
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:16",
+   "content": "USER :: Message sent to Kofi on Chats: \u201cPlease add the apartment search we discussed to my calendar, including the address.\u201d"
+  },
+  {
+   "type": "send_user",
+   "sim_time": "2024-10-15 07:00:16",
+   "content": "Message sent to Kofi on Chats: \u201cPlease add the apartment search we discussed to my calendar, including the address.\u201d"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:17",
+   "content": "WAIT 300"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:00:17",
+   "requested": 300,
+   "arrived": []
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 07:00:17"
+  }
+ ],
+ "delegations": 0,
+ "specialist_turns": 4,
+ "refusals": 0,
+ "blocked": 0,
+ "blocked_reasons": [],
+ "waits": 1,
+ "user_turns": 1,
+ "malformed": 0,
+ "false_outages": 0,
+ "delegation_target": null,
+ "delegations_over_target": 0,
+ "delegation_efficiency": null,
+ "delegation_economy_reward": null
+}

@@ -1,0 +1,170 @@
+{
+ "kind": "gaia2-episode",
+ "scenario_id": "scenario_universe_29_23k4gf",
+ "category": "adaptability",
+ "ability": null,
+ "config": "open-docs-binf",
+ "roster": [
+  "Cabs",
+  "Calendar",
+  "Contacts",
+  "InternalContacts",
+  "Messages"
+ ],
+ "conditioned_env_events": 1,
+ "main_model": "gpt-5.6-sol",
+ "sub_model": "gpt-5.6-sol",
+ "answer": "(environment stopped)",
+ "judge": "gpt-5.6-sol",
+ "label": "full",
+ "started_at": "2026-07-28 14:12:43",
+ "verdict": {
+  "success": false,
+  "rationale": "Failure: Agent did not perform the following oracle tool call:\ntool name: AgentUserInterface__send_message_to_user\ntool args:\n-content: I have booked your cab ride.\n\nList of matching attempts:\n-Failure matching agent event (ID: Event-USER-7a72f443-93a5-4d3b-8b78-65fcc914cc1c) with oracle event (ID: OracleEvent-AGENT-27ab5ff1-cb0a-4fd7-b78c-df6fa5c711c3), reason: already matched\n-Failure matching agent event (ID: AGENT-Cabs.order_ride-d115d2ff-23bc-4011-b883-e08a39d75626) with oracle event (ID: OracleEvent-AGENT-27ab5ff1-cb0a-4fd7-b78c-df6fa5c711c3), reason: already matched\n-Failure matching agent event (ID: AGENT-AgentUserInterface.send_message_to_user-20edb71e-5aa7-406c-86d6-8516b2e1dd10) with oracle event (ID: OracleEvent-AGENT-27ab5ff1-cb0a-4fd7-b78c-df6fa5c711c3), reason: tool judge reject",
+  "exception": null
+ },
+ "seconds": 17.8,
+ "events": [
+  {
+   "type": "user",
+   "sim_time": "2024-10-15 07:00:00",
+   "content": "Received at: 2024-10-15 07:00:00\nSender: User\nMessage: Book a cab for 8:30 AM today using the Default service. Pick-up is at my home address listed in my contacts, and drop-off is Plot No. 456, Sector 29, Vashi, Navi Mumbai. Let me know when you booked the cab. If the cab is delayed or gets canceled, send individual Messages messages to each attendee of the 9 AM Project Update today letting them know I\u2019ll be late and why. Let them know we\u2019ll push the call to 10 AM and keep it to an hour. If the cab is canceled, book another one for 9 AM instead. Update the calendar event to reflect the new time. Let me know if the initial cab is canceled.\nAlready read: True\nRead at: 2024-10-15 07:00:00"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:02",
+   "content": "CALL Contacts__get_current_user_details :: {}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:02",
+   "tool": "Contacts__get_current_user_details",
+   "args": {},
+   "status": "ok",
+   "result": "\"\\nContact ID: 6ef938f81dc4451ba25ff529ff698a7c\\nFirst Name: Rohan\\nLast Name: Kumar\\nGender: Gender.MALE\\nAge: 41\\nNationality: Indian\\nCity Living: Mumbai\\nCountry: India\\nStatus: Status.EMPLOYED\\nJob: Prison Reform Advocate\\nDescription: Rohan Kumar is a 41-year-old Indian man who has overcome incredible odds to become a successful advocate for prison reform.\\nPhone: +919876543510\\nEmail: rohankumar.advocate@gaia2mail.com\\nIs User: True\\nAddress: 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\\n\""
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:04",
+   "content": "CALL Cabs__order_ride :: {\"start_location\":\"14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\",\"end_location\":\"Plot No. 456, Sector 29, Vashi, Navi Mumbai\",\"service_type\":\"Default\",\"ride_time\":\"2024-10-15 08:30:00\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:04",
+   "tool": "Cabs__order_ride",
+   "args": {
+    "start_location": "14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050",
+    "end_location": "Plot No. 456, Sector 29, Vashi, Navi Mumbai",
+    "service_type": "Default",
+    "ride_time": "2024-10-15 08:30:00"
+   },
+   "status": "ok",
+   "result": "\"\\n        Ride ID: c9d142d0bfa549873259746a267de935\\n        Status: BOOKED\\n        Service Type: Default\\n        Start Location: 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\\n        End Location: Plot No. 456, Sector 29, Vashi, Navi Mumbai\\n        Distance: 9.990489355181738 kms\\n        Price: $9.99\\n        Duration: 0.2387671523525539 mins\\n        Timestamp: 1728981000.0\\n        Delay: 0.1 mins\\n        \""
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:07",
+   "content": "CALL Calendar__get_calendar_events_from_to :: {\"start_datetime\":\"2024-10-15 09:00:00\",\"end_datetime\":\"2024-10-15 10:00:00\",\"offset\":0,\"limit\":10}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:07",
+   "tool": "Calendar__get_calendar_events_from_to",
+   "args": {
+    "start_datetime": "2024-10-15 09:00:00",
+    "end_datetime": "2024-10-15 10:00:00",
+    "offset": 0,
+    "limit": 10
+   },
+   "status": "ok",
+   "result": "{\n \"events\": [\n  \"EventID: beb5fcf7a2bf4be0909d6d50aefe5981\\nTitle: Project Update\\nStart: 2024-10-15 09:00:00+00:00\\nEnd: 2024-10-15 11:00:00+00:00\\nTag: Work\\nDescription: Update meeting with team on project progress.\\nLocation: Zoom Meeting\\nAttendees: Rohan Kumar, Kaitlyn Nguyen, Kaida Jensen\"\n ],\n \"range\": [\n  0,\n  1\n ],\n \"total\": 1\n}"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:12",
+   "content": "USER :: Your Default cab is booked for 8:30 AM today from your home address to Plot No. 456, Sector 29, Vashi, Navi Mumbai. Ride ID: c9d142d0bfa549873259746a267de935. I\u2019ll monitor it and handle the delay/cancellation instructions if needed."
+  },
+  {
+   "type": "send_user",
+   "sim_time": "2024-10-15 07:00:12",
+   "content": "Your Default cab is booked for 8:30 AM today from your home address to Plot No. 456, Sector 29, Vashi, Navi Mumbai. Ride ID: c9d142d0bfa549873259746a267de935. I\u2019ll monitor it and handle the delay/cancellation instructions if needed."
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:13",
+   "content": "WAIT 5100"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 08:00:13",
+   "requested": 3600,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 3600 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 08:00:13",
+   "content": "SystemApp: Wait for notification timeout reached after 3600 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 08:00:14",
+   "content": "WAIT 1800"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 08:30:14",
+   "requested": 1800,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 1800 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 08:30:14",
+   "content": "SystemApp: Wait for notification timeout reached after 1800 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 08:30:15",
+   "content": "CALL Cabs__get_current_ride_status :: {}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 08:30:15",
+   "tool": "Cabs__get_current_ride_status",
+   "args": {},
+   "status": "error",
+   "result": "ValueError: No ride ordered."
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 08:30:15"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 08:30:15",
+   "content": "CabApp: ride cancelled"
+  }
+ ],
+ "delegations": 0,
+ "specialist_turns": 4,
+ "refusals": 0,
+ "blocked": 0,
+ "blocked_reasons": [],
+ "waits": 2,
+ "user_turns": 1,
+ "malformed": 0,
+ "false_outages": 0,
+ "credit": {
+  "gold_total": 6,
+  "covered": 1,
+  "exact": 1,
+  "coverage": 0.167,
+  "fidelity": 0.167,
+  "partial_reward": 0.167,
+  "pivot": 17,
+  "pivot_kind": "environment-stop"
+ }
+}

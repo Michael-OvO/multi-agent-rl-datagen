@@ -1,0 +1,184 @@
+{
+ "kind": "gaia2-episode",
+ "scenario_id": "scenario_universe_30_njjsj6",
+ "category": "adaptability",
+ "ability": null,
+ "config": "open-docs-binf",
+ "roster": [
+  "Cabs",
+  "Calendar",
+  "Contacts",
+  "InternalContacts",
+  "Messages"
+ ],
+ "conditioned_env_events": 2,
+ "delegation_target_heuristic": 7,
+ "main_model": "gpt-5.6-sol",
+ "sub_model": "gpt-5.6-sol",
+ "answer": "(environment stopped)",
+ "judge": "gpt-5.6-sol",
+ "label": "v2",
+ "started_at": "2026-07-28 22:53:53",
+ "verdict": {
+  "success": false,
+  "rationale": "Failure: Agent did not perform the following oracle tool call:\ntool name: CabApp__order_ride\ntool args:\n-start_location: Home\n-end_location: 10 Downing St, London\n-service_type: Default\n-ride_time: 2024-10-16 12:00:00\n\nList of matching attempts:\n-Failure matching agent event (ID: Event-USER-1fe4452c-3ad7-4558-bebe-b4e019ff9256) with oracle event (ID: OracleEvent-AGENT-4d6649b8-32d4-4386-b08a-8aec13475d19), reason: already matched\n-Failure matching agent event (ID: AGENT-Cabs.order_ride-ee673f1b-0d8e-47da-8d40-c7ecd2bb2a0e) with oracle event (ID: OracleEvent-AGENT-4d6649b8-32d4-4386-b08a-8aec13475d19), reason: tool judge reject",
+  "exception": null
+ },
+ "seconds": 36.5,
+ "objective_action_contract": "objective-actions-v1",
+ "events": [
+  {
+   "type": "user",
+   "sim_time": "2024-10-15 07:00:00",
+   "content": "Received at: 2024-10-15 07:00:00\nSender: User\nMessage: Book a default cab from my home to the London Luxe address at 10 Downing St, London tomorrow at 12pm. Schedule a \"Property Tour\" for tomorrow from 12pm to 1pm at the same location. Send a message to Aisha Patel on Messages, asking if they would like to join me on the London Luxe tour with me tomorrow from 12pm to 1pm, and that I already booked a cab for us. Let me know when these tasks are done. \n\nKeep an eye on the cab because they have been really inconsistent lately. Notify Aisha through Messages every time there is a cab update, telling her the update itself. Let me know as well. However, if the cab is cancelled, please Messages Aisha that we will just reschedule this visit for another day, cancel the tour, and notify me when those actions have been completed.\nAlready read: True\nRead at: 2024-10-15 07:00:00"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:06",
+   "content": "CALL Contacts__get_current_user_details :: {}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:06",
+   "tool": "Contacts__get_current_user_details",
+   "args": {},
+   "status": "ok",
+   "result": "\"\\nContact ID: aefb3ded75854e6ead022efb1e3b9bcf\\nFirst Name: Rohini\\nLast Name: Deshpande\\nGender: Gender.FEMALE\\nAge: 43\\nNationality: British\\nCity Living: Cambridge\\nCountry: United Kingdom\\nStatus: Status.EMPLOYED\\nJob: Theoretical Physicist\\nDescription: Rohini Deshpande is a renowned theoretical physicist with a passion for unraveling the mysteries of quantum mechanics. Born and raised in the UK to Indian parents, Rohini's cultural heritage has instilled in her a unique blend of Eastern and Western perspectives. She is a faculty member at the University of Cambridge, where she teaches and conducts research in computational chemistry. Rohini's work focuses on developing new quantum algorithms for simulating complex molecular systems, with potential applications in fields like materials science and pharmacology.\\nPhone: +441223456789\\nEmail: rohini.deshpande@cam.ac.uk\\nIs User: True\\nAddress: 34, Storey's Way, Cambridge CB3 0DT\\n\""
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:09",
+   "content": "CALL Cabs__order_ride :: {\"start_location\":\"34, Storey's Way, Cambridge CB3 0DT\",\"end_location\":\"10 Downing St, London\",\"service_type\":\"Default\",\"ride_time\":\"2024-10-16 12:00:00\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:09",
+   "tool": "Cabs__order_ride",
+   "args": {
+    "start_location": "34, Storey's Way, Cambridge CB3 0DT",
+    "end_location": "10 Downing St, London",
+    "service_type": "Default",
+    "ride_time": "2024-10-16 12:00:00"
+   },
+   "status": "ok",
+   "result": "\"\\n        Ride ID: f2984d21f91682205c26766406aecc8e\\n        Status: BOOKED\\n        Service Type: Default\\n        Start Location: 34, Storey's Way, Cambridge CB3 0DT\\n        End Location: 10 Downing St, London\\n        Distance: 13.42056165994936 kms\\n        Price: $13.42\\n        Duration: 0.2843499650051628 mins\\n        Timestamp: 1729080000.0\\n        Delay: 0.15 mins\\n        \""
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:12",
+   "content": "CALL Calendar__add_calendar_event :: {\"title\":\"Property Tour\",\"start_datetime\":\"2024-10-16 12:00:00\",\"end_datetime\":\"2024-10-16 13:00:00\",\"location\":\"10 Downing St, London\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:12",
+   "tool": "Calendar__add_calendar_event",
+   "args": {
+    "title": "Property Tour",
+    "start_datetime": "2024-10-16 12:00:00",
+    "end_datetime": "2024-10-16 13:00:00",
+    "location": "10 Downing St, London"
+   },
+   "status": "ok",
+   "result": "ca414964976414ddfa54c1c6f1c80f6a"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:14",
+   "content": "CALL Messages__get_user_id :: {\"user_name\":\"Aisha Patel\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:14",
+   "tool": "Messages__get_user_id",
+   "args": {
+    "user_name": "Aisha Patel"
+   },
+   "status": "ok",
+   "result": "OK (no return value)"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:15",
+   "content": "CALL Messages__lookup_user_id :: {\"user_name\":\"Aisha Patel\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:15",
+   "tool": "Messages__lookup_user_id",
+   "args": {
+    "user_name": "Aisha Patel"
+   },
+   "status": "ok",
+   "result": "{}"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:18",
+   "content": "CALL Contacts__search_contacts :: {\"query\":\"Aisha Patel\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:18",
+   "tool": "Contacts__search_contacts",
+   "args": {
+    "query": "Aisha Patel"
+   },
+   "status": "ok",
+   "result": "[\n \"\\nContact ID: 2bc989fc332e4dd9927bffc0c1d6480a\\nFirst Name: Aisha\\nLast Name: Patel\\nGender: Gender.FEMALE\\nAge: 24\\nNationality: British\\nCity Living: London\\nCountry: United Kingdom\\nStatus: Status.EMPLOYED\\nJob: Software Developer\\nDescription: Aisha Patel is a 24-year-old software developer living in London. Born and raised in the UK, she has always been fascinated by technology and its endless possibilities. With a degree in Computer Science from the University of Manchester, she began her career as a junior developer in a startup, where she quickly proved herself to be a valuable asset. Aisha is now working as a software developer for a renowned tech firm in London, specializing in microservices architecture and authorization. She is an avid reader and has devoured numerous books on the subject, always looking to improve her skills and stay up-to-date with the latest trends.\\nPhone: +447723454789\\nEmail: aisha.patel@gaia2mail.com\\nIs User: False\\nAddress: 34, Richmond Road, Twickenham, London TW1 3BW\\n\"\n]"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:23",
+   "content": "CALL Messages__send_message :: {\"user_id\":\"+447723454789\",\"content\":\"Hi Aisha, would you like to join me on the London Luxe tour at 10 Downing St, London tomorrow from 12pm to 1pm? I\u2019ve already booked a cab for us.\"}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:23",
+   "tool": "Messages__send_message",
+   "args": {
+    "user_id": "+447723454789",
+    "content": "Hi Aisha, would you like to join me on the London Luxe tour at 10 Downing St, London tomorrow from 12pm to 1pm? I\u2019ve already booked a cab for us."
+   },
+   "status": "ok",
+   "result": "50f8ff0d1d83d0d3180827ecfff45a5a"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:28",
+   "content": "USER :: Cab booked, \u201cProperty Tour\u201d scheduled, and Aisha invited. I\u2019ll continue monitoring the cab and notify both of you of any updates."
+  },
+  {
+   "type": "send_user",
+   "sim_time": "2024-10-15 07:00:28",
+   "content": "Cab booked, \u201cProperty Tour\u201d scheduled, and Aisha invited. I\u2019ll continue monitoring the cab and notify both of you of any updates."
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:34",
+   "content": "WAIT 3600"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:00:29",
+   "requested": 3600,
+   "arrived": []
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 07:00:29"
+  }
+ ],
+ "delegations": 0,
+ "specialist_turns": 7,
+ "refusals": 0,
+ "blocked": 0,
+ "blocked_reasons": [],
+ "waits": 1,
+ "user_turns": 1,
+ "malformed": 0,
+ "false_outages": 0,
+ "delegation_target": null,
+ "delegations_over_target": 0,
+ "delegation_efficiency": null,
+ "delegation_economy_reward": null
+}

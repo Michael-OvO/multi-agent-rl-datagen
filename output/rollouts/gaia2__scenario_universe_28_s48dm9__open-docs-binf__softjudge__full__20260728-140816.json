@@ -1,0 +1,222 @@
+{
+ "kind": "gaia2-episode",
+ "scenario_id": "scenario_universe_28_s48dm9",
+ "category": "adaptability",
+ "ability": null,
+ "config": "open-docs-binf",
+ "roster": [
+  "Calendar",
+  "Contacts",
+  "InternalContacts",
+  "Messages"
+ ],
+ "conditioned_env_events": 2,
+ "main_model": "gpt-5.6-sol",
+ "sub_model": "gpt-5.6-sol",
+ "answer": "(environment stopped)",
+ "judge": "gpt-5.6-sol",
+ "label": "full",
+ "started_at": "2026-07-28 14:08:16",
+ "verdict": {
+  "success": false,
+  "rationale": "Failure: Agent did not perform the following oracle tool call:\ntool name: AgentUserInterface__send_message_to_user\ntool args:\n-content: Consultations with Vigdis Rasmussen, Birgitta Kj\u00e6r, and Astrid Jensen have been scheduled on Friday October 18, 2024.\n\nList of matching attempts:\n-Failure matching agent event (ID: Event-USER-0085e80d-adad-4f71-8051-3dd9654e7eb2) with oracle event (ID: OracleEvent-AGENT-373eeeaf-4f5e-45aa-a3b8-04ea23d54e3e), reason: already matched\n-Failure matching agent event (ID: AGENT-Calendar.add_calendar_event-0ae3be91-926b-401d-9792-8d9d90ee5e5a) with oracle event (ID: OracleEvent-AGENT-373eeeaf-4f5e-45aa-a3b8-04ea23d54e3e), reason: already matched\n-Failure matching agent event (ID: AGENT-Calendar.add_calendar_event-1a9037bf-6fb5-4fe0-b030-cd1b52750745) with oracle event (ID: OracleEvent-AGENT-373eeeaf-4f5e-45aa-a3b8-04ea23d54e3e), reason: already matched\n-Failure matching agent event (ID: AGENT-Calendar.add_calendar_event-cadb1421-aa97-4fc2-8ad2-7a35187f11e9) with oracle event (ID: OracleEvent-AGENT-373eeeaf-4f5e-45aa-a3b8-04ea23d54e3e), reason: already matched\n-Failure matching agent event (ID: AGENT-AgentUserInterface.send_message_to_user-02a806e8-2d45-4389-a725-8f389c2c31c0) with oracle event (ID: OracleEvent-AGENT-373eeeaf-4f5e-45aa-a3b8-04ea23d54e3e), reason: tool judge reject",
+  "exception": null
+ },
+ "seconds": 26.0,
+ "events": [
+  {
+   "type": "user",
+   "sim_time": "2024-10-15 07:00:00",
+   "content": "Received at: 2024-10-15 07:00:00\nSender: User\nMessage: Schedule consultations with Vigdis Rasmussen, Birgitta Kj\u00e6r, and Astrid Jensen on Friday in this exact order. Start the consultations at 5 pm for an hour each, running consecutively one after the other. Inform me after the consultations have been scheduled. If anyone should cancel, reschedule their consultation for this Saturday from 9 a.m. onwards for the same duration. Schedule those that canceled alphabetically by first name if there are multiple cancellations, then send a separate Messages message to each of them with the new schedule. If 2 or more are rescheduled, send a message to me to inform me which the consultations have been rescheduled and when.\nAlready read: True\nRead at: 2024-10-15 07:00:00"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:07",
+   "content": "CALL Calendar__get_calendar_events_from_to :: {\"start_datetime\":\"2024-10-18 17:00:00\",\"end_datetime\":\"2024-10-18 20:00:00\",\"offset\":0,\"limit\":10}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:07",
+   "tool": "Calendar__get_calendar_events_from_to",
+   "args": {
+    "start_datetime": "2024-10-18 17:00:00",
+    "end_datetime": "2024-10-18 20:00:00",
+    "offset": 0,
+    "limit": 10
+   },
+   "status": "ok",
+   "result": "{\n \"events\": [],\n \"range\": [\n  0,\n  0\n ],\n \"total\": 0\n}"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:11",
+   "content": "CALL Calendar__add_calendar_event :: {\"title\":\"Consultation with Vigdis Rasmussen\",\"start_datetime\":\"2024-10-18 17:00:00\",\"end_datetime\":\"2024-10-18 18:00:00\",\"attendees\":[\"Vigdis Rasmussen\"]}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:11",
+   "tool": "Calendar__add_calendar_event",
+   "args": {
+    "title": "Consultation with Vigdis Rasmussen",
+    "start_datetime": "2024-10-18 17:00:00",
+    "end_datetime": "2024-10-18 18:00:00",
+    "attendees": [
+     "Vigdis Rasmussen"
+    ]
+   },
+   "status": "ok",
+   "result": "2685a12fe15cfa3f251f3d32350167e1"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:13",
+   "content": "CALL Calendar__add_calendar_event :: {\"title\":\"Consultation with Birgitta Kj\u00e6r\",\"start_datetime\":\"2024-10-18 18:00:00\",\"end_datetime\":\"2024-10-18 19:00:00\",\"attendees\":[\"Birgitta Kj\u00e6r\"]}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:13",
+   "tool": "Calendar__add_calendar_event",
+   "args": {
+    "title": "Consultation with Birgitta Kj\u00e6r",
+    "start_datetime": "2024-10-18 18:00:00",
+    "end_datetime": "2024-10-18 19:00:00",
+    "attendees": [
+     "Birgitta Kj\u00e6r"
+    ]
+   },
+   "status": "ok",
+   "result": "9421b46ecb28d152f0c5a7904d9e003a"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:15",
+   "content": "CALL Calendar__add_calendar_event :: {\"title\":\"Consultation with Astrid Jensen\",\"start_datetime\":\"2024-10-18 19:00:00\",\"end_datetime\":\"2024-10-18 20:00:00\",\"attendees\":[\"Astrid Jensen\"]}"
+  },
+  {
+   "type": "call",
+   "sim_time": "2024-10-15 07:00:15",
+   "tool": "Calendar__add_calendar_event",
+   "args": {
+    "title": "Consultation with Astrid Jensen",
+    "start_datetime": "2024-10-18 19:00:00",
+    "end_datetime": "2024-10-18 20:00:00",
+    "attendees": [
+     "Astrid Jensen"
+    ]
+   },
+   "status": "ok",
+   "result": "c2b082140318e37d4f31c68141a24c13"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:18",
+   "content": "USER :: Scheduled Friday, October 18: Vigdis Rasmussen 5\u20136 p.m., Birgitta Kj\u00e6r 6\u20137 p.m., and Astrid Jensen 7\u20138 p.m., in the exact requested order."
+  },
+  {
+   "type": "send_user",
+   "sim_time": "2024-10-15 07:00:18",
+   "content": "Scheduled Friday, October 18: Vigdis Rasmussen 5\u20136 p.m., Birgitta Kj\u00e6r 6\u20137 p.m., and Astrid Jensen 7\u20138 p.m., in the exact requested order."
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:19",
+   "content": "WAIT 259200"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 08:00:19",
+   "requested": 3600,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 3600 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 08:00:19",
+   "content": "SystemApp: Wait for notification timeout reached after 3600 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 08:00:20",
+   "content": "WAIT 259200"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 09:00:20",
+   "requested": 3600,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 3600 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 09:00:20",
+   "content": "SystemApp: Wait for notification timeout reached after 3600 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 09:00:23",
+   "content": "WAIT 259200"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 10:00:23",
+   "requested": 3600,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 3600 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 10:00:23",
+   "content": "SystemApp: Wait for notification timeout reached after 3600 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 10:00:24",
+   "content": "WAIT 259200"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 10:00:24",
+   "requested": 3600,
+   "arrived": [
+    "Calendar: Calendar event deleted by Birgitta Kj\u00e6r",
+    "Calendar: Calendar event deleted by Vigdis Rasmussen"
+   ]
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 10:00:24"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 10:00:24",
+   "content": "Calendar: Calendar event deleted by Birgitta Kj\u00e6r"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 10:00:24",
+   "content": "Calendar: Calendar event deleted by Vigdis Rasmussen"
+  }
+ ],
+ "delegations": 0,
+ "specialist_turns": 4,
+ "refusals": 0,
+ "blocked": 0,
+ "blocked_reasons": [],
+ "waits": 4,
+ "user_turns": 1,
+ "malformed": 0,
+ "false_outages": 0,
+ "credit": {
+  "gold_total": 7,
+  "covered": 3,
+  "exact": 0,
+  "coverage": 0.429,
+  "fidelity": 0.0,
+  "partial_reward": 0.214,
+  "pivot": 22,
+  "pivot_kind": "environment-stop"
+ }
+}
