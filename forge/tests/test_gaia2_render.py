@@ -49,3 +49,15 @@ def test_rows_are_json_ready():
     assert row["ability"] == "capability-discovery"
     assert row["config"] == "star-names-binf"
     assert row["roster"] == ["Contacts", "Emails"]
+    assert row["delegation_target"] == 2
+
+
+def test_economy_target_is_adjustable_without_changing_other_cells():
+    cells = render_cells([_load("seamful")], economy_target=5)
+    assert [c.config for c in cells] == [
+        "open-docs-binf",
+        "star-names-binf",
+        "star-docs-binf",
+        "star-docs-b5",
+    ]
+    assert all(c.delegation_target == 5 for c in cells)

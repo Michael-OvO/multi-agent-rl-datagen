@@ -131,7 +131,8 @@ def _run_open_control(client, world, task: str, roster, log: RunLog, model: str)
 
 
 def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
-            main_model: str, sub_model: str, seed: int = 1) -> dict:
+            main_model: str, sub_model: str, seed: int = 1,
+            allow_sub_downgrade: bool = False) -> dict:
     from appworld import AppWorld
 
     log = RunLog()
@@ -144,7 +145,8 @@ def run_one(client, task_id: str, roster: tuple[str, ...], c: Constraints,
                 answer = _run_open_control(client, w, task, roster, log, main_model)
             else:
                 answer = run_main(client, w, task, c, log, model=main_model,
-                                  sub_model=sub_model)
+                                  sub_model=sub_model,
+                                  allow_sub_downgrade=allow_sub_downgrade)
             error = None
         except Exception as e:  # a crashed rollout is a data point, not a stop
             answer, error = _ERROR, f"{type(e).__name__}: {e}"[:200]
@@ -230,9 +232,20 @@ def main() -> None:
     ap.add_argument("--main-model", default="gpt-5.6-sol",
                     help="the model under test; must be strong enough that the "
                          "OPEN control can succeed, or knob effects are unmeasurable")
-    ap.add_argument("--sub-model", default="gpt-4.1",
-                    help="specialists: narrow, mechanical work; a cheap model is fine")
+    ap.add_argument("--sub-model", default=None,
+                    help="specialist model; defaults to the main model. The v5 "
+                         "sweep ran gpt-4.1 here and the confound run showed "
+                         "specialist strength moves the score, so a downgrade "
+                         "below the Main's class is now refused (forge/models.py)")
+    ap.add_argument("--allow-sub-downgrade", action="store_true",
+                    help="explicitly permit a specialist below the Main's model "
+                         "class -- for deliberate experiments (e.g. reproducing "
+                         "the v5 sweep's gpt-4.1 specialists); the rows still "
+                         "record both models")
     args = ap.parse_args()
+    # Resolved here so the sweep rows record the model that actually ran,
+    # never a null that readers would have to know the default of.
+    args.sub_model = args.sub_model or args.main_model
 
     from scripts._env import ensure_appworld_root, require_api_key
     ensure_appworld_root()
@@ -267,7 +280,8 @@ def main() -> None:
         roster = tuple(s["roster"])
         for c in _configs(roster, only=set(args.configs) if args.configs else None):
             row = run_one(client, s["task_id"], roster, c,
-                          args.main_model, args.sub_model, seed=args.seed)
+                          args.main_model, args.sub_model, seed=args.seed,
+                          allow_sub_downgrade=args.allow_sub_downgrade)
             rows.append(row)
             print(f"{row['task_id']:12} {row['config']:18} "
                   f"success={str(row['success']):5} partial={row['partial']:.2f} "

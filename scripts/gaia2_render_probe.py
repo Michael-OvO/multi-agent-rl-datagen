@@ -24,7 +24,12 @@ from forge.gaia2.render import render_cells
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", default="mini")
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument("--economy-target", type=int, default=None)
+    target.add_argument("--economy-target-offset", type=int, default=0)
     args = parser.parse_args()
+    if args.economy_target is not None and args.economy_target < 1:
+        parser.error("--economy-target must be positive")
     in_dir = Path(f"gaia2_data/{args.split}")
     # `mini` keeps its original filename; other splits are suffixed.
     out = Path(
@@ -42,7 +47,11 @@ def main() -> None:
         )
 
     scenarios = [json.loads(p.read_text()) for p in paths]
-    cells = render_cells(scenarios)
+    cells = render_cells(
+        scenarios,
+        economy_target=args.economy_target,
+        economy_target_offset=args.economy_target_offset,
+    )
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps([c.as_row() for c in cells], indent=1))

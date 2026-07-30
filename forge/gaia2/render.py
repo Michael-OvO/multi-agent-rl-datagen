@@ -1,10 +1,8 @@
 """Render Gaia2 cells: seamful scenarios x the three abilities, plus control.
 
-Specs only. No ARE runtime exists in this repo yet, so a rendered cell is a
-complete, priced *description* of a rollout -- scenario, constraint config,
-ability tag, roster, seam edges, structural difficulty -- and not an
-executable task directory. When the runtime lands, these specs are its work
-orders; until then they are the measured answer to "what would we run".
+A cell is the measured specification shared by the in-process ARE runtime and
+the Harbor task renderer: scenario, constraint config, ability tag, roster,
+seam edges, delegation target, and structural difficulty.
 
 The grid per admitted scenario is fixed by the one-knob rule
 (`forge/abilities.py`): the shared control first, then one cell per ability.
@@ -39,6 +37,7 @@ class CellSpec:
     config: str
     roster: tuple[str, ...]
     seam_edges: tuple[tuple[str, str], ...]
+    delegation_target: int
     writes: int
     depth: int
     width: int
@@ -51,14 +50,27 @@ class CellSpec:
             "config": self.config,
             "roster": list(self.roster),
             "seam_edges": [list(edge) for edge in self.seam_edges],
+            "delegation_target": self.delegation_target,
             "writes": self.writes,
             "depth": self.depth,
             "width": self.width,
         }
 
 
-def render_cells(scenarios: list[dict]) -> list[CellSpec]:
-    """The full grid over every scenario that is usable *and* seamful."""
+def render_cells(
+    scenarios: list[dict],
+    economy_target: int | None = None,
+    economy_target_offset: int = 0,
+) -> list[CellSpec]:
+    """The full grid over every scenario that is usable *and* seamful.
+
+    By default each economy cell uses the miner's task-specific heuristic.
+    `economy_target` overrides every task explicitly; otherwise
+    `economy_target_offset` adjusts each heuristic, which makes sensitivity
+    sweeps possible without changing the mined scenario.
+    """
+    if economy_target is not None and economy_target < 1:
+        raise ValueError("economy_target must be positive")
     cells: list[CellSpec] = []
     for scenario in sorted(scenarios, key=scenario_id):
         span = admit(scenario)
@@ -69,11 +81,17 @@ def render_cells(scenarios: list[dict]) -> list[CellSpec]:
             sorted({(seam.source, seam.target) for seam in span.seams})
         )
         category = (scenario.get("_gaia2") or {}).get("category")
+        target = (
+            economy_target
+            if economy_target is not None
+            else max(1, span.delegation_target + economy_target_offset)
+        )
         for ability in _GRID:
             config = (
                 control_for(span.roster)
                 if ability is None
-                else config_for(ability, span.roster)
+                else config_for(ability, span.roster,
+                                budget_target=target)
             )
             cells.append(
                 CellSpec(
@@ -83,6 +101,7 @@ def render_cells(scenarios: list[dict]) -> list[CellSpec]:
                     config=config.label,
                     roster=span.roster,
                     seam_edges=seam_edges,
+                    delegation_target=target,
                     writes=structure.writes,
                     depth=structure.depth,
                     width=structure.width,

@@ -59,6 +59,10 @@ VERBATIM_COPIES = {
     "environment/team": _RUNTIME / "team",
     "environment/server.py": _RUNTIME / "server.py",
     "tests/verify.py": _RUNTIME / "verify.py",
+    # The model-class table and parity rule. Lives beside the sidecar package
+    # (Dockerfile.sidecar installs it as forge/models.py) because runtime.py
+    # imports it, and a sidecar that cannot import the rule cannot enforce it.
+    "environment/maf_models.py": Path(__file__).parents[1] / "models.py",
     **{f"environment/maf_appworld/{mod}": Path(__file__).parent / mod
        for mod in SIDECAR_MODULES},
 }
@@ -119,6 +123,14 @@ _COMPOSE = """services:
       MAF_TASK_ID: "{task_id}"
       MAF_CONFIG: '{config_json}'
       MAF_VERIFIER_TOKEN: "{token}"
+      # Both roles default to the frontier series. The sidecar refuses to
+      # start a specialist below the Main's model class (forge/models.py), so
+      # overriding MAF_SUB_MODEL downward is a startup error, not a silent
+      # downgrade of what the task measures -- unless the operator also sets
+      # MAF_ALLOW_SUB_DOWNGRADE=1, which makes it a deliberate, labelled one.
+      MAF_MAIN_MODEL: "${{MAF_MAIN_MODEL:-gpt-5.6-sol}}"
+      MAF_SUB_MODEL: "${{MAF_SUB_MODEL:-gpt-5.6-sol}}"
+      MAF_ALLOW_SUB_DOWNGRADE: "${{MAF_ALLOW_SUB_DOWNGRADE:-}}"
       OPENAI_API_KEY: "${{OPENAI_API_KEY}}"
     expose:
       - "8079"

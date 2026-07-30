@@ -49,7 +49,23 @@ ROSTER: list[str] = CONFIG["roster"]
 TOPOLOGY: str = CONFIG["topology"]
 VISIBILITY: str = CONFIG["visibility"]
 BUDGET = CONFIG.get("delegation_budget")
-SUB_MODEL = os.environ.get("MAF_SUB_MODEL", "gpt-4.1")
+
+# The Main is Harbor's agent, outside this container, so the sidecar cannot
+# see what model it runs -- the compose file has to say. These two variables
+# exist so the parity rule (forge/models.py) binds in the shipped task, not
+# only in the in-process sweep: a specialist below the Main's model class is
+# refused at startup, before any episode runs. Both default to the same
+# frontier-series model the sweeps run the Main on.
+MAIN_MODEL = os.environ.get("MAF_MAIN_MODEL", "gpt-5.6-sol")
+SUB_MODEL = os.environ.get("MAF_SUB_MODEL", "gpt-5.6-sol")
+
+from forge.models import require_specialist_parity  # noqa: E402
+
+# MAF_ALLOW_SUB_DOWNGRADE=1 is the explicit escape hatch: a below-class
+# specialist is then a labelled experiment instead of a startup error.
+require_specialist_parity(
+    MAIN_MODEL, SUB_MODEL,
+    allow_downgrade=os.environ.get("MAF_ALLOW_SUB_DOWNGRADE", "") == "1")
 
 
 class Episode:

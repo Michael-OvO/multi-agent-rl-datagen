@@ -1,0 +1,35 @@
+FROM python:3.11-slim
+
+# The simulated world + the specialists + the judge live here, and only here.
+# The agent's container (service `main`) has none of it -- see
+# docker-compose.yaml.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
+
+# Pinned to the versions the local .venv-gaia2 measured with. The official
+# harness (Meta's Agents Research Environments; import name are.simulation)
+# needs pydantic 2, which is why this sidecar exists at all: the AppWorld
+# sidecar's environment carries pydantic 1 and the two cannot share an image.
+RUN pip install --no-cache-dir meta-agents-research-environments==1.2.0 openai==2.49.0
+
+WORKDIR /opt/maf
+
+# The whole scenario -- initial app states, scheduled events, oracle writes --
+# ships in the task. Unlike AppWorld's dataset there is nothing to download
+# at build time, so a rendered task is reproducible from its own directory.
+COPY scenario.json /opt/maf/scenario.json
+
+COPY server.py /opt/maf/server.py
+
+# The runtime the sidecar imports: the Gaia2 specialist loop and world
+# adapter, the constraint definitions it shares with AppWorld, and the
+# model-class parity rule. Copied into the sidecar, never into the agent's
+# image.
+COPY maf_gaia2 /opt/maf/forge/gaia2
+COPY maf_appworld /opt/maf/forge/appworld
+COPY maf_models.py /opt/maf/forge/models.py
+RUN touch /opt/maf/forge/__init__.py
+ENV PYTHONPATH=/opt/maf
+
+EXPOSE 8080
+CMD ["python", "/opt/maf/server.py"]

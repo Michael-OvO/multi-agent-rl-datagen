@@ -19,6 +19,14 @@ services:
       MAF_TASK_ID: "2a163ab_3"
       MAF_CONFIG: '{"task_id": "2a163ab_3", "roster": ["phone", "venmo"], "topology": "star", "visibility": "names", "delegation_budget": null}'
       MAF_VERIFIER_TOKEN: "5e2c6ad839441ce8b6fdbe0bcb0dac96"
+      # Both roles default to the frontier series. The sidecar refuses to
+      # start a specialist below the Main's model class (forge/models.py), so
+      # overriding MAF_SUB_MODEL downward is a startup error, not a silent
+      # downgrade of what the task measures -- unless the operator also sets
+      # MAF_ALLOW_SUB_DOWNGRADE=1, which makes it a deliberate, labelled one.
+      MAF_MAIN_MODEL: "${MAF_MAIN_MODEL:-gpt-5.6-sol}"
+      MAF_SUB_MODEL: "${MAF_SUB_MODEL:-gpt-5.6-sol}"
+      MAF_ALLOW_SUB_DOWNGRADE: "${MAF_ALLOW_SUB_DOWNGRADE:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY}"
     expose:
       - "8079"

@@ -59,10 +59,17 @@ def test_partition_on_a_single_app_roster_is_rejected():
         Constraints(roster=("spotify",), topology=Topology.STAR)
 
 
-def test_budget_below_roster_size_is_rejected():
-    # An unsolvable task produces no signal, just noise.
-    with pytest.raises(ValueError, match="unsolvable"):
-        Constraints(roster=("a", "b", "c"), delegation_budget=2)
+def test_budget_below_roster_size_is_representable():
+    # Roster size is not a solvability proof: a roster may include alternative
+    # sources, and Gaia2 uses bN as a soft target rather than a hard cap.
+    assert Constraints(
+        roster=("a", "b", "c"), delegation_budget=2
+    ).delegation_budget == 2
+
+
+def test_budget_or_target_must_be_positive():
+    with pytest.raises(ValueError, match="positive"):
+        Constraints(roster=ROSTER, delegation_budget=0)
 
 
 def test_budget_equal_to_roster_size_is_allowed():

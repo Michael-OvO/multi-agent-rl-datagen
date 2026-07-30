@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 
 from forge.appworld.partition import Constraints, Topology, Visibility
 from forge.appworld.sandbox import bound_names, inspect_code
+from forge.models import require_specialist_parity
 
 DEFAULT_MODEL = "gpt-4.1"
 
@@ -344,8 +345,15 @@ DONE -- FAIL is the channel for it.
 def run_main(
     client, world, task: str, constraints: Constraints, log: RunLog,
     model: str = DEFAULT_MODEL, sub_model: str | None = None, max_steps: int = 12,
+    allow_sub_downgrade: bool = False,
 ) -> str:
     """Run the Main. Returns its final answer string."""
+    # The one place sub_model resolves, so the one place parity can be
+    # enforced for every in-process caller (forge/models.py: a specialist
+    # below the Main's model class relabels what the cell measures).
+    # `allow_sub_downgrade` is the explicit per-run escape hatch.
+    require_specialist_parity(model, sub_model or model,
+                              allow_downgrade=allow_sub_downgrade)
     names_only = constraints.visibility is Visibility.NAMES
     note = (
         "You know only their names, not what they can do. Ask them if you need to know."

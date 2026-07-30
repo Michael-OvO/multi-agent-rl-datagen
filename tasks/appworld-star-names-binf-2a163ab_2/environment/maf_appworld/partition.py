@@ -76,9 +76,12 @@ class Constraints:
     roster: tuple[str, ...]
     topology: Topology = Topology.STAR
     visibility: Visibility = Visibility.NAMES
-    #: Max delegations the Main may issue. None = unbounded. Targets: planning
-    #: over trial-and-error. A budget is a constraint on the world, not a term
-    #: in the reward -- the reward stays AppWorld's terminal state check.
+    #: Delegation-economy dial. None = unbounded/unmeasured. AppWorld's legacy
+    #: harness treats a finite value as a hard cap; Gaia2 treats it as an
+    #: adjustable soft target and records efficiency without blocking work.
+    #: The shared constraint object therefore validates only that it is
+    #: positive -- roster size is not a solvability proof, especially when a
+    #: roster contains alternative provenance sources.
     delegation_budget: int | None = None
 
     def __post_init__(self) -> None:
@@ -87,10 +90,10 @@ class Constraints:
                 f"roster {self.roster} has nothing to coordinate; "
                 "select.usable() should have dropped this task"
             )
-        if self.delegation_budget is not None and self.delegation_budget < len(self.roster):
+        if self.delegation_budget is not None and self.delegation_budget < 1:
             raise ValueError(
-                f"budget {self.delegation_budget} < roster size {len(self.roster)}: "
-                "the task would be unsolvable, which measures nothing"
+                f"delegation budget/target must be positive, got "
+                f"{self.delegation_budget}"
             )
 
     @property

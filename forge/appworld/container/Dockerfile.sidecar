@@ -37,6 +37,9 @@ COPY server.py /opt/maf/server.py
 # The dimension's own runtime: the specialist loop and the constraint
 # enforcement. Copied into the sidecar, never into the agent's image.
 COPY maf_appworld /opt/maf/forge/appworld
+# The model-class parity rule (runtime.py imports it): a specialist below the
+# Main's model class is refused before any episode runs.
+COPY maf_models.py /opt/maf/forge/models.py
 RUN touch /opt/maf/forge/__init__.py
 ENV PYTHONPATH=/opt/maf
 

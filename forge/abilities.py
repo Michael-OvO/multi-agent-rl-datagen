@@ -11,9 +11,9 @@ blend:
 
     DISCOVERY           visibility = NAMES     (docs off, budget off)
     CONTEXT_TRANSFER    the pure partition     (docs on, budget off)
-    DELEGATION_ECONOMY  finite budget          (docs on, so discovery is
-                                                neutralised and only the
-                                                budget bites)
+    DELEGATION_ECONOMY  finite bN dial         (docs on, so discovery is
+                                                neutralised; Gaia2 uses bN as
+                                                a soft efficiency target)
 
 Why one knob each: the knob deltas are per-ability price tags only while the
 other knobs are held at their neutral setting. A names+budget cell moves two
@@ -21,8 +21,9 @@ abilities at once and its delta prices neither -- `ability_of` still
 classifies it (as economy, the harsher constraint) so a stray sweep row is
 never double-counted, but `config_for` will never render one.
 
-Nothing here touches a judge, an oracle, or a reward. Abilities are
-constraint templates plus bookkeeping over `validity` verdicts.
+Nothing here touches a judge or oracle. Abilities are constraint templates
+plus bookkeeping over `validity` verdicts; Gaia2's runtime separately records
+the completion-gated auxiliary economy reward.
 """
 
 from __future__ import annotations
@@ -45,11 +46,19 @@ class Ability(str, Enum):
     DELEGATION_ECONOMY = "delegation-economy"
 
 
-def config_for(ability: Ability, roster: tuple[str, ...]) -> Constraints:
+def config_for(
+    ability: Ability, roster: tuple[str, ...], budget_target: int | None = None
+) -> Constraints:
     """The constraint configuration that isolates `ability` on `roster`.
 
     Star topology throughout: chain remains unshipped, and a topology change
     would be a second turned knob.
+
+    `budget_target` makes the finite `bN` value adjustable per task. Gaia2
+    supplies its causal-phase heuristic; callers may override it explicitly.
+    When omitted, the historical one-visit-per-roster-app default remains for
+    AppWorld. A Gaia2 `bN` is a soft economy target, not a solvability claim or
+    an execution cap.
     """
     if ability is Ability.DISCOVERY:
         return Constraints(
@@ -59,13 +68,13 @@ def config_for(ability: Ability, roster: tuple[str, ...]) -> Constraints:
         return Constraints(
             roster=roster, topology=Topology.STAR, visibility=Visibility.DOCS
         )
-    # The tightest budget that leaves the task solvable: one delegation per
-    # specialist. Constraints itself rejects anything lower.
     return Constraints(
         roster=roster,
         topology=Topology.STAR,
         visibility=Visibility.DOCS,
-        delegation_budget=len(roster),
+        delegation_budget=(
+            len(roster) if budget_target is None else budget_target
+        ),
     )
 
 

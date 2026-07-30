@@ -4,8 +4,8 @@ Gold writes carry `dependencies`, so every scenario ships its own difficulty
 geometry for free:
 
   * `writes` -- how many gold writes exist. An upper bound on how much
-    delegated work a partition has to route, and the mechanical input to a
-    delegation budget that is priced rather than guessed.
+    delegated work a partition has to route, and one mechanical input to the
+    advisory delegation target.
   * `depth`  -- the longest dependency chain among gold writes: forced
     sequencing no topology can parallelise away.
   * `width`  -- the largest number of gold writes at the same dependency

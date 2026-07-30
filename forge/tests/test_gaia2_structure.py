@@ -4,7 +4,7 @@ Gold writes carry dependencies, so every scenario ships its own difficulty
 geometry: how many writes, how deep the longest chain, how wide the widest
 level. `writes` bounds delegation demand, `depth` is forced sequencing, and
 `width` is the parallelism a topology could exploit -- all mechanical, all
-free, and all inputs to pricing the economy budget rather than guessing it.
+free, and useful context for the economy target rather than a hard limit.
 """
 
 from __future__ import annotations

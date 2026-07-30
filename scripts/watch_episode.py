@@ -109,8 +109,12 @@ def main() -> None:
     ap.add_argument("--task", default="2a163ab_1")
     ap.add_argument("--config", default="star-docs", choices=sorted(CONFIGS))
     ap.add_argument("--main-model", default="gpt-5.6-sol")
-    ap.add_argument("--sub-model", default="gpt-4.1")
+    ap.add_argument("--sub-model", default=None,
+                    help="defaults to the main model; below its class is refused")
+    ap.add_argument("--allow-sub-downgrade", action="store_true",
+                    help="explicitly permit a below-class specialist")
     args = ap.parse_args()
+    args.sub_model = args.sub_model or args.main_model
 
     from scripts._env import ensure_appworld_root, require_api_key
     ensure_appworld_root()
@@ -149,7 +153,8 @@ def main() -> None:
                                             log, model=args.main_model, max_turns=20)
         else:
             answer = run_main(OpenAI(), world, instruction, constraints, log,
-                              model=args.main_model, sub_model=args.sub_model)
+                              model=args.main_model, sub_model=args.sub_model,
+                              allow_sub_downgrade=args.allow_sub_downgrade)
 
         # One mapping for all three call sites -- surrender through
         # status='fail', the completed-set through answer=None. See
