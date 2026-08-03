@@ -486,7 +486,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
     </div>
     <div class="title-meta">
         <div class="stack reveal" style="--d:.44s">
-            <span>Substrates carried end to end &nbsp;·&nbsp; <b>AppWorld</b> &nbsp;·&nbsp; <b>Gaia2 / Meta Agents Research Environments</b></span>
+            <span>Substrate carried end to end &nbsp;·&nbsp; <b>Gaia2 / Meta Agents Research Environments</b></span>
             <span>10 rendered container tasks &nbsp;·&nbsp; 148 specified cells &nbsp;·&nbsp; 261 graded trajectories</span>
         </div>
         <div class="reveal" style="--d:.50s">→&nbsp; arrow keys</div>
@@ -614,7 +614,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
             </div>
         </div>
     </div>
-    <div class="foot"><span class="ev">forge/appworld · forge/gaia2 &nbsp;·&nbsp; 14.4k lines Python &nbsp;·&nbsp; 557 tests passing, 2 deliberate xfails</span><span class="pg"></span></div>
+    <div class="foot"><span class="ev">forge/gaia2 &nbsp;·&nbsp; 2 deliberate xfails, on purpose</span><span class="pg"></span></div>
 </section>
 
 <!-- ============================================================
@@ -653,8 +653,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
             <div class="col reveal" style="--d:.34s">
                 <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:14px">Admitted and carried end to end</div>
                 <table class="tb">
-                    <tr><td class="k">AppWorld</td><td>9 apps · 457 APIs · 732 tasks · a programmatic state-based oracle with no model in it, which also catches side effects</td></tr>
-                    <tr><td class="k">Gaia2 / Meta ARE</td><td>1,120 scenarios · write-action verifiers · built explicitly for RL with verifiable rewards</td></tr>
+                    <tr><td class="k">Gaia2 / Meta ARE</td><td>write-action verifiers with a scripted mode that has no model in it · gold write actions plus full initial app state · a continuously running clock and asynchronous events · built explicitly for RL with verifiable rewards</td></tr>
                 </table>
             </div>
             <div class="col reveal" style="--d:.40s">
@@ -689,55 +688,55 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
         <div class="cols" style="margin-top:38px; gap:68px">
             <div class="col">
                 <div class="mono reveal" style="--d:.16s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
-                    AppWorld — AST data-flow over reference code
+                    mini split — state provenance over gold write actions
                 </div>
                 <div class="funnel">
                     <div class="fn-row reveal" style="--d:.20s">
-                        <div class="lbl">ground-truth tasks</div>
-                        <div class="fn-bar grow" style="--d:.24s; background:var(--blue-400); width:100%">147</div>
+                        <div class="lbl">scenarios mined</div>
+                        <div class="fn-bar grow" style="--d:.24s; background:var(--blue-400); width:100%">160</div>
                     </div>
                     <div class="fn-row reveal" style="--d:.25s">
                         <div class="lbl">roster ≥ 2 apps</div>
-                        <div class="fn-bar grow" style="--d:.31s; background:var(--blue-550); width:35%">51&nbsp; <span style="opacity:.7">35%</span></div>
+                        <div class="fn-bar grow" style="--d:.31s; background:var(--blue-550); width:69%">111&nbsp; <span style="opacity:.7">69%</span></div>
                     </div>
                     <div class="fn-row reveal" style="--d:.30s">
                         <div class="lbl">a fact provably crosses</div>
-                        <div class="fn-bar grow" style="--d:.38s; background:var(--blue-650); width:26.5%">39</div>
+                        <div class="fn-bar grow" style="--d:.38s; background:var(--blue-650); width:11%">17&nbsp; <span style="opacity:.7">11%</span></div>
                     </div>
                 </div>
                 <div class="body reveal" style="--d:.44s; margin-top:28px; font-size:21px">
-                    96 of 147 are single-app puzzles and are rejected — the strict filter matters, because every substrate has
-                    infrastructure that masquerades as a collaborator.
+                    The strict filter matters, because every substrate has infrastructure that masquerades as a collaborator —
+                    here it is <span class="mono">AgentUserInterface</span>, the channel that reports back to the user.
                 </div>
             </div>
 
             <div class="col">
                 <div class="mono reveal" style="--d:.20s; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:20px">
-                    Gaia2 — state provenance over gold write actions
+                    adaptability split — the same rule, a denser corpus
                 </div>
                 <div class="funnel">
                     <div class="fn-row reveal" style="--d:.24s">
                         <div class="lbl">scenarios mined</div>
-                        <div class="fn-bar grow" style="--d:.28s; background:var(--blue-400); width:100%">320</div>
+                        <div class="fn-bar grow" style="--d:.28s; background:var(--blue-400); width:100%">160</div>
                     </div>
                     <div class="fn-row reveal" style="--d:.29s">
                         <div class="lbl">roster ≥ 2 apps</div>
-                        <div class="fn-bar grow" style="--d:.35s; background:var(--blue-550); width:84%">269&nbsp; <span style="opacity:.7">84%</span></div>
+                        <div class="fn-bar grow" style="--d:.35s; background:var(--blue-550); width:99%">158&nbsp; <span style="opacity:.7">99%</span></div>
                     </div>
                     <div class="fn-row reveal" style="--d:.34s">
-                        <div class="lbl">seamful &nbsp;·&nbsp; 37 unique</div>
-                        <div class="fn-bar grow" style="--d:.42s; background:var(--blue-650); width:14.7%">47</div>
+                        <div class="lbl">seamful &nbsp;·&nbsp; 37 unique across both</div>
+                        <div class="fn-bar grow" style="--d:.42s; background:var(--blue-650); width:19%">30&nbsp; <span style="opacity:.7">19%</span></div>
                     </div>
                 </div>
                 <div class="body reveal" style="--d:.48s; margin-top:28px; font-size:21px">
-                    No reference code here — ground truth is gold writes plus initial state. A seam is a written argument that
+                    Ground truth is gold writes plus initial state. A seam is a written argument that
                     <strong>exists in another app's state, is absent from the target's, and was not in the user instruction.</strong>
-                    The rule ports; the mechanic is rebuilt.
+                    99% multi-app against 19% seamful: <strong>four fifths of what looks coordinatable is decorative.</strong>
                 </div>
             </div>
         </div>
     </div>
-    <div class="foot"><span class="ev"><b>appworld_span.json</b> · <b>appworld_seams.json</b> · <b>gaia2_mini_admission.json</b> · <b>gaia2_adaptability_admission.json</b></span><span class="pg"></span></div>
+    <div class="foot"><span class="ev"><b>gaia2_mini_admission.json</b> · <b>gaia2_adaptability_admission.json</b> · <b>gaia2_cells.json</b></span><span class="pg"></span></div>
 </section>
 
 <!-- ============================================================
@@ -804,7 +803,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
             </div>
         </div>
     </div>
-    <div class="foot"><span class="ev"><b>forge/appworld/partition.py</b> — 130 lines, and no path from any knob to the reward</span><span class="pg"></span></div>
+    <div class="foot"><span class="ev"><b>forge/gaia2/render.py</b> — one knob per cell, and no path from any knob to the reward</span><span class="pg"></span></div>
 </section>
 
 <!-- ============================================================
@@ -915,7 +914,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
                     <tr><td class="k">Sidecar container</td><td>the benchmark runs isolated behind a service boundary; the package pins the same versions the sweep measured</td></tr>
                     <tr><td class="k">Execution contract</td><td><span class="mono" style="font-size:17px">objective-actions-v1</span> — conditional writes wait for an observed trigger; one obligation, one side effect. Versioned, so a prompt change is a labelled experiment</td></tr>
                     <tr><td class="k">Model parity</td><td>a specialist below the coordinator's model class refuses to run unless an explicit flag labels the downgrade</td></tr>
-                    <tr><td class="k">Substrate isolation</td><td>Gaia2's harness needs pydantic 2 and AppWorld pins pydantic 1, so each gets its own environment</td></tr>
+                    <tr><td class="k">Substrate isolation</td><td>Gaia2's harness needs pydantic 2, which the main environment does not pin, so it gets its own virtualenv</td></tr>
                     <tr><td class="k">Packaging</td><td>rendered to Harbor; a Gaia2 task carries its whole world in <span class="mono" style="font-size:17px">scenario.json</span> and rebuilds from its own directory</td></tr>
                 </table>
             </div>
@@ -938,8 +937,8 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
                 <div class="card reveal" style="--d:.14s; height:auto; border-color:var(--ink)">
                     <div class="k">The reward — unmodified, terminal-state</div>
                     <h3>The benchmark's own verifier</h3>
-                    <p>AppWorld checks world state and side effects with no model in the loop. Gaia2 checks gold write actions.
-                       Neither was written here, neither is touched here, and neither can be reached from any constraint knob.</p>
+                    <p>Gaia2 checks the agent's write actions against the scenario's gold write actions, and its scripted mode has no model in the loop.
+                       It was not written here, it is not touched here, and it cannot be reached from any constraint knob.</p>
                     <p style="color:var(--ink-3); font-size:19px">This is the only signal permitted near a gradient.</p>
                 </div>
 
@@ -1021,7 +1020,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
             </div>
         </div>
     </div>
-    <div class="foot"><span class="ev"><b>forge/appworld/validity.py</b> — substrate-independent: it needs only a score, a floor and a control</span><span class="pg"></span></div>
+    <div class="foot"><span class="ev">the acceptance rule is substrate-independent: it needs only a score, a floor and a control</span><span class="pg"></span></div>
 </section>
 
 <!-- ============================================================
@@ -1085,117 +1084,19 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
             <span class="small" style="margin-left:10px">every number in the write-up names the file that produced it</span>
         </div>
     </div>
-    <div class="foot"><span class="ev"><b>appworld_honesty.json</b> · <b>appworld_injection.json</b> · <b>appworld_donothing.json</b> · <b>tom_degeneracy.json</b></span><span class="pg"></span></div>
+    <div class="foot"><span class="ev"><b>gaia2_credit.json</b> · <b>gaia2_full_campaign.json</b> · <b>tom_degeneracy.json</b></span><span class="pg"></span></div>
 </section>
 
 <!-- ============================================================
-     13 — RESULT: APPWORLD KNOB PRICES
+     13 — RESULT: GAIA2 CORPUS
      ============================================================ -->
 <section class="slide">
     <div class="pad">
-        <div class="eyebrow reveal"><span class="n">13</span> &nbsp;/&nbsp; Result — AppWorld</div>
-        <h2 class="reveal" style="--d:.06s">What each constraint costs, priced against a measured ceiling and floor.</h2>
-
-        <div class="cols" style="margin-top:26px; gap:56px">
-            <div class="col" style="flex:1.5">
-                <div class="dotplot reveal" style="--d:.14s">
-                    <div class="dp-legend">
-                        <span><i style="background:#0D0D0D"></i>control ceiling 1.000</span>
-                        <span style="color:var(--critical)"><i style="background:#d03b3b"></i>do-nothing floor 0.333</span>
-                    </div>
-                    <div class="dp-axis">
-                        <div class="dp-tick" style="top:0%">1.000</div>
-                        <div class="dp-tick" style="top:16.7%">0.833</div>
-                        <div class="dp-tick" style="top:33.3%">0.667</div>
-                        <div class="dp-tick" style="top:66.7%">0.333</div>
-                        <div class="dp-tick" style="top:83.3%">0.167</div>
-                    </div>
-                    <div class="dp-plot">
-                        <div class="dp-band" style="top:0%; height:66.7%"></div>
-                        <div class="dp-grid ceil"  style="top:0%"></div>
-                        <div class="dp-grid floor" style="top:66.7%"></div>
-
-                        <div class="dp-col" style="left:0%; width:33.3%">
-                            <div class="dp-cluster pop" style="--d:.28s; top:0%">
-                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
-                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
-                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
-                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
-                                <span class="dp-dot open"></span><span class="dp-dot open"></span><span class="dp-dot open"></span>
-                            </div>
-                            <div class="dp-label"><div class="cfg">open</div><div class="role">the control</div><div class="mean">mean 1.000</div></div>
-                        </div>
-
-                        <div class="dp-col" style="left:33.3%; width:33.3%">
-                            <div class="dp-cluster pop" style="--d:.38s; top:0%">
-                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
-                                <span class="dp-dot"></span><span class="dp-dot"></span>
-                            </div>
-                            <div class="dp-cluster pop" style="--d:.44s; top:16.7%">
-                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
-                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
-                            </div>
-                            <div class="dp-cluster pop" style="--d:.50s; top:33.3%">
-                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
-                            </div>
-                            <div class="dp-label"><div class="cfg">star-docs</div><div class="role">context-transfer</div><div class="mean">mean 0.855</div></div>
-                        </div>
-
-                        <div class="dp-col" style="left:66.7%; width:33.3%">
-                            <div class="dp-cluster pop" style="--d:.56s; top:0%">
-                                <span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span><span class="dp-dot"></span>
-                            </div>
-                            <div class="dp-cluster pop" style="--d:.60s; top:16.7%"><span class="dp-dot"></span></div>
-                            <div class="dp-cluster pop" style="--d:.64s; top:66.7%"><span class="dp-dot"></span></div>
-                            <div class="dp-cluster pop" style="--d:.68s; top:83.3%">
-                                <span class="dp-dot below"></span><span class="dp-dot below"></span><span class="dp-dot below"></span>
-                                <span class="dp-dot below"></span><span class="dp-dot below"></span><span class="dp-dot below"></span>
-                                <span class="dp-dot below"></span><span class="dp-dot below"></span><span class="dp-dot below"></span>
-                            </div>
-                            <div class="dp-label"><div class="cfg">star-names</div><div class="role">capability-discovery</div><div class="mean">mean 0.445</div></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col">
-                <div class="body reveal" style="--d:.22s; font-size:23px">
-                    3 tasks × 5 seeds = <strong>15 rollouts per configuration</strong>. Coordinator
-                    <span class="mono" style="font-size:19px">gpt-5.6-sol</span>, specialists
-                    <span class="mono" style="font-size:19px">gpt-4.1</span>. Every dot is one rollout.
-                </div>
-                <div class="hr reveal" style="--d:.28s; margin:26px 0"></div>
-                <div class="body reveal" style="--d:.32s; font-size:23px">
-                    Removing the coordinator's tools and forcing it to delegate costs <strong>0.145</strong>.
-                    The control held 1.000 on all 15; <span class="mono" style="font-size:19px">star-docs</span> landed below it on
-                    <strong>10 of 15</strong>, spread 0.667–1.000. That spread is the signal — a constraint that always ties the ceiling
-                    teaches nothing.
-                </div>
-                <div class="hr reveal" style="--d:.40s; margin:26px 0"></div>
-                <div class="reveal" style="--d:.44s">
-                    <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:14px">Yield, at five seeds</div>
-                    <table class="tb">
-                        <tr><td class="k">context-transfer</td><td class="num">3 / 3</td></tr>
-                        <tr><td class="k">capability-discovery</td><td class="num">2 / 3</td></tr>
-                        <tr><td class="k" style="color:var(--blue-650)">shipped cells usable</td><td class="num" style="color:var(--blue-650)">5 / 6</td></tr>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="foot"><span class="ev"><b>sweep/appworld_knobs_v5.json</b> &nbsp;·&nbsp; floor from <b>appworld_donothing.json</b> &nbsp;·&nbsp; verdicts from validity.py</span><span class="pg"></span></div>
-</section>
-
-<!-- ============================================================
-     14 — RESULT: GAIA2 CORPUS
-     ============================================================ -->
-<section class="slide">
-    <div class="pad">
-        <div class="eyebrow reveal"><span class="n">14</span> &nbsp;/&nbsp; Result — Gaia2 corpus</div>
+        <div class="eyebrow reveal"><span class="n">13</span> &nbsp;/&nbsp; Result — Gaia2 corpus</div>
         <h2 class="reveal" style="--d:.06s">A second substrate through the same pipeline, unchanged above the glue layer.</h2>
 
         <div class="body reveal" style="--d:.11s; margin-top:22px; max-width:1640px">
-            The point of a second substrate is to test whether the pipeline is a method or an AppWorld wrapper.
+            The mining rules had to port to ground truth of a completely different form: gold write actions, not reference code.
             Stages 1, 3, 4 and 7 ran <strong>without modification</strong>; stages 2, 5 and 6 needed new mechanics for the same rules.
         </div>
 
@@ -1205,11 +1106,11 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
                     Task structure the mining recovers
                 </div>
                 <table class="tb reveal" style="--d:.20s">
-                    <tr><th></th><th>AppWorld family</th><th>Gaia2 seamful</th></tr>
-                    <tr><td class="k">roster size</td><td class="num">2</td><td class="num">3 – 7</td></tr>
-                    <tr><td class="k">gold writes per task</td><td class="num">short scripts</td><td class="num">5 – 16</td></tr>
-                    <tr><td class="k">forced sequencing (DAG depth)</td><td class="num">shallow</td><td class="num">2 – 4</td></tr>
-                    <tr><td class="k">parallel width</td><td class="num">2</td><td class="num">2 – 12</td></tr>
+                    <tr><th></th><th>range across the 37</th><th>seam signatures</th></tr>
+                    <tr><td class="k">roster size</td><td class="num">2 – 7</td><td class="num">12 distinct</td></tr>
+                    <tr><td class="k">gold writes per task</td><td class="num">5 – 16</td><td class="num">top 3 cover 25</td></tr>
+                    <tr><td class="k">forced sequencing (DAG depth)</td><td class="num">1 – 4</td><td class="num">Cabs ends 38</td></tr>
+                    <tr><td class="k">parallel width</td><td class="num">2 – 12</td><td class="num">Messages ends 20</td></tr>
                 </table>
                 <div class="body reveal" style="--d:.30s; margin-top:24px; font-size:21px">
                     Materially longer-horizon and wider: a coordinator can face <strong>up to 12 parallelisable gold writes in a single fan-out</strong>,
@@ -1242,11 +1143,11 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 </section>
 
 <!-- ============================================================
-     15 — RESULT: GAIA2 CAMPAIGN
+     14 — RESULT: GAIA2 CAMPAIGN
      ============================================================ -->
 <section class="slide">
     <div class="pad">
-        <div class="eyebrow reveal"><span class="n">15</span> &nbsp;/&nbsp; Result — Gaia2 campaign, first pass</div>
+        <div class="eyebrow reveal"><span class="n">14</span> &nbsp;/&nbsp; Result — Gaia2 campaign, first pass</div>
         <h2 class="reveal" style="--d:.06s">All 148 cells rolled out. At one seed the knobs do not separate.</h2>
 
         <div class="cols" style="margin-top:36px; gap:60px">
@@ -1288,8 +1189,8 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 
             <div class="col">
                 <div class="body reveal" style="--d:.22s; font-size:23px">
-                    Gaia2 is a materially harder substrate than AppWorld, and the single-agent control shows it:
-                    <strong>2 of 37</strong>, against AppWorld's 15 of 15.
+                    The single-agent control succeeded on <strong>2 of 37</strong> scenarios. That is the finding, and it disqualifies the rest of the grid:
+                    the acceptance rule refuses to price a knob against a control that has not itself cleared the floor.
                 </div>
                 <div class="hr reveal" style="--d:.30s; margin:26px 0"></div>
                 <div class="reveal" style="--d:.34s">
@@ -1313,11 +1214,11 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 </section>
 
 <!-- ============================================================
-     16 — RESULT: THE SHAPING SIGNAL
+     15 — RESULT: THE SHAPING SIGNAL
      ============================================================ -->
 <section class="slide">
     <div class="pad">
-        <div class="eyebrow reveal"><span class="n">16</span> &nbsp;/&nbsp; Result — what the shaping layer recovers</div>
+        <div class="eyebrow reveal"><span class="n">15</span> &nbsp;/&nbsp; Result — what the shaping layer recovers</div>
         <h2 class="reveal" style="--d:.06s">The pass rate did not move. <em>Which failure happens</em> moved sharply.</h2>
 
         <div class="body reveal" style="--d:.11s; margin-top:18px; max-width:1660px">
@@ -1391,11 +1292,11 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 </section>
 
 <!-- ============================================================
-     17 — THE CORPUS TODAY
+     16 — THE CORPUS TODAY
      ============================================================ -->
 <section class="slide">
     <div class="pad">
-        <div class="eyebrow reveal"><span class="n">17</span> &nbsp;/&nbsp; Inventory</div>
+        <div class="eyebrow reveal"><span class="n">16</span> &nbsp;/&nbsp; Inventory</div>
         <h2 class="reveal" style="--d:.06s">What the pipeline has produced so far.</h2>
 
         <div class="grid-4 reveal" style="--d:.14s; margin-top:56px">
@@ -1411,9 +1312,9 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
             <div class="col reveal" style="--d:.28s">
                 <div class="mono" style="font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-bottom:18px">Shipped and verified</div>
                 <table class="tb">
-                    <tr><td class="k">6 AppWorld container tasks</td><td>3 tasks × 2 configurations, oracle-verified passing</td></tr>
+                    <tr><td class="k">3 Gaia2 container tasks</td><td>one scenario × 3 configurations, each carrying its whole world in scenario.json</td></tr>
                     <tr><td class="k">3 Gaia2 container tasks</td><td>self-contained worlds; rebuild identically from their own directory</td></tr>
-                    <tr><td class="k">5 of 6 AppWorld cells</td><td>usable RL data by the acceptance rule, at five replicates</td></tr>
+                    <tr><td class="k">0 certified cells</td><td>the acceptance rule declined to certify any of the 148 — the control had not cleared the floor</td></tr>
                 </table>
             </div>
             <div class="col reveal" style="--d:.36s">
@@ -1430,11 +1331,11 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 </section>
 
 <!-- ============================================================
-     18 — THE METHOD, PACKAGED
+     17 — THE METHOD, PACKAGED
      ============================================================ -->
 <section class="slide">
     <div class="pad">
-        <div class="eyebrow reveal"><span class="n">18</span> &nbsp;/&nbsp; Portability</div>
+        <div class="eyebrow reveal"><span class="n">17</span> &nbsp;/&nbsp; Portability</div>
         <h2 class="reveal" style="--d:.06s">The method is written down as an executable procedure, not a description.</h2>
 
         <div class="body reveal" style="--d:.11s; margin-top:22px; max-width:1560px">
@@ -1448,7 +1349,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
                 <h3>constraint-forged-<br>multi-agent-tasks</h3>
                 <p>The inherited-task, inherited-verifier procedure: admission test, both mining rules, the four constraint families,
                    the acceptance gate, and the disqualifiers in the order they bite.</p>
-                <p style="color:var(--ink-3); font-size:19px">Substrate-independent — it names AppWorld only as an example.</p>
+                <p style="color:var(--ink-3); font-size:19px">Substrate-independent — it names Gaia2 only as an example.</p>
             </div>
             <div class="card reveal" style="--d:.22s; height:384px">
                 <div class="k">373 lines · the other path</div>
@@ -1479,11 +1380,11 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 </section>
 
 <!-- ============================================================
-     19 — SCALE
+     18 — SCALE
      ============================================================ -->
 <section class="slide">
     <div class="pad">
-        <div class="eyebrow reveal"><span class="n">19</span> &nbsp;/&nbsp; Scale economics</div>
+        <div class="eyebrow reveal"><span class="n">18</span> &nbsp;/&nbsp; Scale economics</div>
         <h2 class="reveal" style="--d:.06s">Everything upstream of rollout is free. Rollout is the entire cost.</h2>
 
         <div class="cols" style="margin-top:42px; gap:68px">
@@ -1492,7 +1393,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
                     <tr><th>stage</th><th>marginal cost</th></tr>
                     <tr><td class="k">world</td><td>free — <span class="mono" style="font-size:19px">pip install</span></td></tr>
                     <tr><td class="k">verifier</td><td>free — the benchmark's own <span class="mono" style="font-size:19px">evaluate()</span></td></tr>
-                    <tr><td class="k">task + ground truth</td><td>free — 732 AppWorld tasks, 1,120 Gaia2 scenarios</td></tr>
+                    <tr><td class="k">task + ground truth</td><td>free — every scenario in a published Gaia2 split ships gold write actions</td></tr>
                     <tr><td class="k">mining + partition + render</td><td>seconds, deterministic, no model calls</td></tr>
                     <tr><td class="k" style="color:var(--critical)">specialist rollouts</td><td style="color:var(--critical)"><strong>the whole budget</strong></td></tr>
                 </table>
@@ -1514,7 +1415,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 
                 <div class="body reveal" style="--d:.32s; margin-top:32px; font-size:22px">
                     <strong>Available today by reconfiguring real tasks rather than inventing them:</strong>
-                    39 AppWorld tasks × 2 shipped configurations = 78 variants plus 39 free controls, and 148 Gaia2 cells already specified.
+                    37 seamful scenarios × 4 cells = 148 specified cells, rendered by one command that calls no model.
                 </div>
 
                 <div class="body reveal" style="--d:.40s; margin-top:24px; font-size:22px">
@@ -1529,42 +1430,42 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
             </div>
         </div>
     </div>
-    <div class="foot"><span class="ev"><b>sweep/appworld_rate_limit_cost.json</b> &nbsp;·&nbsp; <b>appworld_span.json</b></span><span class="pg"></span></div>
+    <div class="foot"><span class="ev"><b>gaia2_cells.json</b> &nbsp;·&nbsp; <b>gaia2_cells_adaptability.json</b></span><span class="pg"></span></div>
 </section>
 
 <!-- ============================================================
-     20 — ROADMAP
+     19 — ROADMAP
      ============================================================ -->
 <section class="slide">
     <div class="pad">
-        <div class="eyebrow reveal"><span class="n">20</span> &nbsp;/&nbsp; Next</div>
-        <h2 class="reveal" style="--d:.06s">Five things, in the order they unblock the rest.</h2>
+        <div class="eyebrow reveal"><span class="n">19</span> &nbsp;/&nbsp; Next</div>
+        <h2 class="reveal" style="--d:.06s">Five things, in the order they unblock the rest. None of the cheap ones have been done.</h2>
 
         <div class="rows" style="margin-top:38px">
             <div class="row-item reveal" style="--d:.12s">
                 <div class="idx">01</div>
-                <div><div class="ttl">Five replicates across the Gaia2 grid</div>
-                     <div class="dsc">The acceptance rule cannot report a yield at one seed. This is the expensive step and it gates every claim about the second substrate.</div></div>
+                <div><div class="ttl">A gold-replay ceiling and a do-nothing floor</div>
+                     <div class="dsc">Neither exists on this substrate, and without them the campaign cannot distinguish “hard scenario” from “broken harness”. A replay agent that issues the recorded write actions directly costs zero model calls and answers exactly that.</div></div>
             </div>
             <div class="row-item reveal" style="--d:.17s">
                 <div class="idx">02</div>
-                <div><div class="ttl">Disentangle judge from difficulty</div>
-                     <div class="dsc">Run the scripted verifier and the soft judge over the <em>same</em> scenarios. Right now the 0/128 versus 9/20 split has two explanations and no way to choose.</div></div>
+                <div><div class="ttl">Repair the runtime before adding to it</div>
+                     <div class="dsc">40 malformed tool calls and 33 environment stops are 49% of the corpus, and neither is a coordination failure. Constrain the call syntax rather than requesting it; measure the clock budget against each scenario's horizon.</div></div>
             </div>
             <div class="row-item reveal" style="--d:.22s">
                 <div class="idx">03</div>
-                <div><div class="ttl">A second AppWorld task family</div>
-                     <div class="dsc">Five seeds priced the 0.145 partition cost against sampling noise, not against task variation. One family cannot separate “the partition costs 0.145” from “this family costs 0.145”.</div></div>
+                <div><div class="ttl">Disentangle judge from difficulty</div>
+                     <div class="dsc">Run the scripted verifier and the soft judge over the <em>same</em> scenarios. Right now the 0/128 versus 9/20 split has two explanations and no way to choose.</div></div>
             </div>
             <div class="row-item reveal" style="--d:.27s">
                 <div class="idx">04</div>
-                <div><div class="ttl">Measure the seam classifier's own error rate</div>
-                     <div class="dsc">The rule that decides which tasks coordinate is a designed classifier whose precision and recall are unmeasured. It is not safer for being an AST pass rather than a model — it is unvalidated in the same way, merely more greppable.</div></div>
+                <div><div class="ttl">Then five replicates across the grid</div>
+                     <div class="dsc">37 scenarios × 4 cells × 5 seeds = 740 rollouts. The acceptance rule cannot report a yield at one seed — but this is the expensive step, and it is worth paying only once the control clears the floor.</div></div>
             </div>
             <div class="row-item reveal" style="--d:.32s">
                 <div class="idx">05</div>
-                <div><div class="ttl">Per-capability attribution, with the teacher measured first</div>
-                     <div class="dsc">A teacher model reading the ledger can attribute a failure to decomposition, routing or briefing — and unlike hand-written arithmetic, its agreement with human labels is checkable. Keep the terminal state check as the only training reward; use the teacher for diagnosis and curriculum, and measure it before it goes anywhere near a gradient.</div></div>
+                <div><div class="ttl">Measure the seam classifier's own error rate</div>
+                     <div class="dsc">The rule that decides which scenarios coordinate is a designed classifier whose precision and recall are unmeasured. It is not safer for being a static provenance pass rather than a model — it is unvalidated in the same way, merely more greppable.</div></div>
             </div>
         </div>
     </div>
@@ -1572,7 +1473,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed rgba(28,92,171,0.5);
 </section>
 
 <!-- ============================================================
-     21 — CLOSE (dark)
+     20 — CLOSE (dark)
      ============================================================ -->
 <section class="slide" style="--slide-bg:#0D0D0D">
     <div class="pad center" style="color:#fff">

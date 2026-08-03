@@ -2,12 +2,12 @@
 
 ## What this is
 
-A research forge that turns single-agent benchmark tasks (AppWorld, Gaia2 on
-Meta's Agents Research Environments) into multi-agent reinforcement-learning
-data: a Main coordinator delegating to app specialists under measured
-constraint knobs, judged by each benchmark's own unmodified verifier. The
-repo's culture is evidentiary — one file per claim, every number names the
-file that produced it, and the shipped write-up is a LaTeX report.
+A research forge that turns single-agent benchmark tasks (Gaia2, on Meta's
+Agents Research Environments) into multi-agent reinforcement-learning data: a
+Main coordinator delegating to app specialists under measured constraint
+knobs, judged by the benchmark's own unmodified verifier. The repo's culture
+is evidentiary — one file per claim, every number names the file that produced
+it, and the shipped write-up is a LaTeX report.
 
 ## Audience
 

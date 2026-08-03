@@ -14,8 +14,8 @@
 \usepackage{xurl}
 \usepackage{hyperref}
 % File paths set in \texttt are single unbreakable boxes, and a long one
-% (sweep/appworld_rate_limit_cost.json) can overrun the margin no matter how the
-% surrounding prose is worded. \code sets them in typewriter but lets the line
+% (sweep/gaia2_adaptability_admission.json) can overrun the margin no matter how
+% the surrounding prose is worded. \code sets them in typewriter but lets the line
 % break inside, at no hyphen -- a hyphen would read as part of the path.
 \DeclareUrlCommand\code{\urlstyle{tt}}
 \usepackage{tikz}
@@ -40,7 +40,7 @@
 }
 
 \setlength{\parskip}{0pt}
-% Long \texttt paths (sweep/appworld_protocol.json) are single unbreakable boxes,
+% Long \texttt paths (sweep/gaia2_full_campaign.json) are single unbreakable boxes,
 % and English has none of the CJK version's break-anywhere slack. Give TeX real
 % stretch on the final pass so those paragraphs fit, rather than letting them run
 % into the margin -- build_report.sh treats an overfull box as unshippable.
@@ -71,7 +71,7 @@ Verifiable Multi-Agent RL Task Construction\\[0.15em]
 from Information Seams and Permission Partitions\par}
 
 \vspace{0.55cm}
-\noindent{\large\color{ink}A method for turning an agentic task database into multi-agent RL tasks, instantiated on AppWorld\par}
+\noindent{\large\color{ink}A method for turning an agentic task database into multi-agent RL tasks, instantiated on Gaia2\par}
 
 \vspace{0.9cm}
 \noindent{\large\color{ink}Jinao Wang\par}
@@ -86,10 +86,10 @@ from Information Seams and Permission Partitions\par}
 \vspace{0.45cm}
 \noindent\begin{minipage}{0.9\textwidth}
 \setlength{\parindent}{0pt}
-{\bfseries Abstract}\hspace{0.6em}This report presents a method, and one substrate carried through it end to end. The method takes an agentic task database that was never meant for multi-agent work and turns its single-agent tasks into training tasks that cannot be finished without collaboration --- without writing a new task, a new environment, or a new verifier. It asks four things of a database and nothing else: a verifier somebody else wrote, an installable world, a reference solution per task, and an action surface that divides along role boundaries. Any database clearing those admits the method; AppWorld is the one this report runs, and \S\ref{sec:substrate} states plainly that it is the only one. Concretely, on AppWorld: read the 147 tasks that carry ground truth, parse their reference solutions, and keep, via one forward taint pass, the 39 whose facts genuinely cross an app boundary. The roster comes from the apps the reference solution actually touched, rather than from padding a task out to look multi-agent. Each task is then wrapped in a permission partition: the Main agent holds no app API at all and can only delegate, while the verifier and the ground truth stay on a side it cannot reach. Whether the task is done is still decided by AppWorld's own database-state checks, and the reward is the fraction of state requirements that pass. No LLM judge is involved.
+{\bfseries Abstract}\hspace{0.6em}This report presents a method, and one substrate carried through it end to end. The method takes an agentic task database that was never meant for multi-agent work and turns its single-agent tasks into training tasks that cannot be finished without collaboration --- without writing a new task, a new environment, or a new verifier. It asks four things of a database and nothing else: a verifier somebody else wrote, an installable world, ground truth per task, and an action surface that divides along role boundaries. Any database clearing those admits the method; Gaia2, the benchmark shipped with Meta's Agents Research Environments~\cite{meta2025are}, is the one this report runs, and \S\ref{sec:substrate} states plainly that it is the only one. Concretely, on Gaia2: read the gold write actions and the full initial app state of each scenario, and keep, via a state-provenance test, the scenarios in which a written argument value provably originated in another app. The roster comes from the apps the ground truth actually touched, rather than from padding a scenario out to look multi-agent. Each scenario is then wrapped in a permission partition: the Main agent holds no app tool at all and can only delegate, while the verifier and the ground truth stay on a side it cannot reach. Whether the scenario is done is still decided by Gaia2's own write-action verifier, and its scripted mode has no model in it.
 
 \vspace{0.5em}
-The cost structure of this method is lopsided, and that is what determines how it scales. Selecting tasks, deriving rosters, and rendering task directories are all static analysis with no model calls: spreading 39 tasks into 78 Harbor task directories is one command and a few minutes. The bills come afterwards. A task can only ship if a reference solution proves it solvable, and those are currently written by hand; a cell only counts once enough seeds have been run to show whether it produces a non-degenerate training signal. So the way up is not to keep adding knobs. It is to automate reference-solution generation first (\S\ref{sec:refcost} --- the seam analysis has already computed its skeleton), then to widen the source pool: the ceiling on this dimension is 13 independent task families, not 39 tasks, and certainly not 78 directories.
+The cost structure of this method is lopsided, and that is what determines how it scales. Mining scenarios, deriving rosters, and rendering task directories are all static analysis with no model calls: 37 admitted scenarios spread into 148 rendered cells in one command and a few minutes. The bills come afterwards, and this report is mostly about what they bought. A full single-seed campaign over all 148 cells is reported in \S\ref{sec:results}, and its verdict is negative: the unconstrained control succeeds on 2 of 37 scenarios, every constrained arm lands within $0.035$ of it, and the acceptance criterion of \S\ref{sec:criterion} therefore certifies nothing --- a knob's effect cannot be read against a control that has already failed. The way up is consequently not more knobs and not more cells. It is a control that clears the floor: 49\% of the campaign's rollouts die on malformed tool calls or an environment stop, before coordination is on trial at all.
 \end{minipage}
 
 \clearpage
@@ -110,7 +110,7 @@ There is an easy mistake here. Add a few roles and a group chat, and the task lo
 
 So this project narrows the goal: start from real tasks that already have a trustworthy verifier, then use permission and information constraints to make collaboration \emph{necessary} for finishing. The model must demonstrate coordination, but the reward is still decided solely by the end state.
 
-Stated at the level it is meant to be reused at, that goal is a \textbf{method} rather than a dataset. No corpus of multi-agent traces with environments and free verifiers exists, so anyone building this data must manufacture the multi-agent structure themselves; the only real decision is \emph{which layer} they manufacture. Manufacture the verifier and the mistakes become invisible, because your own tests will agree with your own errors --- \S\ref{sec:invariant} is that failure, measured. Manufacture only \emph{constraints}, which change who may do what and never what counts as done, and the failure mode becomes a task that is too easy or too hard: visible, and priceable by the criterion of \S\ref{sec:criterion}. The rest of this report is that method in four moves --- admit a database (\S\ref{sec:substrate}), mine its seams (\S\ref{sec:select}), constrain access (\S\ref{sec:wrap}), accept only the cells that land between the floor and the control (\S\ref{sec:criterion}) --- and one database, AppWorld, carried through all four.
+Stated at the level it is meant to be reused at, that goal is a \textbf{method} rather than a dataset. No corpus of multi-agent traces with environments and free verifiers exists, so anyone building this data must manufacture the multi-agent structure themselves; the only real decision is \emph{which layer} they manufacture. Manufacture the verifier and the mistakes become invisible, because your own tests will agree with your own errors --- \S\ref{sec:invariant} is that failure, measured. Manufacture only \emph{constraints}, which change who may do what and never what counts as done, and the failure mode becomes a task that is too easy or too hard: visible, and priceable by the criterion of \S\ref{sec:criterion}. The rest of this report is that method in four moves --- admit a database (\S\ref{sec:substrate}), mine its seams (\S\ref{sec:select}), constrain access (\S\ref{sec:wrap}), accept only the cells that land between the floor and the control (\S\ref{sec:criterion}) --- and one database, Gaia2, carried through all four.
 
 \section{Capability Selection and Learning Order}
 
@@ -133,7 +133,7 @@ Parallel scheduling & Cut needless serial waiting while respecting dependencies 
 \end{tabularx}
 \end{table}
 
-The first three capabilities in Table~\ref{tab:capabilities} are exercised directly by the current delivery. Parallel scheduling is the exception. It is listed because it belongs to the same family --- verifiable from environment state --- but this AppWorld-based delivery does not cover it: the sidecar is single-threaded (AppWorld's world is not thread-safe), delegation calls block serially, and the terminal scalar $r=N_{\mathrm{pass}}/N$ has no way to price makespan. Training it needs a runtime that can express concurrency, which is out of scope here --- the same reason Theory of Mind is not listed as its own dimension below.
+The first three capabilities in Table~\ref{tab:capabilities} are exercised directly by the current delivery. Parallel scheduling is the exception. It is listed because it belongs to the same family --- verifiable from environment state --- but this delivery does not cover it: the Main issues one \texttt{DELEGATE} per turn and \texttt{run\_specialist} returns before the next may start, so delegations block serially however wide the scenario's dependency graph is. Gaia2 does at least make the missing half cheap to imagine: its clock is simulated and the Main advances it explicitly with \texttt{WAIT}, so makespan is a quantity the environment already tracks. What is missing is a runtime that can issue two briefs at once, and a reward term that prices the difference. Until both exist, the dimension stays out of scope --- the same reason Theory of Mind is not listed as its own dimension below.
 
 These capabilities suit layered training. The first layer asks only that the model identify the roles and delegate once, correctly. The second adds a cross-app dependency, so the Main must carry an upstream result downstream. The third hides the roles' capability documentation, forcing the model to work out who might know what. Only later come delegation budgets, more roles, and richer topologies. One clarification is due here: the third layer already implies Theory of Mind --- judging \emph{who might know what} is exactly modelling another role's knowledge state, and the failure criterion for ``cross-role communication'' in Table~\ref{tab:capabilities} is the same thing seen from the other side, where the Main assumes the sub-agent knows as much as it does and issues a delegation the sub-agent cannot act on. The reason Theory of Mind and dynamic recovery are still not separate dimensions is not that they are unimportant. It is that the current reward is a single terminal scalar and cannot attribute one failure to that link alone.
 
@@ -168,31 +168,43 @@ Here $x$ is the user instruction, $\mathcal{E}$ the environment, $J$ the program
 \]
 has four components: $P$, the permission partition (which role holds which app's API); $V$, role visibility (what the Main may know about the roles); $G$, the communication graph (who may message whom); and $B$, the delegation budget.
 
-Three notes. First, $P$ refers to the \emph{structure} of the partition --- the Main holds no API, each specialist binds to exactly one app. Which apps those are is not a knob; it is determined by the reference solution (\S\ref{sec:select}). Second, $P$ is the most fundamental of the four: without it the Main can bypass coordination and simply do the task, and the other three become moot. Third, $J$ is unchanged word for word, but what it reads is the terminal state inside the sidecar; $W$ simultaneously guarantees that neither $J$ nor the ground truth exists anywhere on the agent's filesystem (\S\ref{sec:boundary}).
+Three notes. First, $P$ refers to the \emph{structure} of the partition --- the Main holds no tool, each specialist binds to exactly one app. Which apps those are is not a knob; it is determined by the ground truth (\S\ref{sec:select}). Second, $P$ is the most fundamental of the four: without it the Main can bypass coordination and simply do the task, and the other three become moot. Third, $J$ is unchanged word for word, but what it reads is the terminal state inside the sidecar; $W$ simultaneously guarantees that neither $J$ nor the ground truth exists anywhere on the agent's filesystem (\S\ref{sec:boundary}).
 
-This is close in spirit to SWE-smith's principle of extending software tasks with the tests that already exist~\cite{yang2025swesmith}: reuse verification logic that is already trustworthy rather than designing fresh judging logic per task. The whole forging process reduces to three steps: identify cross-app dependencies in real tasks, derive the roster from those dependencies, and wrap the same task into different coordination configurations.
+This is close in spirit to SWE-smith's principle of extending software tasks with the tests that already exist~\cite{yang2025swesmith}: reuse verification logic that is already trustworthy rather than designing fresh judging logic per task. The whole forging process reduces to three steps: identify cross-app dependencies in real scenarios, derive the roster from those dependencies, and wrap the same scenario into different coordination configurations.
 
 \subsection{Selecting tasks from real dependencies}
 \label{sec:select}
 
-AppWorld provides 9 everyday apps, 457 APIs and 750 complex tasks (the currently published dataset actually contains 732), and uses database-state tests to decide both whether a task was completed and whether it caused unintended modifications~\cite{trivedi2024appworld}. This repository reads the 147 tasks in train and dev that carry full ground truth and analyses which apps their reference solutions actually call.
+Gaia2 provides a set of everyday apps --- Calendar, Contacts, InternalContacts, Messages, Emails, Chats, Cabs, RentAFlat, Shopping and others --- inside a simulated world whose clock runs continuously and whose events fire asynchronously~\cite{meta2025are}. It decides whether a scenario was completed by checking the agent's write actions against a set of gold write actions, and ships a scripted verification mode with no model in it. This repository reads two published splits, \texttt{mini} and \texttt{adaptability}, at 160 scenarios each.
 
-The roster is decided entirely by the task itself. If a task's reference solution calls both phone and venmo, it naturally corresponds to two specialists. \texttt{supervisor.complete\_task}, used to submit the answer, does not count as a role, because it supplies no business information. Under that rule, 51 of the 147 tasks genuinely need at least two apps; the rest are discarded outright rather than padded with an irrelevant role to manufacture a multi-agent shape.
+The ground truth here is not reference code, so the two mining rules port with new mechanics. The roster is still decided entirely by the task: it is the set of apps the gold writes touch, \emph{plus} any app a seam proves was read. That second clause is forced by the data --- Gaia2's oracle events record writes only, so an app the scenario merely reads leaves no trace in the ground truth and would otherwise be invisible. \texttt{AgentUserInterface}, used to report back to the user, does not count as a role, because it supplies no business information: it is this substrate's submit channel, and \S\ref{sec:yield} shows what happens to the numbers when a submit channel is counted as a collaborator.
+
+Under that rule 111 of \texttt{mini}'s 160 scenarios and 158 of \texttt{adaptability}'s 160 genuinely need at least two apps. The rest are discarded outright rather than padded with an irrelevant role to manufacture a multi-agent shape.
 
 \subsection{Turning a single-agent task into a collaborative one}
 
-The wrapped environment holds one Main agent and several app-bound sub-agents. The Main sees the user goal but holds no app API; the phone specialist can reach only phone, the venmo specialist only venmo. Sub-agents know only the local request the Main sent them, never the whole task.
+The wrapped environment holds one Main agent and several app-bound sub-agents. The Main sees the user goal but holds no app tool; the Contacts specialist can reach only Contacts, the Cabs specialist only Cabs. Sub-agents know only the local request the Main sent them, never the whole task.
 
-Take one task from the current delivery: ``On my Venmo social feed, like all of today's transactions involving my roommates.'' The Main must first ask phone which contacts are roommates, then hand that list of names, together with the date range, to venmo. Neither sub-agent can finish the task alone: phone knows the relationships but cannot like anything; venmo can like transactions but does not know who the roommates are. The task therefore carries a clean dependency chain of its own:
+Take \texttt{scenario\_universe\_25\_b932pi}, a mined scenario with a roster of five apps and a measured DAG depth of 3. The user asks: book a default cab ten minutes before today's earliest event, for that event's attendee, \emph{picking them up at their address}; the drop-off depends on whether the event is tagged work; message the attendee to confirm; then monitor the booking for four minutes and, if the driver cancels, delete and re-create the event without the attendee and message everyone again.
+
+The italicised clause is the seam, and it is worth being precise about why. The gold write to \texttt{Cabs.order\_ride} carries \texttt{start\_location = "Sint-Michielsstraat 6, 3000 Leuven, Belgium"}. That string is nowhere in the user instruction --- the user said only ``their address'' --- and it is nowhere in Cabs' own initial state. It exists in Contacts. The fact therefore \emph{had} to cross an app boundary for the write to be correct, which is exactly what the provenance test detects, and no part of that inference required reading the scenario's prose. The dependency chain is the task's own:
 \[
-  \text{phone yields roommate names}
+  \text{Calendar yields the earliest event, its tag and its attendee}
   \longrightarrow
-  \text{Main carries names and range}
+  \text{Contacts yields that attendee's address}
+\]
+\[
   \longrightarrow
-  \text{venmo iterates and acts}.
+  \text{Main applies the work/non-work drop-off rule}
+  \longrightarrow
+  \text{Cabs orders the ride}
+  \longrightarrow
+  \text{Messages confirms}.
 \]
 
-This construction tests the model along three axes at once: discovering which role holds which information, ordering the subtasks correctly, and carrying the context the downstream role actually needs. But the terminal reward can only judge whether the whole thing got done; it cannot attribute one failure to one of those axes (see \S\ref{sec:verifyfirst}). The prompt remains a natural-language task, and the dependency graph exists only in the environment and the reference solution --- it is never shown to the model.
+No sub-agent can finish this alone: Calendar knows when and who but cannot book; Contacts knows where the attendee lives but has nothing to book with; Cabs can order a ride but knows neither the time nor the address. Gaia2 then adds an axis a static world has no way to express --- the tail of the scenario is conditional on an event four simulated minutes in the future, so the Main must stop acting and advance the clock (\S\ref{sec:boundary}) rather than guess.
+
+This construction tests the model along three axes at once: discovering which role holds which information, ordering the subtasks correctly, and carrying the context the downstream role actually needs. But the terminal reward can only judge whether the whole thing got done; it cannot attribute one failure to one of those axes (see \S\ref{sec:verifyfirst}). The prompt remains a natural-language task, and the dependency graph exists only in the environment and the ground truth --- it is never shown to the model.
 
 \section{The Forging Method: Four Elements}
 
@@ -228,22 +240,22 @@ Operators fall into three classes by how they produce candidates; see Table~\ref
 \toprule
 Class & SWE-smith analogue & This design's operator & Task or rules & Yield & Status\\
 \midrule
-Procedural & Procedural (13 AST transforms) & \texttt{partition}: split roles by the apps the reference solution touches; the Main holds no API & rules & \textbf{39/51} selection; 3/3 cells & shipped\\
-Procedural & Procedural & \texttt{blind}: hide the roles' capability docs, leaving only names & rules & \textbf{2/3} cells & shipped\\
-Procedural & Procedural & \texttt{route} (delegation budget): cap the number of delegations & rules & unmeasured & built, unshipped\\
-Procedural & Procedural & \texttt{route} (chain/tree topology): change who may talk to whom & rules & 0/3 cells & not built\\
+Procedural & Procedural (13 AST transforms) & \texttt{partition}: split roles by the apps the ground truth touches; the Main holds no tool & rules & \textbf{37} scenarios admitted; cells uncertifiable & shipped\\
+Procedural & Procedural & \texttt{blind}: hide the roles' capability docs, leaving only names & rules & cells uncertifiable & shipped\\
+Procedural & Procedural & \texttt{route} (delegation economy): a soft, task-derived \texttt{bN} target on delegation count & rules & cells uncertifiable & shipped\\
+Procedural & Procedural & \texttt{route} (chain/tree topology): change who may talk to whom & rules & --- & not built\\
 Procedural & Procedural & \texttt{perturb}: withdraw a role mid-run, forcing replanning & task & --- & not built\\
 LM rewrite & LM Modify / LM Rewrite & \texttt{weaken}: strip dates and entities from the instruction into hidden user state in the sidecar & task & --- & not built\\
-Combine & Combine & \texttt{combine}: merge two tasks that share an entity & task (+ verifier) & --- & not built\\
+Combine & Combine & \texttt{combine}: merge two scenarios that share an entity & task (+ verifier) & --- & not built\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-In the table, \emph{built, unshipped} means implemented but present in no published configuration; \emph{not built} means there is no code. The delegation budget is the former: it is fully implemented in \texttt{partition.py} and enforced on both the Main side and the sidecar side, but both published configurations pass an empty budget. The chain topology is the latter: the specialist-to-specialist handoff is defined in \texttt{partition.py} and called by nothing, so tasks under that topology are unsolvable and their difficulty signal is fake. The operator names are this report's; the code exposes \texttt{Topology}, \texttt{Visibility} and \texttt{delegation\_budget}. SWE-smith's PR Mirror has no analogue here, because there is no PR to mirror.
+In the table, \emph{shipped} means the configuration appears in the published campaign; \emph{not built} means there is no code. ``Cells uncertifiable'' is not a yield of zero and should not be read as one: it means the acceptance criterion of \S\ref{sec:criterion} declined to return a verdict, because the unconstrained control on this substrate has not itself cleared the floor (\S\ref{sec:results}). A knob whose control failed is unpriced, not proven worthless. The chain topology remains unbuilt: the specialist-to-specialist handoff is defined and called by nothing, so scenarios under that topology would be unsolvable and their difficulty signal fake. The operator names are this report's; the code exposes \texttt{Topology}, \texttt{Visibility} and the soft \texttt{bN} target. SWE-smith's PR Mirror has no analogue here, because there is no PR to mirror.
 
-One distinction has to be faced squarely: operators that change the rules produce no new tasks, only new configurations. However \texttt{partition} and \texttt{blind} are combined, the 39 tasks that passed the seam gate remain those same 39; $39\times2=78$ counts configurations, not tasks. SWE-smith's 50k all come from operators that edit the world itself. To make the task count actually grow, you need operators that modify the task --- and that is exactly where yield stops being free.
+One distinction has to be faced squarely: operators that change the rules produce no new tasks, only new configurations. However \texttt{partition}, \texttt{blind} and the economy target are combined, the 37 scenarios that passed the seam gate remain those same 37; $37\times4=148$ counts configurations, not tasks. SWE-smith's 50k all come from operators that edit the world itself. To make the task count actually grow, you need operators that modify the task --- and that is exactly where yield stops being free.
 
-\texttt{combine} is the only one that would require rebuilding the verifier: AppWorld's verifier checks side effects, so task A's ``no new venmo transactions'' is tripped by task B's legitimate actions, and $J_A\wedge J_B$ is not a self-consistent verifier. It has the largest potential output and sits closest to the very practice this method exists to avoid.
+\texttt{combine} is the only one that would require rebuilding the verifier: Gaia2 checks a scenario's writes against \emph{its} gold action set, so merging two scenarios means deciding which writes are now legitimate, and $J_A\wedge J_B$ is not a self-consistent verifier. It has the largest potential output and sits closest to the very practice this method exists to avoid.
 
 \subsection{Criterion: when does a candidate count}
 \label{sec:criterion}
@@ -256,77 +268,61 @@ This design's criterion is a sandwich. Write the do-nothing floor as $r_0$, the 
 \]
 and the control is not itself on the floor ($r_{\mathrm{open}}>r_0$). Landing on $r_0$ means the cell is indistinguishable from doing nothing: the reward cannot tell trying from not trying, and the gradient is zero --- whether the cause was a genuinely hard task or a broken harness. Hitting $r_{\mathrm{open}}$ means the constraint never bit, and the cell measures the base task rather than coordination. And if $r_{\mathrm{open}}$ is itself on the floor, the base task is already broken, so no knob's effect on top of it can be measured --- reading a constrained score against a control that already failed is precisely the path by which a harness fault gets published as difficulty.
 
-Solvability is a \emph{separate} gate and is not part of this criterion: it is proved by actually running the reference solution inside the container, driven by \code{appworld_oracle_report.py}, with results recorded in \code{sweep/appworld_oracle.json}.
+Solvability is a \emph{separate} gate and is not part of this criterion. On a substrate whose ground truth is code, it is proved by running the reference solution. Gaia2 ships gold \emph{write actions} rather than a runnable script, so solvability is instead evidenced by the unconstrained control: an \texttt{open} cell that succeeds proves the scenario is reachable by an agent holding every tool. That substitution is weaker than a reference solution and this report does not pretend otherwise --- it is the direct cause of the negative result in \S\ref{sec:results}, because when the control fails, solvability and difficulty become indistinguishable.
 
-This rule previously existed only as prose, and this repository published $0.333$ as ``the partition is hard'' for two days --- it was the floor. It is now \code{forge/appworld/validity.py}, and \texttt{python -m forge.appworld.cli judge} prints the table above directly.
+This rule previously existed only as prose, and this repository once published a floor score as ``the partition is hard'' for two days --- it was the floor. It is now code, and its most useful property is the one exercised below: it declines to certify rather than reporting a number that looks like a result.
 
 \subsection{Yield: forge ten, keep how many}
 \label{sec:yield}
 
-Yield is the fraction of forged candidates that are actually usable. SWE-smith measured one number per operator and used them to decide where to spend. Forging filters candidates at two points, so there are two yields: \textbf{selection} (how many tasks in the pool qualify) and \textbf{rendering} (how many of a qualifying task's rendered cells are trainable). Neither had been measured before.
+Yield is the fraction of forged candidates that are actually usable. SWE-smith measured one number per operator and used them to decide where to spend. Forging filters candidates at two points, so there are two yields: \textbf{selection} (how many scenarios in the pool qualify) and \textbf{rendering} (how many of a qualifying scenario's rendered cells are trainable). This report measures the first and finds the second not yet measurable, which is a distinction worth keeping sharp.
 
-\subsubsection*{Selection yield: 12 of the 51 are merely parallel}
+\subsubsection*{Selection yield: most multi-app scenarios are merely parallel}
 
-\texttt{select.py}'s criterion is \texttt{len(roster) >= 2}. That proves ``the reference solution touched two apps'', while its own docstring claims ``a task that cannot be coordinated is dropped, not decorated'' --- two different statements, with the step between them never verified.
+The naive criterion is \texttt{len(roster) >= 2}. That proves ``the ground truth touched two apps''. What the method actually needs is the claim from \S\ref{sec:invariant} --- that the seam is an \emph{information} seam. If two apps each do their own work and merely need ordering, nothing is carried across, and splitting roles is division of labour rather than coordination.
 
-The difference is the one from \S\ref{sec:invariant}: the seam must be an information seam. If two apps each do their own work and merely need ordering, nothing is carried across the seam, and splitting roles is just division of labour. This is measurable, and needs no model calls: parse the reference solution, run a forward taint pass, and check whether a fact obtained from one app is genuinely consumed by another app's action --- appearing in its arguments, or in the condition guarding it. \texttt{seams.py} does this, with results in \code{sweep/appworld_seams.json}.
+On Gaia2 this is measurable with no model calls, using state provenance: take every argument value in a gold write action, and keep the scenario if some value (i)~appears in a \emph{different} app's initial state, (ii)~is absent from the target app's own state, and (iii)~did not appear in the user instruction. All three clauses are needed. Without (ii) the value might have been local all along; without (iii) the user simply told the agent, and nothing had to cross.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Selection yield: three filters}
+\caption{Selection yield on two Gaia2 splits, 160 scenarios each (\texttt{sweep/gaia2\_mini\_admission.json}, \texttt{sweep/gaia2\_adaptability\_admission.json})}
 \label{tab:selection}
 \begin{tabularx}{\textwidth}{X c c}
 \toprule
-Filter & Kept & Share\\
+Filter & \texttt{mini} & \texttt{adaptability}\\
 \midrule
-naive: count \texttt{supervisor.complete\_task} as a collaborator & 147/147 & 100\%\\
-strict: drop the submit channel (\texttt{select.py}'s current rule) & 51/147 & 34.7\%\\
-\textbf{+ information seam}: require a fact to actually cross & \textbf{39/147} & \textbf{26.5\%}\\
+naive: count the user-interface channel as a collaborator & 160/160 (100\%) & 160/160 (100\%)\\
+strict: drop the submit channel, require roster $\geq2$ & 111/160 (69\%) & 158/160 (99\%)\\
+\textbf{+ information seam}: require a fact to actually cross & \textbf{17/160 (11\%)} & \textbf{30/160 (19\%)}\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\textbf{12 of the 51 have no information seam}, and they are not scattered: they are four complete task families of three variants each. Two of those families are \texttt{phone+venmo}, the same pair as the shipped family, and still have no seam. Splitting roles on them trains parallel dispatch, not coordination.
+The two steps are the same shape one level apart: the first removes ``a channel that carries no information'', the second removes ``a second app that carries no information''. The second step is by far the more expensive one here. On \texttt{adaptability}, 99\% of scenarios are multi-app and only 19\% are seamful --- so \textbf{four fifths of the scenarios that look coordinatable are decorative}, and a pipeline that stopped at the roster check would have treated them as training data.
 
-This is the same shape as the supervisor trap, one level up: the $100\%\rightarrow34.7\%$ step removes ``a submit channel that carries no information'', and the $34.7\%\rightarrow26.5\%$ step removes ``a second app that carries no information''. The first step was taken; the second was not --- and the price was treating \textbf{23.5\% decorative tasks as coordinatable ones}.
+The splits overlap on 10 scenarios, so the corpus holds \textbf{37 unique seamful scenarios}, rendering to 148 cells with rosters of 2--7 apps, 5--16 gold writes, DAG depth 1--4 and parallel width up to 12. Per category in \texttt{mini}: adaptability 10/32, time 4/32, execution 3/32, ambiguity 0/32, search 0/32. The two zero rows are expected rather than alarming --- search and ambiguity scenarios are read-heavy, Gaia2 verifies writes only, and a fact that ends in the \emph{answer} rather than in a write is invisible to a provenance test over write arguments.
 
-Worth recording: in this analysis, 15 tasks' seams pass \emph{only} through a guard clause (the action follows an \texttt{if ... : continue}), while 36 pass through arguments. All three shipped tasks are of the first kind. An implementation that only checks ``does an upstream return value appear in the arguments'' would miss every one of them --- including the only task family this project has ever shipped.
+Two honest limits on this number. First, the heuristic \textbf{under-reports by construction}: it matches strings exactly, so a date reformatted in transit is invisible; values under 8 characters are ignored as too collision-prone; values present in three or more apps are treated as ambient. Second, it is a self-designed filter, and by the rule of \S\ref{sec:invariant} it therefore owes the same validation study this report demands of any self-designed judge. That study has not been run. What supports it so far is only structural: the densest seam edges are Contacts$\rightarrow$Cabs, InternalContacts$\rightarrow$Cabs and RentAFlat$\rightarrow$Cabs, which is a plausible property of the apps rather than a scatter, but plausibility is not a measurement.
 
-\subsubsection*{Rendering yield: of the qualifying tasks, how many rendered cells are trainable}
+\subsubsection*{Rendering yield: not measurable yet, and why that is the finding}
 
-Applying the sandwich criterion of \S\ref{sec:criterion} to the sweep gives Table~\ref{tab:yield}.
+Applying the sandwich criterion of \S\ref{sec:criterion} to the campaign of \S\ref{sec:results} returns no verdict at all, for one reason: $r_{\mathrm{open}}$ has not cleared the floor. The unconstrained control succeeds on 2 of 37 scenarios and averages $0.251$ partial credit, and every constrained arm sits within $0.035$ of it.
 
-\begin{table}[H]
-\centering
-\small
-\caption{The sweep re-read under the sandwich criterion (five seeds per cell)}
-\label{tab:yield}
-\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.2cm} c c c >{\raggedright\arraybackslash}p{1.9cm} X}
-\toprule
-Configuration & \texttt{\_1} & \texttt{\_2} & \texttt{\_3} & Usable cells & Note\\
-\midrule
-star-docs & \textbf{0.833} & \textbf{0.833} & \textbf{0.900} & 3/3 & every cell drops below the control somewhere in its five draws\\
-star-names & \textbf{0.833} & below floor & \textbf{0.333} & 2/3 & one cell sits on 0.167 for all five replicates\\
-chain-names (not built) & floor & floor & below floor & 0/3 & a known fake signal; 2 seeds, so not a measured yield\\
-\bottomrule
-\end{tabularx}
-\end{table}
+The criterion's third clause exists precisely for this case. Reading \texttt{star-docs} at $0.253$ against a control at $0.251$ and reporting ``the partition is free'' would be the same error this repository has already made once in the other direction --- publishing a floor as a difficulty result. When the control fails, a constrained score carries no information about the constraint, because nothing establishes that the scenario was reachable to begin with.
 
-The two shipped configurations cover 6 cells, and 5 land in the useful band. star-docs' mean of $0.855$ comes from every cell spreading below the control across its replicates; star-names' $0.445$ comes from two cells that bite and one that scores $0.167$ on all five draws (\S\ref{sec:results} explains why a cell can fall below the floor). Every rollout logged \texttt{ran=True} with no error, so the one floored cell is a real failure rather than a harness fault --- and for RL data it is still unusable: there is no gradient between it and doing nothing.
-
-This table read \textbf{1/3 and 0/3} one seed ago, and nothing about the tasks changed in between. At a single draw star-docs tied the control on \texttt{\_1} and \texttt{\_2}, so the rule called them \textsc{no-bite} --- correctly, on the evidence available: a cell that always ties its ceiling teaches nothing. Four more draws put those same cells at $0.667$ and $0.833$, so $\min < \text{control}$ and they are valid. The variance was always there; one point cannot exhibit variance, which is precisely what \code{SEEDS_FOR_YIELD} encodes. The correction runs \emph{upward}, and it is worth noticing that a criterion built to deflate a flattering number deflated an unflattering one just as readily.
-
-One observation deserves its own line: the verdicts did not change between two versions of the sweep, only between two sample sizes. In the previous sweep star-names averaged $0.778$; in this one it averages $0.445$ --- a gap of $0.333$, a full third of the range --- and the answer to ``which cells are trainable'' did not move by a single cell. A mean that swings by a third while the conclusion holds still is exactly the argument for judging cell by cell instead of averaging.
-
-Finally, the scope of these numbers. With five replicates in every shipped cell, \code{SEEDS_FOR_YIELD} is satisfied and the rates above are a yield rather than an observation about the draws in hand. What they are not is a yield for the \emph{method}: all three tasks come from one family, so 0.145 is priced against sampling noise and not against task variation. Turning this into a claim about the method needs more task families, not more seeds and not more configurations.
+So the rendering yield on this substrate is \textbf{undefined}, not zero, and the distinction matters for what to do next. A yield of zero would say the knobs produce unusable data. Undefined says the experiment has not run yet --- the harness, the runtime, or the base difficulty is consuming the episodes before the knobs are on trial, and \S\ref{sec:results} shows which. What this rules out is only the thing worth ruling out: reporting any of the four means in Table~\ref{tab:results} as a priced constraint.
 
 \section{Runtime, Trajectory and Verification}
 
 \subsection{The container boundary}
 \label{sec:boundary}
 
-Harbor packages each task as a standalone unit containing the instruction, the container environment, the tests and a reference solution~\cite{harbor2026tasks}. The container holding the Main agent exposes only a thin \texttt{team} interface; the AppWorld world, the sub-agents and the final state all live on the sidecar. The Main can therefore only advance the task by delegating, and cannot bypass coordination to touch the apps directly.
+Harbor packages each task as a standalone unit containing the instruction, the container environment and the tests~\cite{harbor2026tasks}. The container holding the Main agent exposes only a thin \texttt{team} interface; the Gaia2 world, the sub-agents and the final state all live on the sidecar. The Main can therefore only advance the task by delegating, and cannot bypass coordination to touch the apps directly.
+
+One property of a rendered Gaia2 task is worth stating because it is a genuine improvement over a substrate whose world must be installed: the task carries its entire world with it, as \texttt{environment/scenario.json}. There is no dataset to download and no install step at run time, so a task directory rebuilds identically from its own contents.
+
+The Main's verb set carries one addition this substrate forces. Gaia2's clock runs continuously and its events fire asynchronously, so a scenario can make its second half conditional on something that has not happened yet. The Main therefore holds \texttt{WAIT <seconds>}, which advances simulated time and delivers whatever notifications and user messages arrive in the interval. \emph{When to stop acting} is a coordination decision, so it belongs to the Main rather than to the harness --- and without it, an agent facing the scenario of \S\ref{sec:wrap} can only guess at a trigger four simulated minutes away.
 
 \begin{figure}[H]
 \centering
@@ -347,43 +343,47 @@ Harbor packages each task as a standalone unit containing the instruction, the c
   flowlabel/.style={font=\scriptsize,fill=white,inner sep=2pt,text=ink},
   verifylabel/.style={flowlabel,text=muted}
 ]
-  \node[main] (agent) at (0,2.4) {Main agent\\sees the whole task\\no app API};
-  \node[main] (team) at (0,0) {\texttt{team} client\\\texttt{roster/docs}\\\texttt{ask/done}};
+  \node[main] (agent) at (0,2.4) {Main agent\\sees the whole task\\no app tool};
+  \node[main] (team) at (0,0) {\texttt{team} client\\\texttt{roster/docs}\\\texttt{ask/wait/done}};
   \node[verify] (verifier) at (0,-3.3) {\texttt{tests/verify.py}\\injected at verify time\\token visible only here};
 
-  \node[side] (gateway) at (4.8,0) {Episode gateway\\enforces roles, topology\\and delegation budget\\keeps the ledger};
-  \node[side] (phone) at (8.3,1.05) {phone specialist\\phone access only};
-  \node[side] (venmo) at (8.3,-1.05) {venmo specialist\\venmo access only};
-  \node[world] (appworld) at (12.0,0) {AppWorld\\app APIs and database\\native task state};
-  \node[world] (judge) at (12.0,-3.3) {\texttt{evaluate()}\\per-requirement checks\\returns pass/failure};
+  \node[side] (gateway) at (4.8,0) {Episode gateway\\enforces roles, topology\\and the economy target\\keeps the ledger};
+  \node[side] (contacts) at (8.3,1.05) {Contacts specialist\\Contacts access only};
+  \node[side] (cabs) at (8.3,-1.05) {Cabs specialist\\Cabs access only};
+  \node[world] (gaia) at (12.0,0) {Gaia2 world\\app tools, simulated clock\\asynchronous events};
+  \node[world] (judge) at (12.0,-3.3) {write-action verifier\\gold actions vs. observed\\returns pass/failure};
 
   \node[boundary,fit=(agent)(team)(verifier),
     label={[font=\small\bfseries,text=accent]above:main container}] (mainbox) {};
-  \node[boundary,fit=(gateway)(phone)(venmo)(appworld)(judge),
+  \node[boundary,fit=(gateway)(contacts)(cabs)(gaia)(judge),
     label={[font=\small\bfseries,text=ink]above:maf-env sidecar}] (sidebox) {};
 
   \draw[edge] (agent) -- (team);
-  \draw[edge] (team.east) -- node[flowlabel,above=2pt]{\texttt{ask / done}} (gateway.west);
-  \draw[edge] (gateway.east) to[out=0,in=180] (phone.west);
-  \draw[edge] (gateway.east) to[out=0,in=180] (venmo.west);
-  \draw[edge] (phone.east) to[out=0,in=180] (appworld.west);
-  \draw[edge] (venmo.east) to[out=0,in=180] (appworld.west);
-  \draw[edge] (appworld.south) -- node[flowlabel,right=2pt]{terminal check} (judge.north);
+  \draw[edge] (team.east) -- node[flowlabel,above=2pt]{\texttt{ask / wait / done}} (gateway.west);
+  \draw[edge] (gateway.east) to[out=0,in=180] (contacts.west);
+  \draw[edge] (gateway.east) to[out=0,in=180] (cabs.west);
+  \draw[edge] (contacts.east) to[out=0,in=180] (gaia.west);
+  \draw[edge] (cabs.east) to[out=0,in=180] (gaia.west);
+  \draw[edge] (gaia.south) -- node[flowlabel,right=2pt]{terminal check} (judge.north);
 
   \draw[verifyedge] (verifier.east) to[out=15,in=-115]
     node[verifylabel,pos=0.55,above=2pt]{\texttt{GET /state + token}} (gateway.south);
   \draw[verifyedge] (judge.west) --
     node[verifylabel,below=2pt]{reward + breakdown} (verifier.east);
 \end{tikzpicture}
-\caption{Container architecture of a Harbor task. The solid box on the left is the main container the model can see; AppWorld, the sub-agents, the ledger and the judging logic all stay in the sidecar. Dashed lines mark the verification phase, which happens only after the agent has finished.}
+\caption{Container architecture of a Harbor task. The solid box on the left is the main container the model can see; the Gaia2 world, the sub-agents, the ledger and the judging logic all stay in the sidecar. Two specialists are drawn; a mined roster runs to seven. Dashed lines mark the verification phase, which happens only after the agent has finished.}
 \label{fig:architecture}
 \end{figure}
 
-Two boundaries in Figure~\ref{fig:architecture} matter most. First, the Main's filesystem holds no AppWorld, no ground truth and no verifier; it can only issue natural-language delegations through \texttt{team}. Second, the verifier token never exists during the agent phase; Harbor injects the tests into the main container only after execution ends, and the verifier reads the terminal state from the sidecar. Role constraints are thus enforced by the environment, and the model cannot read its own reward mid-run.
+Two boundaries in Figure~\ref{fig:architecture} matter most. First, the Main's filesystem holds no world, no gold write actions and no verifier; it can only issue natural-language delegations through \texttt{team}. Second, the verifier token never exists during the agent phase; Harbor injects the tests into the main container only after execution ends, and the verifier reads the terminal state from the sidecar. Role constraints are thus enforced by the environment, and the model cannot read its own reward mid-run.
+
+A practical note on the boundary, since it shaped the delivery: Gaia2's official harness requires pydantic~2, which conflicts with the pin the rest of this repository carries, so everything touching \texttt{are.simulation} runs in a separate virtual environment. Static analysis --- mining, admission, rendering --- runs in the main one. That split is the same idea as the sidecar, applied to a dependency graph instead of a filesystem.
 
 \subsection{How a task runs}
 
-Figure~\ref{fig:trajectory} shows the reference trajectory for task \texttt{2a163ab\_1}. Each \texttt{team ask} in the figure may contain several rounds of sub-agent reasoning and API calls internally; only cross-role information flow is kept here. What decides success is not the number of messages but whether the Main obtains the roommate list first, then hands venmo the names, the date range and the full-pagination requirement together.
+Figure~\ref{fig:trajectory} shows the gold trajectory for \texttt{scenario\_universe\_25\_b932pi}, the scenario introduced in \S\ref{sec:wrap}. Each \texttt{team ask} in the figure may contain several rounds of sub-agent reasoning and tool calls internally; only cross-role information flow is kept here. What decides success is not the number of messages but whether the Main obtains the attendee's address before it books anything, and then hands Cabs the address, the departure time and the already-resolved drop-off rule together.
+
+This is the trajectory the scenario's five gold write actions describe. It is worth saying plainly that the campaign of \S\ref{sec:results} did not produce it: on this scenario every one of the four cells, \emph{including the unconstrained control}, covered 2 of the 5 gold writes and failed. The figure is therefore a specification, not a transcript.
 
 \begin{figure}[H]
 \centering
@@ -404,43 +404,42 @@ Figure~\ref{fig:trajectory} shows the reference trajectory for task \texttt{2a16
   phase/.style={font=\small\bfseries,text=ink}
 ]
   \node[align=left,anchor=west,font=\scriptsize,text width=11cm] (task) at (-1.05,1.5)
-    {\textbf{User task}\quad On my Venmo social feed, like all of today's transactions involving my roommates.};
+    {\textbf{User task}\quad Book a default cab 10 minutes before today's earliest event, for that event's attendee, picking them up at their address; drop-off depends on the event's tag. Confirm by message, then monitor the booking.};
 
   \node[actor,draw=accent,fill=accent!6] (main) at (0,0) {Main};
-  \node[actor] (phone) at (3.5,0) {phone\\specialist};
-  \node[actor] (venmo) at (7.0,0) {venmo\\specialist};
-  \node[actor,fill=rulegray!35] (world) at (10.5,0) {AppWorld\\/ verifier};
+  \node[actor] (calendar) at (3.5,0) {Calendar\\specialist};
+  \node[actor] (contacts) at (7.0,0) {Contacts\\specialist};
+  \node[actor] (cabs) at (10.5,0) {Cabs\\specialist};
 
   \foreach \x in {0,3.5,7.0,10.5}
     \draw[lifeline] (\x,-0.5) -- (\x,-13.9);
 
   \node[phase,anchor=west] at (-1.05,-0.9) {Execution phase};
 
-  \draw[msg] (0,-2.8) -- node[msglabel,above=2pt]
-    {\texttt{team ask phone}\\find all roommates; page through every contact page} (3.5,-2.8);
+  \draw[msg] (0,-2.2) -- node[msglabel,above=2pt]
+    {\texttt{team ask Calendar}\\which event is earliest today, what is its tag, who attends?} (3.5,-2.2);
+  \draw[msg] (3.5,-3.4) -- node[msglabel,above=2pt]
+    {09:00, tagged Work, one attendee} (0,-3.4);
+  \node[state,anchor=west] at (11.85,-3.4)
+    {$E_0$: calendar, contacts and rides unmodified};
 
-  \draw[msg] (3.5,-4.2) -- node[msglabel,above=2pt]
-    {query phone API} (10.5,-4.2);
-  \node[state,anchor=west] at (11.85,-4.2)
-    {$E_0$: contacts and transactions unmodified};
-  \draw[msg] (10.5,-5.1) -- node[msglabel,above=2pt]
-    {paged results} (3.5,-5.1);
-  \draw[msg] (3.5,-6.0) -- node[msglabel,above=2pt]
-    {complete set of names} (0,-6.0);
+  \draw[msg] (0,-4.6) -- node[msglabel,above=2pt]
+    {\texttt{team ask Contacts}\\what is that attendee's address?} (7.0,-4.6);
+  \draw[msg] (7.0,-5.8) -- node[msglabel,above=2pt]
+    {\textbf{Sint-Michielsstraat 6} --- the seam: never stated by the user} (0,-5.8);
 
-  \draw[msg] (0,-7.9) -- node[msglabel,above=2pt]
-    {\texttt{team ask venmo}\\carries the names, today, and the full-pagination requirement} (7.0,-7.9);
+  \draw[msg] (0,-7.2) -- node[msglabel,above=2pt]
+    {\texttt{team ask Cabs}\\carries the address, 08:50, and the work-tag drop-off} (10.5,-7.2);
+  \draw[msg] (10.5,-8.5) -- node[msglabel,above=2pt]
+    {ride ordered} (0,-8.5);
+  \node[state,anchor=west] at (11.85,-8.5)
+    {$E_1$: ride booked, pickup = the Contacts address};
 
-  \draw[msg] (7.0,-9.3) -- node[msglabel,above=2pt]
-    {read feed, like each match} (10.5,-9.3);
-  \node[state,anchor=west] at (11.85,-9.3)
-    {$E_1$: target transactions liked, nothing else changed};
-  \draw[msg] (10.5,-10.2) -- node[msglabel,above=2pt]
-    {action results} (7.0,-10.2);
-  \draw[msg] (7.0,-11.1) -- node[msglabel,above=2pt]
-    {report the count} (0,-11.1);
-  \draw[msg] (0,-12.0) -- node[msglabel,above=2pt]
-    {\texttt{team done completed}} (10.5,-12.0);
+  \node[state,anchor=west,text width=3.0cm] at (0.35,-9.9)
+    {\texttt{team wait 240}: advance the clock, watch for a cancellation};
+
+  \draw[msg] (0,-11.6) -- node[msglabel,above=2pt]
+    {\texttt{team done completed}} (10.5,-11.6);
 
   \draw[rulegray,semithick] (-1.05,-12.6) -- (14.4,-12.6);
   \node[phase,anchor=west] at (-1.05,-13.0) {Verification phase};
@@ -449,21 +448,25 @@ Figure~\ref{fig:trajectory} shows the reference trajectory for task \texttt{2a16
   % wrapped to two lines, and the white fill of its second line sat on top of
   % "Verification phase", clipping it to "Verification ph" in the PDF.
   \node[msglabel,text width=9cm,anchor=south] at (6.6,-13.6)
-    {native state checks: 6/6 requirements passed $\Rightarrow r=1.0$};
+    {write actions checked against 5 gold actions $\Rightarrow$ pass/fail};
 \end{tikzpicture}
-\caption{Information flow of the reference trajectory. Upstream roles only obtain facts; the Main's job is to organise those facts into a complete, executable request for the downstream role. The final reward comes from state $E_1$, not from matching the trajectory text. Dashed lines are the verification phase, after the agent has finished.}
+\caption{Information flow of the gold trajectory. Upstream roles only obtain facts; the Main's job is to organise those facts into a complete, executable request for the downstream role. The Messages confirmations and the conditional re-scheduling tail are elided; the roster is five apps, of which the seam-bearing three are drawn. The reward comes from the write actions reaching state $E_1$, not from matching the trajectory text. Dashed lines are the verification phase, after the agent has finished.}
 \label{fig:trajectory}
 \end{figure}
 
 \subsection{Reward and validity references}
 
-The verifier does not assess whether the conversation was ``sensible'', and it does not take the model's own account of its work. If the task has $N$ state requirements of which $N_{\mathrm{pass}}$ pass, the reward is
-\[
-  r=\frac{N_{\mathrm{pass}}}{N}.
-\]
-This keeps partial credit while avoiding an LLM judge. The model may decompose and communicate however it likes; as long as the final state is correct with no extra side effects, it earns the same reward.
+The verifier does not assess whether the conversation was ``sensible'', and it does not take the model's own account of its work. Gaia2's own verdict is binary: the agent's observed write actions are checked against the scenario's gold write actions, and the scenario either passes or does not. The model may decompose and communicate however it likes; if the writes land, it earns the same verdict.
 
-To confirm the reward means anything, each configuration needs three references. The first is the reference solution, proving the task is solvable. The second is the unconstrained control, giving a single agent every app, confirming the base task can be completed at all. The third is the do-nothing baseline, measuring how many checks already pass when no action is taken. Only when the constrained group sits between the solvable ceiling and the no-action floor, and produces a non-degenerate distribution across instances, is the task set suitable for RL.
+A binary verdict is a poor training signal, so this repository computes a graded one alongside it --- and that step deserves the scrutiny \S\ref{sec:invariant} demands of anything self-designed. Writing $G$ for the gold write count, $c$ for how many of them the agent performed at all, and $e$ for how many it performed with exactly the gold arguments,
+\[
+  r=\frac{e+\tfrac{1}{2}(c-e)}{G}.
+\]
+An exact match scores fully, a right-tool-wrong-arguments match scores half: an agent that sent the correct message to the wrong number did some of the work, and scoring it zero is the all-or-nothing signal again. Two properties keep this honest. It is \textbf{deterministic and model-free} --- recomputed from trajectories on disk, so no judge can move it --- and it is \textbf{a floor beneath the official verdict rather than a replacement for it}: it never certifies a scenario the verifier failed. It is nonetheless a reward this project designed, so it is reported as a diagnostic and never as the acceptance criterion. Every verdict in \S\ref{sec:results} comes from Gaia2's verifier.
+
+To confirm the reward means anything, each configuration needs three references. The first is a demonstration that the scenario is solvable at all. The second is the unconstrained control, giving a single agent every app. The third is the do-nothing baseline, measuring what already scores when no action is taken. Only when the constrained group sits between the solvable ceiling and the no-action floor, and produces a non-degenerate distribution across instances, is the task set suitable for RL.
+
+On this substrate the first and third references are the ones still missing, and \S\ref{sec:results} is what that costs. Gaia2 ships gold write actions rather than a runnable reference solution, so the control is doing double duty as the solvability proof --- and when the control fails, there is nothing left to distinguish ``hard scenario'' from ``broken harness''. A do-nothing probe has not been run on Gaia2 at all. Both are cheap and neither has been done; that is the honest statement of where this delivery stands.
 
 \section{Difficulty Control and Scaling}
 
@@ -475,148 +478,171 @@ These have to be added one layer at a time. A valid difficulty knob must satisfy
 
 \subsection{Batch generation: the free half}
 
-The forging pipeline is four commands, and three of them call no model. \texttt{measure} reads the 147 ground-truth-bearing tasks and parses out which apps each one actually touched. \texttt{seams} runs a forward taint pass over the same reference solutions and keeps the 39 where facts genuinely cross apps. \texttt{render} turns the selected tasks and constraint configurations into Harbor task directories. All three are static analysis plus file writes, and finish on a laptop in minutes.
+The forging pipeline is four commands, and three of them call no model. \texttt{gaia2\_fetch} pulls a published split. \texttt{gaia2\_admission\_probe} reads each scenario's gold write actions and initial app state, derives the roster, and runs the provenance test that keeps the seamful ones. \texttt{gaia2\_render\_probe} turns those scenarios and the constraint configurations into cell specifications, and \texttt{forge.gaia2.cli render} writes Harbor task directories. All are static analysis plus file writes, and finish on a laptop in minutes.
 
-The reason they are free is written in the equation of \S\ref{sec:wrap}: $W$ acts only on the environment, and $x$ and $J$ are unchanged word for word. Multiplying along the configuration dimension therefore creates no new design work --- one more visibility setting is one more pass of writing task directories. With 39 tasks and 2 implemented configurations, a single \texttt{render} command writes 78 task directories, plus an unconstrained control per task.
+The reason they are free is written in the equation of \S\ref{sec:wrap}: $W$ acts only on the environment, and $x$ and $J$ are unchanged word for word. Multiplying along the configuration dimension therefore creates no new design work --- one more visibility setting is one more pass of writing task directories. Across the two splits read, 37 seamful scenarios and the four-cell grid produce \textbf{148 cells} from a single command.
 
-The real question is how many of those 78 directories can ship. The next two sections are the two costs, both downstream of \texttt{render}.
+The real question is how many of those 148 cells can ship. The next two sections are the two costs, both downstream of rendering --- and on this substrate the first one changed shape entirely.
 
-\subsection{Cost one: reference solutions are currently hand-written}
+\subsection{Cost one: the reference solution moved, it did not disappear}
 \label{sec:refcost}
 
-A Harbor task ships a \texttt{solution/} to prove it is solvable, and the reference solution here is not a script replay. The specialists are real LLMs, and the Main's job is to decompose rather than to execute, so a reference path records only the decomposition itself: ask phone for the names, then hand the names to venmo, with the specialists still doing the actual work. That makes this oracle probabilistic: verification needs live model calls and can fail on a bad specialist turn. That is a cost, stated rather than hidden. These paths are currently written one at a time, and \texttt{REFERENCE\_PATHS} holds only 3 --- a single task family. Running \texttt{render} over 39 tasks today writes 78 directories, of which \textbf{72 ship a \texttt{solve.sh} that fails loudly and says why}: a task with no reference solution cannot be proved solvable and therefore cannot enter a training set. This is the step standing furthest between here and ``large batches''.
+On a substrate whose ground truth is reference \emph{code}, this section was about authorship: a Harbor task ships a \texttt{solution/} to prove it is solvable, those paths were written one at a time, and the count of hand-written solutions was the hard limit on how many rendered directories could ship.
 
-But it can be automated, and the skeleton has already been computed. To measure selection yield at all, \texttt{seams.py} already has to answer ``which app produced the fact, and which app's action consumed it''. A reference path records that same triple: render (producer, fact, consumer) into (ask the producer, hand the fact to the consumer), and that is the whole structure of the path.
+Gaia2 removes that cost outright, and it is the strongest practical argument for the substrate. Ground truth is a list of gold write actions, present for every scenario in the split, so nothing has to be authored per task to know what ``done'' means: the acceptance target for all 37 scenarios arrives free with the data.
 
-What remains by hand is not per-task authorship but per-app calling technique. Every brief, for instance, has to say ``page through to the end'' --- that is phone's and venmo's pagination semantics, not a property of any one task. Such techniques count per app, not per task: 6 apps' worth in total, amortised across every task, which is a constant. This is measured, not hoped for --- chasing down the ``random'' flake on \texttt{2a163ab\_3} showed phone stopping at page one and dropping a coworker, not bad luck, and one added sentence about pagination fixed it for good (\texttt{reference.py} records the investigation). The shape of this cost is therefore: write the calling conventions for 6 apps once, then render per seam --- not write 39 of them.
+What it does not supply is a \emph{runnable} reference. Gold write actions describe the destination, not a route an agent can be made to follow --- and a Harbor \texttt{solution/} has to execute. So the cost did not vanish; it moved from ``write a reference path per task'' to ``no cheap proof that any given scenario is reachable''. \S\ref{sec:criterion} noted the consequence and \S\ref{sec:results} pays for it: with no reference solution to run, the unconstrained control is the only available solvability evidence, and this campaign's control failed on 35 of 37 scenarios. That leaves the central question --- are these scenarios hard, or is this runtime broken? --- formally open.
+
+Two things would close it, and neither is expensive. A \textbf{gold replay} agent that issues the recorded write actions directly would establish the ceiling with no model calls at all, and would fail loudly if the harness rather than the scenario is at fault. A \textbf{do-nothing probe}, the analogue of the floor measurement this project already runs elsewhere, would establish the bottom of the range. Together they would turn every number in \S\ref{sec:results} from suggestive into readable. That they have not been run is the largest gap in this delivery.
 
 \subsection{Cost two: verification, and it grows linearly in configurations}
 
-Verification cannot be free, because validity is a property of the rollout distribution rather than of a single draw (\S\ref{sec:yield}). A cell's yield needs \texttt{SEEDS\_FOR\_YIELD} $=5$ replicates before it counts as measured, and the arithmetic follows directly: 39 tasks $\times$ 2 configurations $\times$ 5 seeds $=390$ constrained rollouts, plus $39\times5=195$ controls, for 585 in total. At the per-run times the existing sweep measured (173 s mean across the two star settings, 30 s for the control), that is roughly 20 hours serial, or about 1.3 hours at 16-way parallelism.
+Verification cannot be free, because validity is a property of the rollout distribution rather than of a single draw (\S\ref{sec:yield}). A cell's yield needs five replicates before it counts as measured, and the arithmetic follows directly: 37 scenarios $\times$ 4 cells $\times$ 5 seeds $=740$ rollouts, of which the campaign reported here has run \textbf{148} --- one seed, and the evidence file says so in its own note.
 
-So compute is not the wall. Two other things are. First, the real ceiling is usually API rate rather than compute: the same cells stretched from about 200 s to 6{,}700--15{,}000 s under rate limiting, a factor of 30--75 (\code{sweep/appworld_rate_limit_cost.json}). Second, this term grows linearly in the number of configurations --- every new knob has to be re-run across every task with a full set of seeds before anyone knows whether that knob is difficulty or a fault. This is exactly the argument for measuring yield before scaling out: expanding on a configuration that has not been shown to produce a training signal expands invalid data.
+Compute is not the wall. Two other things are. First, the ceiling is API rate rather than compute: the campaign runs at three concurrent episodes because the organisation's token-per-minute ceiling makes more counter-productive, so wall-clock is set by the rate limit and not by the work. Second, this term grows linearly in the number of configurations --- every new knob has to be re-run across every scenario with a full set of seeds before anyone knows whether that knob is difficulty or a fault. This is exactly the argument for measuring yield before scaling out, and \S\ref{sec:results} is what it looks like when the argument is ignored in the other direction: 148 rollouts were spent on four knobs before anyone had established that the control could finish a scenario. The four extra cells per scenario were not the wrong idea, but they were the wrong \emph{order}.
 
-\subsection{The ceiling: this dimension holds only 13 independent task families}
+\subsection{The ceiling: 37 scenarios, but only 12 seam structures}
 \label{sec:ceiling}
 
-Even with both costs solved, the source itself has a hard ceiling, and it is far below 39.
+Even with both costs solved, the source itself has a hard ceiling, and it is well below 37.
 
-The 39 seam-bearing tasks are not 39 independent samples: they are \textbf{13 task families of 3 variants each}. Variants share a dependency structure and differ only in entity, date and operational scale --- the shipped \texttt{2a163ab\_1/2/3} are three variants of one family, asking about roommates, siblings and coworkers respectively. By app combination the concentration is worse still (Table~\ref{tab:combos}): 24 tasks across 8 families are phone+venmo.
+The 37 seam-bearing scenarios are not 37 independent samples. Grouped by their seam signature --- the set of \emph{(source app $\rightarrow$ target app)} edges the provenance test found --- they collapse into \textbf{12 distinct structures}, and three of those cover 25 of the 37 (Table~\ref{tab:combos}).
 
 \begin{table}[H]
 \centering
 \small
-\caption{App-combination distribution of the 39 seam-bearing tasks (\texttt{sweep/appworld\_seams.json})}
+\caption{Seam-signature distribution of the 37 seamful scenarios (\texttt{sweep/gaia2\_cells.json}, \texttt{sweep/gaia2\_cells\_adaptability.json})}
 \label{tab:combos}
-\begin{tabularx}{\textwidth}{X c c}
+\begin{tabularx}{\textwidth}{X c}
 \toprule
-App combination & Tasks & Families\\
+Seam signature & Scenarios\\
 \midrule
-phone + venmo & 24 & 8\\
-phone + simple\_note + venmo & 3 & 1\\
-simple\_note + spotify & 3 & 1\\
-file\_system + phone + venmo & 3 & 1\\
-phone + splitwise + venmo & 3 & 1\\
-file\_system + simple\_note & 3 & 1\\
+Contacts $\rightarrow$ Cabs, InternalContacts $\rightarrow$ Cabs & 10\\
+Contacts $\rightarrow$ Messages, InternalContacts $\rightarrow$ Messages & 9\\
+RentAFlat $\rightarrow$ Cabs & 6\\
+Emails $\rightarrow$ Calendar & 2\\
+Calendar $\rightarrow$ Emails & 2\\
+Contacts/InternalContacts/RentAFlat $\rightarrow$ Cabs & 2\\
+6 further signatures, one scenario each & 6\\
 \midrule
-Total & \textbf{39} & \textbf{13}\\
+Total & \textbf{37} in \textbf{12} structures\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-One more layer tightens it further: AppWorld has 9 apps, but the 147 ground-truth-bearing tasks touch only 6 of them, and the seam-bearing tasks use only 6 combinations. So the trainable diversity on this dimension is 13 families and 6 combinations --- not 39 tasks, and certainly not 78 directories. The abstract's ``configuration count is not task count'' needs one more turn of the screw here: \textbf{task count is not family count either}. To make the data volume actually grow, what is missing is not a knob. It is source tasks.
+Counting endpoints tightens it further. Every seam in the corpus terminates in one of four apps --- Cabs (38 edges), Messages (20), Calendar (6), Emails (3) --- and originates in one of six, of which Contacts and InternalContacts account for 50 and essentially always co-occur, since they are two directories holding the same fact. Stated plainly, nearly every seam this substrate offers is one pattern: \emph{a person's identifier or address flows out of a directory app and into a booking or messaging app.} The mined corpus is also lopsided by category, at 30 adaptability, 4 time and 3 execution.
+
+So the trainable diversity on this dimension is 12 structures over one dominant motif --- not 37 scenarios, and certainly not 148 cells. The abstract's ``configuration count is not task count'' needs one more turn of the screw here: \textbf{task count is not structure count either}. Two of the five published capability categories contributed nothing at all, for a reason \S\ref{sec:yield} gives: a fact that ends in the answer rather than in a write is invisible to a provenance test. Widening the corpus therefore means either fetching the remaining splits --- an unmeasured but cheap extrapolation --- or extending the seam test to read-bearing evidence, which the current rule cannot see. What is missing is not a knob. It is source scenarios, and a seam test with a wider aperture.
 
 \subsection{The admission test: what the method asks of a database}
 \label{sec:substrate}
 
-AppWorld is an argument to this method, not a premise of it. The method asks four things of a database, and dropping any one collapses it back into ``design your own verifier'' --- which \S\ref{sec:invariant} argues is forbidden by the very reason the method exists:
+Gaia2 is an argument to this method, not a premise of it. The method asks four things of a database, and dropping any one collapses it back into ``design your own verifier'' --- which \S\ref{sec:invariant} argues is forbidden by the very reason the method exists:
 
 \begin{enumerate}[leftmargin=*,itemsep=0.15em]
 \item \textbf{A programmatic verifier you did not write.} It is what makes the reward batch-computable, and what excuses you from ever defending a judgement about ``how well they collaborated''. Its value is precisely that somebody else already validated it.
 \item \textbf{Real, executable, installable.} Not a description of a world. A database you cannot \texttt{pip install} or \texttt{docker pull} is one you will finish by building --- and then you designed it, and requirement 1 is gone with it.
-\item \textbf{A reference solution per task.} It serves two purposes: deriving the roster (the roles come from the tools the reference solution touched, not from the designer's hand) and proving solvability. Only 147 of AppWorld's 750 tasks carry ground truth, and that is where the number 147 comes from.
+\item \textbf{Ground truth per task.} It serves two purposes: deriving the roster (the roles come from whatever the ground truth touched, not from the designer's hand) and proving solvability. Gaia2 supplies the first in full and the second only partly, since gold write actions describe a destination rather than a route --- \S\ref{sec:refcost} is what that costs.
 \item \textbf{A tool boundary that can be cut.} The permission partition is the most fundamental of the four constraints (\S\ref{sec:wrap}): if the tools cannot be split by role, the Main can bypass coordination and finish alone, and the other three become moot.
 \end{enumerate}
 
-\textbf{Admission is necessary and not sufficient.} A database can clear all four and still yield nothing, because none of the four measures how \emph{deep} the seams run: it may ship a flawless verifier and have every task collapse onto a single role. That is why seam analysis (\S\ref{sec:select}) is a measurement rather than an assumption, and AppWorld nearly makes the point by itself --- 96 of its 147 ground-truth tasks are single-app puzzles. The seams are also where substrate choice stops being free: SWE-smith has the strongest verifier on the list and scaled on the strength of requirement 1~\cite{yang2025swesmith}, but its seams are code modules, so partitioning it yields a software-engineering task with extra agents rather than an orchestration task.
+\textbf{Admission is necessary and not sufficient.} A database can clear all four and still yield nothing, because none of the four measures how \emph{deep} the seams run: it may ship a flawless verifier and have every task collapse onto a single role. That is why seam analysis (\S\ref{sec:select}) is a measurement rather than an assumption, and Gaia2 makes the point emphatically --- 99\% of the \texttt{adaptability} split is multi-app and only 19\% is seamful. The seams are also where substrate choice stops being free: SWE-smith has the strongest verifier on the list and scaled on the strength of requirement 1~\cite{yang2025swesmith}, but its seams are code modules, so partitioning it yields a software-engineering task with extra agents rather than an orchestration task.
 
-\textbf{How far this generalises, stated honestly.} Nothing in the method is AppWorld-shaped: the admission test is a property of a database, the roster is read off whatever a reference solution touches, the constraints act on an access surface, and the validity rule (\S\ref{sec:criterion}) needs only a score, a floor and a control. But that is an argument from construction --- checkable by reading it --- and not a result. \textbf{This method has been run end to end on exactly one database.} The reach claimed here is therefore the admission test's: any database clearing all four requirements should work, and one has. A second substrate is the cheapest available falsification, and it has not been run; \S\ref{sec:next} treats that as a task rather than a caveat. The order for scaling up is: automate reference solutions out of the seams, measure yield on the 13 families that exist, and then widen sideways to new source databases --- rather than piling more configurations onto the same task family.
+\textbf{Admission does not measure difficulty either}, and this delivery is the demonstration. Gaia2 cleared all four requirements comfortably, its seam yield was measured rather than assumed, and 148 cells still produced no certifiable training data --- because the requirements say nothing about whether a runtime can carry an agent through a scenario of that length. The admission test screens the \emph{database}. Nothing in it screens the \emph{harness}, and \S\ref{sec:results} argues that is where this campaign was actually lost.
+
+\textbf{How far this generalises, stated honestly.} Nothing in the method is Gaia2-shaped: the admission test is a property of a database, the roster is read off whatever the ground truth touches, the constraints act on an access surface, and the validity rule (\S\ref{sec:criterion}) needs only a score, a floor and a control. That is an argument from construction --- checkable by reading it --- and it now has one piece of empirical support beyond a single case: both mining rules ported to a substrate whose ground truth has a completely different form, from reference \emph{code} to gold \emph{write actions}, and produced a measured seam distribution on the far side. What has \textbf{not} ported is an end-to-end priced knob, because no campaign on this substrate has yet cleared its own control. The order for scaling up is therefore: establish a ceiling and a floor on the current substrate (\S\ref{sec:refcost}), re-run the grid at five seeds, and only then widen sideways --- rather than piling more configurations onto scenarios nobody has shown to be finishable.
 
 \section{Data Samples and Experimental Results}
 \label{sec:results}
 
-The minimal delivery sample is three instances from one task family. All three require obtaining a class of contacts from phone first, then having venmo act on the related transactions within a date range. They test the same capability structure but differ in entity, date and operational scale.
+The delivery sample is the 37 seamful scenarios of \S\ref{sec:select}, rendered into 148 cells. Table~\ref{tab:samples} shows three of them, chosen to span the structural range the mining found.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Three Harbor data samples}
-\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.1cm} X >{\raggedright\arraybackslash}p{4.6cm}}
+\caption{Three mined scenarios, with the structure the miner derived (\texttt{sweep/gaia2\_cells.json})}
+\label{tab:samples}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.9cm} >{\raggedright\arraybackslash}p{3.0cm} X c c}
 \toprule
-Task ID & User task & Required coordination\\
+Scenario & Seam & Roster & Writes & Depth\\
 \midrule
-\texttt{2a163ab\_1} & Like all of today's transactions involving roommates on the Venmo social feed & phone finds the roommates' names; venmo pages today's feed and likes\\
-\texttt{2a163ab\_2} & Like all of yesterday's transactions involving siblings on the Venmo social feed & phone finds the siblings' names; venmo pages yesterday's feed and likes\\
-\texttt{2a163ab\_3} & Like all transactions involving coworkers from yesterday or today on the Venmo social feed & phone finds the coworkers' names; venmo pages across two dates and likes\\
+\texttt{..\_30\_68r6vs} & Calendar $\rightarrow$ Cabs & Cabs, Calendar, Messages & 5 & 3\\
+\texttt{..\_25\_b932pi} & Contacts $\rightarrow$ Cabs & + Contacts, InternalContacts & 5 & 3\\
+\texttt{..\_24\_srcjx4} & Contacts $\rightarrow$ Cabs & + Shopping & 14 & 4\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-All three samples' Harbor reference solutions pass all 6 state checks for a reward of 1.0. We then compare three configurations on the same tasks: open as the unconstrained control; star-docs, which forces the Main to delegate but lets it read the roles' capabilities; and star-names, which further hides the capability docs and leaves only role names. The Main uses \texttt{gpt-5.6-sol} and the specialists \texttt{gpt-4.1}, with five seeds per cell --- 15 rollouts per configuration.
+These are longer-horizon and wider than the single-family delivery this project began with: rosters run to 7 apps, gold writes to 16, and one scenario offers 12 parallelisable writes in a single fan-out. Three are rendered as container-ready Harbor tasks; all 148 exist as cell specifications.
+
+We compare four cells on every scenario. \texttt{control} (\texttt{open-docs-binf}) gives one agent every tool. \texttt{context} (\texttt{star-docs-binf}) forces delegation but lets the Main read the roles' capabilities. \texttt{discovery} (\texttt{star-names-binf}) hides those capabilities and leaves only role names. \texttt{economy} (\texttt{star-docs-b}$N$) restores the docs and adds a soft, task-derived delegation target. Main and specialists are both \texttt{gpt-5.6-sol}, at model parity by construction. \textbf{One seed.}
 
 \begin{table}[H]
 \centering
 \small
-\caption{Constraint ablation results (3 tasks $\times$ 5 seeds = 15 rollouts per configuration)}
+\caption{The full campaign: 37 scenarios $\times$ 4 cells $=148$ rollouts, one seed (\texttt{sweep/gaia2\_full\_campaign.json})}
 \label{tab:results}
-\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.65cm} c c c X}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.5cm} c c c X}
 \toprule
-Configuration & Mean reward & Three tasks (5 draws each) & Below control & Meaning\\
+Cell & Successes & Mean partial & Mean delegations & Knob turned\\
 \midrule
-open & 1.000 & 1.000/1.000/1.000 & 0/15 & one agent holds every app\\
-star-docs & 0.855 & 0.833/0.833/0.900 & \textbf{10/15} & delegation forced; the roles' real API catalogue is readable\\
-star-names & 0.445 & 0.833/0.167/0.333 & 12/15 & delegation forced; role capabilities invisible\\
-\midrule
-do-nothing & 0.333 & 0.333/0.333/0.333 & --- & no action taken, but the answer type is right\\
+control & 2/37 & 0.251 & 0 & none: one agent holds every app\\
+discovery & 3/37 & 0.247 & 6.3 & role capabilities invisible\\
+context & 2/37 & 0.253 & 6.8 & the partition itself\\
+economy & 2/37 & 0.282 & 7.6 & soft \texttt{b}$N$ delegation target\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Neither knob in this table is what its name says, so each needs taking apart.
+\textbf{No knob in this table can be read, and the reason is the first row.} The four means lie within $0.035$ of one another, success is 2--3 of 37 everywhere, and the arm with the \emph{most} constraints has the highest mean. The acceptance criterion of \S\ref{sec:criterion} refuses this table by its third clause --- $r_{\mathrm{open}}$ is not above the floor --- and that refusal is the result being reported. Publishing ``the partition is free, and a delegation budget helps'' from these numbers would repeat, with better tooling and more rollouts, exactly the error \S\ref{sec:invariant} exists to prevent.
 
-star-docs drops 0.145 against open, and the five seeds are what made that sayable. The control scored 1.000 on \emph{every one} of its 15 rollouts --- zero variance --- while star-docs landed below it on 10 of 15, spread across $0.667$--$1.000$. A strong model still reaches the goal through a few delegations without direct tools; it simply pays about one requirement in six to do so. At one seed this figure read $0.056$ and the honest caveat was that three tasks at one draw could not separate it from noise. That caveat was right, and the answer was seeds rather than a louder claim. More notable: the Main in this setting previously received the sentence ``their capabilities are listed above'' while \emph{nothing} was above it but two role names. The thing that actually served the catalogue was \texttt{team docs} in the delivered container, while the measurement went down a different in-process path (see \S\ref{sec:boundary}). After this round put the real API catalogues --- 2{,}838 and 5{,}444 characters --- in front of the Main, the score did not move at all: still 0.944. What moved was the delegation count, from 2--3 up to 3--5, and the time, from 100 s to 201 s. In other words, letting the Main see what the sub-agents can do bought more delegations and more latency, but no more success. Those four figures are all at seed 1, the only seed the earlier sweep has: the five-seed run re-prices the \emph{partition}, not this comparison, and setting one draw against five would confound the docs knob with the sample size. The docs knob is unpriced, not free. Wall-clock deserves the same caution --- across the five seeds star-docs averaged 201\,s, 759\,s, 2006\,s, 482\,s and 365\,s, a tenfold spread on identical work, which is the organisation's TPM ceiling throttling the queue rather than the agent deliberating.
+Three pieces of evidence show the ordering is noise rather than signal.
 
-star-names' $0.855\rightarrow0.445$ looks at last like visibility biting. It is not. One of its three cells scores $0.167$ on all five replicates --- below the 0.333 ``floor'' --- and a second sits there on four draws of five. They got there like this: the Main failed to find the target transactions and \emph{honestly reported} that there were none matching, while AppWorld's \texttt{assert answers match} expects an action task's answer (\texttt{None}); prose does not match, so that requirement fails. Had the Main lied and claimed \texttt{completed}, it would have scored 0.333.
+\textbf{First, the control does not behave like a ceiling.} On \textbf{6 of 37 scenarios a constrained arm outscored the unconstrained one} --- an agent holding every tool did worse than one that had to delegate blind. On \texttt{..\_24\_srcjx4}, the widest scenario in the corpus, the control surrendered having issued zero actions and scored $0.0$, while the \texttt{discovery} arm covered half the gold writes. A control that loses to its own blinded condition is not measuring difficulty.
 
-This does not have to be inferred from the sweep. It can be measured directly, with no model calls at all: open the same task, do nothing, vary only the submitted answer, and evaluate. \code{appworld_protocol_probe.py} does exactly that, with results in \code{sweep/appworld_protocol.json}.
+\textbf{Second, the judge is confounded with the scenario population.} Reply-conditioned scenarios were soft-judged and unconditioned ones script-judged, which splits the corpus unevenly:
 
 \begin{table}[H]
 \centering
 \small
-\caption{Same non-work, different words. Consistent across all three tasks, no model calls.}
-\label{tab:protocol}
-\begin{tabularx}{\textwidth}{X c X}
+\caption{Successes by verifier --- and by the disjoint scenario sets each one saw}
+\label{tab:judges}
+\begin{tabularx}{\textwidth}{X c c}
 \toprule
-Agent & Score & Requirements lost\\
+Verifier & Cells & Successes\\
 \midrule
-do nothing, claim \texttt{completed} falsely & \textbf{0.333} & 4 state checks\\
-do nothing, honestly report ``found none'' & \textbf{0.167} & the same 4, \emph{plus} \texttt{assert answers match}\\
+\texttt{gpt-5.6-sol} soft judge (reply-conditioned scenarios) & 128 & \textbf{0}\\
+scripted write-action check (unconditioned scenarios) & 20 & \textbf{9}\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Both agents did exactly the same work (none), the terminal world state is identical, and the same four state checks fail. The only difference is \emph{how they describe themselves}, and that difference is worth $1/6$.
+Zero of 128 against 9 of 20 is a large gap, and it is tempting to read it as ``the soft judge is harsh''. It cannot be read that way: the two verifiers never saw the same scenarios, so the gap prices the judge and the scenario population together and neither separately. Disentangling them is one cheap experiment --- run both verifiers over the same trajectories --- and it has not been run. Until it is, every per-cell mean above mixes two populations.
 
-\begin{quote}
+\textbf{Third, and most usefully, the episodes are dying before coordination is on trial.} \code{gaia2_credit.py} annotates each trajectory with its first fault, deterministically and with no model calls:
+
+\begin{table}[H]
+\centering
 \small
-\noindent \textbf{This reward pays $1/6$ for a false claim of completion.} For a policy in training, that means lying about completion is strictly better than reporting failure honestly.
-\end{quote}
+\caption{Where the 148 rollouts first went wrong (\texttt{sweep/gaia2\_credit.json})}
+\label{tab:pivots}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.4cm} c X}
+\toprule
+First fault & Rollouts & What it means\\
+\midrule
+\texttt{wrong-arguments} & 45 & the call was made; the arguments did not match gold\\
+\texttt{malformed} & 40 & the model's tool-call syntax never parsed\\
+\texttt{environment-stop} & 33 & the world ended the episode first\\
+\texttt{refusal} & 11 & the specialist declined the request\\
+\texttt{surrender} & 9 & the Main invoked its FAIL verb\\
+\texttt{false-outage} & 7 & a specialist reported a tool broken that was not\\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-It also means the label ``do-nothing $=0.333$'' in Table~\ref{tab:results} is wrong: that is not a floor but the score for ``got the answer type right while doing nothing'', and an honest failure can land beneath it.
+\textbf{Malformed calls and environment stops account for 73 of 148 rollouts --- 49\%.} Neither is a coordination failure. A malformed call is a syntax contract the runtime failed to enforce or the model failed to follow; an environment stop is the scenario's clock running out. Among controls alone the picture is starker still: 19 of 37 control episodes ended on \texttt{environment-stop} and 13 on \texttt{malformed}, so \textbf{32 of 37 unconstrained rollouts never reached a state where the task could be finished}. That is a harness result wearing the costume of a difficulty result, and it is precisely the confusion \S\ref{sec:criterion}'s third clause was written to catch.
 
-To be clear, \textbf{this method cannot fix it}. The verifier is AppWorld's, and changing it means starting to design verifiers --- the one thing forbidden by the entire argument of \S\ref{sec:invariant} for why this method exists. What can be done is to measure it, report it, and --- before training on this data --- split the reward into a state term and a protocol term, recording them separately and driving the policy with the former only. The current $r=N_{\mathrm{pass}}/N$ mixes the two into one scalar, and every difficulty curve in this report before this point is contaminated by it.
-
-The current data is therefore \textbf{insufficient} to support the claim that hiding role capabilities is the more effective source of difficulty. Under the sandwich criterion of \S\ref{sec:yield}, star-names yields 0/3 usable cells, still below star-docs' 1/3.
+The honest summary is therefore short. The mining ported and produced a measured seam distribution; the runtime ran 148 cells end to end and logged full trajectories; and the acceptance criterion, applied to those cells, returned \emph{no verdict} --- correctly. What this campaign priced is not a constraint. It is the runtime, and the price was 49\% of the rollouts.
 
 \section{Discussion and Extensions}
 
@@ -624,13 +650,19 @@ The current data is therefore \textbf{insufficient} to support the claim that hi
 \label{sec:verifyfirst}
 \label{sec:next}
 
-The current results remain a small-scale validation. The three instances come from one task family and each configuration has a single seed, so 0.056 and 0.167 cannot yet be treated as stable effects. The first next step is to add seeds on the existing tasks and give interval estimates for the differences; after that, add phone--simple\_note, file\_system--spotify and three-app tasks to confirm the conclusions hold across task types.
+The ordering of the next steps follows directly from \S\ref{sec:results}, and none of the expensive options come first.
 
-There is a second gap of a different kind, and it is cheaper to close than any of the above: \textbf{the method is presented as substrate-independent and has been run on one substrate} (\S\ref{sec:substrate}). Seam analysis is the part that transfers most obviously and costs the least to check --- it needs no rollouts and no model calls, only reference solutions --- so running it against a second admitted database and publishing the seam distribution would either corroborate the generality claim or refute it for the price of an afternoon. Until somebody does, the claim rests on reading the construction rather than on evidence, and this report marks it as such rather than letting the survey of candidate databases do work that only a measurement can do.
+\textbf{Establish the ceiling and the floor.} A gold-replay agent that issues the recorded write actions directly costs no model calls and answers the question the campaign could not: is a scenario that the control failed actually reachable in this runtime? A do-nothing probe, which this project already runs on other substrates, supplies the other end of the range. Neither has been run on Gaia2, and until both are, no cell can be certified and no knob priced.
 
-Beyond that, the current reward reliably judges whether the final task was completed but cannot separate failures of decomposition, role selection and communication. That is also why this stage does not list Theory of Mind and dynamic recovery as separate dimensions. Finer-grained capability attribution can be done through paired probes or environment-side fault injection, but it should still be verified from the final state rather than falling back on scoring the conversation.
+\textbf{Fix the runtime before adding anything to it.} Forty malformed tool calls and 33 environment stops are 49\% of the corpus, and they are addressable engineering rather than research: the call syntax can be constrained rather than requested, and the clock budget can be measured against each scenario's horizon. Every rollout spent on a fifth knob before that is a rollout spent measuring the harness.
 
-Once star-names' effect is stable across multiple seeds and task families, adding delegation budgets and chain/tree topologies becomes reasonable. That way each curriculum level builds on capabilities already mastered at the level below, and difficulty changes are easier to explain.
+\textbf{Separate the judge from the population.} Running both verifiers over the same trajectories costs one pass and would turn Table~\ref{tab:judges} from an uninterpretable gap into a measurement of judge strictness.
+
+\textbf{Only then, seeds.} Five replicates over 37 scenarios and 4 cells is 740 rollouts, and it is worth paying once the control clears the floor and not before.
+
+There is a second gap of a different kind. \textbf{The method is presented as substrate-independent}, and this delivery is the first real test of that claim, since Gaia2's ground truth has a completely different form from reference code. The mining rules ported: roster derivation and the seam test both produced measured distributions on the far side, which is genuine evidence and is the strongest result in this report. What did not port is an end-to-end priced knob --- not because the method failed to transfer, but because the campaign never established its own control. The generality claim is therefore now partly measured and partly still an argument from construction, and this report marks the boundary rather than letting the successful half stand for the whole.
+
+Beyond that, the current reward reliably judges whether the scenario was completed but cannot separate failures of decomposition, role selection and communication. The pivot annotation of Table~\ref{tab:pivots} is a first step toward attribution --- it is deterministic and model-free, and it already distinguishes ``never issued a parseable call'' from ``called the right tool with the wrong argument''. It is not yet capability attribution, and it should not enter a reward until its accuracy has been measured against human labels, by the same rule this report applies to any self-designed judge.
 
 \subsection{From spatial constraints to temporal ones}
 
@@ -648,11 +680,13 @@ where $U_h$ is hidden user state existing only in the sidecar and $\Gamma_h$ dec
 
 \section{Conclusion}
 
-The key to this method is not inventing new tasks out of nothing. It is finding coordination dependencies inside real tasks that already exist, then making those dependencies explicit through permission and information allocation. The Main must plan and delegate, the sub-agents can only do local work, and the final reward still comes from AppWorld's real world state.
+The key to this method is not inventing new tasks out of nothing. It is finding coordination dependencies inside real tasks that already exist, then making those dependencies explicit through permission and information allocation. The Main must plan and delegate, the sub-agents can only do local work, and the verdict still comes from Gaia2's own write-action verifier.
 
-Configurations can therefore be generated in bulk and the verification logic reused. But \textbf{whether difficulty can be tuned along these directions is not something this report has proved}. What the three samples prove is that the partitioned environment and the Harbor verifier run correctly, and that reference solutions pass all 6 state checks. Beyond that, the existing sweep observed a non-degenerate training signal in exactly one star-docs instance; star-names is not an established difficulty increment (\S\ref{sec:results}), the chain topology is not built, and parallel scheduling is out of scope.
+Two things in this report are established. The mining rules \textbf{ported to a substrate whose ground truth has an entirely different form}, from reference code to gold write actions, and produced measured seam distributions on two splits: 17 of 160 and 30 of 160, against a multi-app rate of 69\% and 99\%. And the pipeline runs end to end --- 37 scenarios mined, 148 cells rendered, 148 rollouts executed with full trajectories, three tasks packaged as container-ready Harbor directories.
 
-What comes next is therefore not scaling up but making this one cell solid: add seeds to the shipped configurations, strip the submission protocol's contamination out of the reward, and extend the delivered samples from one task family to different dependency structures. Hidden user requirements and mid-run intervention are worthwhile extensions, but they should sit on top of a base configuration already proven to produce a training signal reliably --- and no such configuration exists yet.
+One thing is not. \textbf{Whether difficulty can be tuned along these directions remains unproved, and this campaign moved no closer to proving it.} The four cells sit within $0.035$ of each other, the unconstrained control succeeded on 2 of 37 scenarios, and 49\% of rollouts ended on a malformed call or an environment stop. The acceptance criterion declined to certify any cell, which is the criterion working: it is designed to withhold a verdict exactly when a control has not cleared the floor, and it did.
+
+What comes next is therefore not scaling up. It is establishing the two references the campaign lacked --- a gold-replay ceiling and a do-nothing floor --- and repairing the half of the runtime that is losing episodes to syntax and to the clock. Only then do seeds, further splits and new knobs buy anything. A forge that cannot yet finish its own control has no business adding a fifth constraint, and the most valuable thing this delivery produced is the evidence that says so.
 
 \begingroup
 \footnotesize
@@ -660,11 +694,11 @@ What comes next is therefore not scaling up but making this one cell solid: add 
 \setlength{\itemsep}{0.25em}
 \setlength{\parskip}{0pt}
 
-\bibitem{trivedi2024appworld}
-Harsh Trivedi et al.
-\newblock AppWorld: A Controllable World of Apps and People for Benchmarking Interactive Coding Agents.
-\newblock \emph{ACL 2024}, arXiv:2407.18901.
-\newblock \url{https://arxiv.org/abs/2407.18901}
+\bibitem{meta2025are}
+Meta AI.
+\newblock ARE: Scaling Up Agent Environments and Evaluations.
+\newblock arXiv:2509.17158, 2025. Introduces the Gaia2 benchmark; software published as \texttt{meta-agents-research-environments}.
+\newblock \url{https://arxiv.org/abs/2509.17158}
 
 \bibitem{yang2025swesmith}
 John Yang, Kilian Lieret, Carlos E. Jimenez, et al.
