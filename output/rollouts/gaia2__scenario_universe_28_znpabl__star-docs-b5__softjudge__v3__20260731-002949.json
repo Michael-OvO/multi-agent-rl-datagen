@@ -1,0 +1,350 @@
+{
+ "kind": "gaia2-episode",
+ "scenario_id": "scenario_universe_28_znpabl",
+ "category": "adaptability",
+ "ability": "delegation-economy",
+ "config": "star-docs-b5",
+ "roster": [
+  "Calendar",
+  "Emails",
+  "RentAFlat"
+ ],
+ "conditioned_env_events": 4,
+ "delegation_target_heuristic": 5,
+ "main_model": "gpt-5.6-sol",
+ "sub_model": "gpt-5.6-sol",
+ "answer": "(environment stopped)",
+ "judge": "gpt-5.6-sol",
+ "label": "v3",
+ "started_at": "2026-07-31 00:29:49",
+ "verdict": {
+  "success": false,
+  "rationale": "Failure: Agent did not perform the following oracle tool call:\ntool name: EmailClientV2__send_email\ntool args:\n-recipients: ['nonglak.srisawat@gaia2mail.com']\n-subject: Confirm Apartment Viewing Time\n-content: Dear Nonglak,\n\nPlease confirm if 3 PM this Friday works for you to view the apartment at \u00d8stergade 14, Herning.\n\nBest,\nS\u00f8ren Kj\u00e6r\n-cc: []\n-attachment_paths: []\n\nList of matching attempts:\n-Failure matching agent event (ID: Event-USER-2f231e39-0d05-4caf-8211-810560294c00) with oracle event (ID: OracleEvent-AGENT-c39f9c37-1251-4644-a723-3ca2772c7ca9), reason: already matched\n-Failure matching agent event (ID: AGENT-RentAFlat.save_apartment-6b064ed0-4a01-4c5d-bc23-92124888adf7) with oracle event (ID: OracleEvent-AGENT-c39f9c37-1251-4644-a723-3ca2772c7ca9), reason: already matched\n-Failure matching agent event (ID: AGENT-Calendar.add_calendar_event-87fa878b-1818-4bc0-88a9-dd151ef367a7) with oracle event (ID: OracleEvent-AGENT-c39f9c37-1251-4644-a723-3ca2772c7ca9), reason: already matched\n-Failure matching agent event (ID: AGENT-Emails.send_email-1c272f59-aba4-4535-99d3-4deb8af74f74) with oracle event (ID: OracleEvent-AGENT-c39f9c37-1251-4644-a723-3ca2772c7ca9), reason: tool judge reject",
+  "exception": null
+ },
+ "seconds": 59.5,
+ "objective_action_contract": "objective-actions-v1",
+ "events": [
+  {
+   "type": "user",
+   "sim_time": "2024-10-15 07:00:00",
+   "content": "Received at: 2024-10-15 07:00:00\nSender: User\nMessage: Add Herning Hytte to my saved list, and afterwards, create a new 1-hour entry in my calendar for this Friday at 3 PM titled \"View the apartment,\" with the location set to the apartment's address. Tag it as Work, with no description. Set Nonglak Srisawat as the attendee for the event. After creating the event, send her an email asking her to confirm that the time works to view the apartment. Let me know when you send the initial email to her. If she suggests a different time, reschedule the apartment viewing event in my calendar to the time she suggests, and afterwards, send her a confirmation email. If you had to reschedule, notify me of the new time after you've sent the confirmaton email to her. Don\u2019t respond to any other emails received that aren\u2019t related to this apartment viewing.\nAlready read: True\nRead at: 2024-10-15 07:00:00"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:02",
+   "content": "DELEGATE RentAFlat :: Search for the apartment named exactly \"Herning Hytte\"; return its apartment ID and full address, and save that apartment to favorites exactly once."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:07",
+   "specialist": "RentAFlat",
+   "brief": "Search for the apartment named exactly \"Herning Hytte\"; return its apartment ID and full address, and save that apartment to favorites exactly once.",
+   "report": "Saved \u201cHerning Hytte\u201d to favorites exactly once. Apartment ID: 4121afe7523043de82f02ace2ee4a7f5; full address: \u00d8stergade 14, 7400 Herning.",
+   "calls": [
+    {
+     "tool": "RentAFlat__search_apartments",
+     "args": {
+      "name": "Herning Hytte"
+     },
+     "status": "ok",
+     "result": "{\n \"4121afe7523043de82f02ace2ee4a7f5\": \"Apartment(name='Herning Hytte', location='\\u00d8stergade 14, Herning', zip_code='7400', price=800, bedrooms=1, bathrooms=1, property_type='Apartment', square_footage=500, furnished_status='Furnished', floor_level='Upper floors', pet_policy='No pets', lease_term='6 months', apartment_id='4121afe7523043de82f02ace2ee4a7f5', amenities=['Laundry'], saved=False)\"\n}"
+    },
+    {
+     "tool": "RentAFlat__save_apartment",
+     "args": {
+      "apartment_id": "4121afe7523043de82f02ace2ee4a7f5"
+     },
+     "status": "ok",
+     "result": "Successfully saved apartment"
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:10",
+   "content": "DELEGATE Calendar :: Create exactly one calendar event titled \"View the apartment\" on Friday, October 18, 2024 from 15:00 to 16:00, location \"\u00d8stergade 14, 7400 Herning\", tag \"Work\", no description, with Nonglak Srisawat as the attendee. Return the event ID and full event details."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:16",
+   "specialist": "Calendar",
+   "brief": "Create exactly one calendar event titled \"View the apartment\" on Friday, October 18, 2024 from 15:00 to 16:00, location \"\u00d8stergade 14, 7400 Herning\", tag \"Work\", no description, with Nonglak Srisawat as the attendee. Return the event ID and full event details.",
+   "report": "Created event ID 1f483530f65c09fb05bf428c5e5ddeb1 \u2014 \u201cView the apartment\u201d; Friday, October 18, 2024, 15:00\u201316:00 (+00:00); location: \u00d8stergade 14, 7400 Herning; tag: Work; description: none; attendee: Nonglak Srisawat.",
+   "calls": [
+    {
+     "tool": "Calendar__add_calendar_event",
+     "args": {
+      "title": "View the apartment",
+      "start_datetime": "2024-10-18 15:00:00",
+      "end_datetime": "2024-10-18 16:00:00",
+      "tag": "Work",
+      "description": null,
+      "location": "\u00d8stergade 14, 7400 Herning",
+      "attendees": [
+       "Nonglak Srisawat"
+      ]
+     },
+     "status": "ok",
+     "result": "1f483530f65c09fb05bf428c5e5ddeb1"
+    },
+    {
+     "tool": "Calendar__get_calendar_event",
+     "args": {
+      "event_id": "1f483530f65c09fb05bf428c5e5ddeb1"
+     },
+     "status": "ok",
+     "result": "\"EventID: 1f483530f65c09fb05bf428c5e5ddeb1\\nTitle: View the apartment\\nStart: 2024-10-18 15:00:00+00:00\\nEnd: 2024-10-18 16:00:00+00:00\\nTag: Work\\nDescription: None\\nLocation: \\u00d8stergade 14, 7400 Herning\\nAttendees: Nonglak Srisawat\""
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:20",
+   "content": "DELEGATE Emails :: Search all email folders for messages involving Nonglak Srisawat and return her email address. Do not send, reply to, move, or delete any email."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:35",
+   "specialist": "Emails",
+   "brief": "Search all email folders for messages involving Nonglak Srisawat and return her email address. Do not send, reply to, move, or delete any email.",
+   "report": "Nonglak Srisawat\u2019s email address is nonglak.srisawat@gaia2mail.com.",
+   "calls": [
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak Srisawat",
+      "folder_name": "INBOX"
+     },
+     "status": "ok",
+     "result": "[]"
+    },
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak Srisawat",
+      "folder_name": "SENT"
+     },
+     "status": "ok",
+     "result": "[]"
+    },
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak Srisawat",
+      "folder_name": "DRAFT"
+     },
+     "status": "ok",
+     "result": "[]"
+    },
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak Srisawat",
+      "folder_name": "TRASH"
+     },
+     "status": "ok",
+     "result": "[]"
+    },
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak",
+      "folder_name": "INBOX"
+     },
+     "status": "ok",
+     "result": "[\n \"From: nonglak.suthisakul@gaia2mail.com\\nTo: soren.kjaer@gaia2mail.com\\nCC: \\nSubject: Exploring Opportunities for Startup Event Collaboration\\nContent: Dear S\\u00f8ren,\\n\\nI hope this email finds you well. I came across your startup and was impressed by your innovative approach to revolutionizing the banking industry. As an event organizer in Sheffield, I\\u2019m always on the lookout for exciting projects to collaborate on.\\n\\nI think our expertise in creating immersive experiences could complement your mobile application nicely. Perhaps we could discuss potential event opportunities that showcase your product to a wider audience? I\\u2019d love to explore ways we could work together.\\n\\nLooking forward to hearing from you.\\n\\nBest regards,\\nNonglak\",\n \"From: nonglak.srisawat@gaia2mail.com\\nTo: soren.kjaer@gaia2mail.com\\nCC: \\nSubject: Exploring Opportunities for Financial Inclusion in Thailand\\nContent: Dear S\\u00f8ren,\\n\\nI hope this email finds you well. I came across your startup's mission to provide accessible financial services to the underbanked population, and I must say that I am impressed. As a real estate investor in Chiang Mai, I have seen firsthand the challenges that many people face in accessing basic financial services.\\n\\nI am writing to explore potential opportunities for collaboration or investment in your startup. I believe that your mobile application could have a significant impact in Thailand, where many people lack access to traditional banking services.\\n\\nI would love to discuss this further with you and learn more about your plans for expansion. Perhaps we could schedule a call to explore this opportunity in more detail?\\n\\nBest regards,\\nNonglak\",\n \"From: nonglak.srisombat@gaia2mail.com\\nTo: soren.kjaer@gaia2mail.com\\nCC: \\nSubject: Exploring Opportunities for Financial Inclusion in Thailand\\nContent: Dear S\\u00f8ren,\\n\\nI hope this email finds you well. I came across your startup and was impressed by your mission to provide secure and accessible financial services to the underbanked population. As an ice cream shop owner in Chiang Mai, I've seen firsthand the challenges faced by small business owners and individuals who lack access to traditional banking services.\\n\\nI'd love to discuss potential opportunities for collaboration and explore how your mobile application could benefit the community here in Thailand. Perhaps we could schedule a call to discuss further?\\n\\nBest regards,\\nNonglak\",\n \"From: nonglak.suthisarn@gaia2mail.com\\nTo: soren.kjaer@gaia2mail.com\\nCC: \\nSubject: Seeking Advice on Consumer Protection Laws for Financial Inclusion\\nContent: Dear S\\u00f8ren,\\n\\nI hope this email finds you well. I came across your startup's mission to provide secure and accessible financial services to the underbanked population, and I must say that I am impressed. As a retired teacher and current law student, I am eager to learn more about the intersection of consumer protection laws and financial inclusion.\\n\\nI would love to seek your advice on how your startup is addressing consumer protection concerns, particularly in regards to data privacy and security. Your experience in the banking industry and expertise in entrepreneurship would be invaluable to me.\\n\\nI am confident that our shared passion for social justice and consumer rights could lead to a meaningful exchange of ideas. If you are available, I would appreciate the opportunity to discuss this further with you.\\n\\nBest regards,\\nNonglak\",\n \"From: nonglak.suthipong@gaia2mail.com\\nTo: soren.kjaer@gaia2mail.com\\nCC: \\nSubject: Support for Your Mobile Banking Initiative\\nContent: Dear S\\u00f8ren,\\n\\nI hope this email finds you well. I came across your startup's mission to provide secure and accessible financial services to the underbanked population, and I must say that I am truly inspired. As someone who is passionate about giving back to the community, I believe that your initiative has the potential to make a significant impact.\\n\\nI work as an administrative assistant at a local non-profit organization, and I have seen firsthand the struggles that many individuals face when trying to access basic financial services. Your mobile application could be a game-changer for these individuals, and I would like to explore ways in which our organization could support your efforts.\\n\\nWould you be open to discussing potential partnership opportunities or ways in which we could collaborate to promote your initiative? I would be more than happy to set up a call to discuss further.\\n\\nBest regards,\\nNonglak\"\n]"
+    },
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak",
+      "folder_name": "SENT"
+     },
+     "status": "ok",
+     "result": "[\n \"From: soren.kjaer@gaia2mail.com\\nTo: nonglak.srisawat@gaia2mail.com\\nCC: \\nSubject: Exploring Opportunities for Financial Inclusion in Thailand\\nContent: Dear Nonglak,\\n\\nI hope this email finds you well in Chiang Mai. As a fellow retiree and entrepreneur, I came across your impressive work in real estate investment and couldn\\u2019t help but think of the potential synergies between our fields. My startup, which aims to provide secure and accessible financial services to the underbanked population, has been gaining traction in Denmark, and I\\u2019m eager to explore opportunities for expansion in Southeast Asia.\\n\\nThailand, with its growing economy and aging population, presents an exciting market for our mobile application. I\\u2019d love to discuss how our platform could complement your existing real estate investments and potentially provide new revenue streams. Perhaps we could schedule a call to explore this further?\\n\\nBest regards,\\nS\\u00f8ren Kj\\u00e6r\",\n \"From: soren.kjaer@gaia2mail.com\\nTo: nonglak.srisombat@gaia2mail.com\\nCC: \\nSubject: Exploring Opportunities for Financial Inclusion in Chiang Mai\\nContent: Dear Nonglak, I hope this email finds you well. My name is S\\u00f8ren Kj\\u00e6r, and I am a retired bank manager from Copenhagen, Denmark. I am reaching out to you today as the founder of a startup that aims to provide secure, user-friendly, and accessible financial services to the underbanked population. As an ice cream shop owner in Chiang Mai, I believe you have a unique understanding of the local community and its needs. I would love to discuss potential opportunities for collaboration and explore how our mobile application can benefit the people of Chiang Mai. I am particularly interested in learning more about the financial challenges faced by small business owners and individuals in the area. Your insights would be invaluable in helping us tailor our services to meet the specific needs of the community. If you are available, I would appreciate the chance to schedule a call to discuss further. Please let me know if this is something that interests you, and we can schedule a time that suits you. Best regards, S\\u00f8ren Kj\\u00e6r\",\n \"From: soren.kjaer@gaia2mail.com\\nTo: nonglak.suthisarn@gaia2mail.com\\nCC: \\nSubject: Empowering Financial Inclusion through Mobile Technology\\nContent: Dear Nonglak, I hope this email finds you well. As a fellow advocate for social justice, I came across your remarkable work in promoting consumer rights and education in Chiang Mai. I am impressed by your dedication to empowering your community, and I believe our values align. As the founder of a startup aiming to revolutionize the banking industry, I would like to share with you our mission to provide secure, user-friendly, and accessible financial services to the underbanked population. Our mobile application is designed to bridge the financial inclusion gap, and I think it could greatly benefit your community. I would be delighted to discuss this further with you and explore potential collaboration opportunities. Perhaps we could schedule a call to exchange ideas and learn from each other's experiences? Best regards, S\\u00f8ren Kj\\u00e6r\",\n \"From: soren.kjaer@gaia2mail.com\\nTo: nonglak.suthisakul@gaia2mail.com\\nCC: \\nSubject: Exploring Opportunities for Fintech in the Music Industry\\nContent: Dear Nonglak,\\n\\nI hope this email finds you well. As a startup founder in the fintech space, I've been following your work in the music scene in Sheffield, and I must say, I'm impressed by the events you've been organizing. Your ability to bring together talented artists and create immersive experiences for the audience is truly remarkable.\\n\\nI've been thinking about the potential applications of fintech in the music industry, particularly in terms of secure and accessible payment systems for event organizers and attendees. I believe that our mobile application could be a great fit for your events, and I'd love to discuss this further with you.\\n\\nWould you be open to a call to explore this idea in more detail? I'd be happy to set up a time that suits you.\\n\\nBest regards,\\nS\\u00f8ren Kj\\u00e6r\",\n \"From: soren.kjaer@gaia2mail.com\\nTo: nonglak.suthipong@gaia2mail.com\\nCC: \\nSubject: Exploring Opportunities for Financial Inclusion in Lawrence\\nContent: Dear Nonglak,\\n\\nI hope this email finds you well. My name is S\\u00f8ren Kj\\u00e6r, and I am the founder of a startup that aims to provide secure and accessible financial services to the underbanked population. I came across your profile and was impressed by your dedication to giving back to your community through your work at the Corpus Christi Parish and other local charities.\\n\\nAs someone who is passionate about financial inclusion, I believe that our mission aligns with the values of your parish and the community you serve. I would love to explore potential opportunities for collaboration and discuss how our mobile application can benefit the people of Lawrence.\\n\\nWould you be open to a call to discuss further? I am confident that together, we can make a positive impact on the lives of those who need it most.\\n\\nBest regards,\\nS\\u00f8ren Kj\\u00e6r\"\n]"
+    },
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak",
+      "folder_name": "DRAFT"
+     },
+     "status": "ok",
+     "result": "[]"
+    },
+    {
+     "tool": "Emails__search_emails",
+     "args": {
+      "query": "Nonglak",
+      "folder_name": "TRASH"
+     },
+     "status": "ok",
+     "result": "[]"
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:39",
+   "content": "DELEGATE Emails :: Send exactly one initial email to nonglak.srisawat@gaia2mail.com with subject \"Apartment viewing at Herning Hytte\" and content: \"Hi Nonglak,\\n\\nWould you please confirm whether Friday, October 18 at 3:00 PM works for you to view Herning Hytte at \u00d8stergade 14, 7400 Herning?\\n\\nBest regards\" Return confirmation of successful sending."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:42",
+   "specialist": "Emails",
+   "brief": "Send exactly one initial email to nonglak.srisawat@gaia2mail.com with subject \"Apartment viewing at Herning Hytte\" and content: \"Hi Nonglak,\\n\\nWould you please confirm whether Friday, October 18 at 3:00 PM works for you to view Herning Hytte at \u00d8stergade 14, 7400 Herning?\\n\\nBest regards\" Return confirmation of successful sending.",
+   "report": "Successfully sent exactly one initial email to nonglak.srisawat@gaia2mail.com with the requested subject and content (email ID: 7f373a6d7da54d0b655d2c279ee42d7e).",
+   "calls": [
+    {
+     "tool": "Emails__send_email",
+     "args": {
+      "recipients": [
+       "nonglak.srisawat@gaia2mail.com"
+      ],
+      "subject": "Apartment viewing at Herning Hytte",
+      "content": "Hi Nonglak,\n\nWould you please confirm whether Friday, October 18 at 3:00 PM works for you to view Herning Hytte at \u00d8stergade 14, 7400 Herning?\n\nBest regards"
+     },
+     "status": "ok",
+     "result": "7f373a6d7da54d0b655d2c279ee42d7e"
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:47",
+   "content": "USER :: Herning Hytte at \u00d8stergade 14, 7400 Herning has been saved. I created \u201cView the apartment\u201d for Friday, October 18, 2024, from 3:00\u20134:00 PM, tagged Work, with Nonglak Srisawat attending, and sent the initial email to nonglak.srisawat@gaia2mail.com asking her to confirm the time."
+  },
+  {
+   "type": "send_user",
+   "sim_time": "2024-10-15 07:00:47",
+   "content": "Herning Hytte at \u00d8stergade 14, 7400 Herning has been saved. I created \u201cView the apartment\u201d for Friday, October 18, 2024, from 3:00\u20134:00 PM, tagged Work, with Nonglak Srisawat attending, and sent the initial email to nonglak.srisawat@gaia2mail.com asking her to confirm the time."
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:48",
+   "content": "WAIT 300"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:05:48",
+   "requested": 300,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 300 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:05:48",
+   "content": "SystemApp: Wait for notification timeout reached after 300 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:05:49",
+   "content": "WAIT 300"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:10:49",
+   "requested": 300,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 300 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:10:49",
+   "content": "SystemApp: Wait for notification timeout reached after 300 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:10:51",
+   "content": "WAIT 300"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:15:51",
+   "requested": 300,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 300 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:15:51",
+   "content": "SystemApp: Wait for notification timeout reached after 300 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:15:52",
+   "content": "WAIT 90"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:16:29",
+   "requested": 47,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 37 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:16:29",
+   "content": "SystemApp: Wait for notification timeout reached after 37 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:16:33",
+   "content": "DELEGATE Emails :: Check the INBOX now for any reply or new email from Nonglak Srisawat related to the Herning Hytte apartment viewing after the initial email was sent. Return the full message details and whether she confirms 3 PM or suggests a different time. Do not respond to any email."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:16:36",
+   "specialist": "Emails",
+   "brief": "Check the INBOX now for any reply or new email from Nonglak Srisawat related to the Herning Hytte apartment viewing after the initial email was sent. Return the full message details and whether she confirms 3 PM or suggests a different time. Do not respond to any email.",
+   "report": "I could not check the inbox because no email tool results were available in this run; no email was sent or replied to.",
+   "calls": []
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 07:16:36"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:16:36",
+   "content": "EmailClientV2: New email received from birgitta.rasmussen@gaia2mail.com"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:16:36",
+   "content": "EmailClientV2: New email received"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:16:36",
+   "content": "EmailClientV2: New email received from krao66@gaia2mail.com"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:16:36",
+   "content": "EmailClientV2: New email received"
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 07:16:36"
+  }
+ ],
+ "delegations": 5,
+ "specialist_turns": 13,
+ "refusals": 1,
+ "blocked": 0,
+ "blocked_reasons": [],
+ "waits": 4,
+ "user_turns": 1,
+ "malformed": 0,
+ "false_outages": 0,
+ "delegation_target": 5,
+ "delegations_over_target": 0,
+ "delegation_efficiency": 1.0,
+ "delegation_economy_reward": 0.0
+}
