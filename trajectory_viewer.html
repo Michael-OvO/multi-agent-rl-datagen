@@ -3,30 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trajectory evidence — rl-datagen</title>
+<title>Run dashboard — rl-datagen</title>
 <!--
-THESIS: This viewer is the repo's evidence section, typeset — numbered tables
-you read, not a dashboard you monitor. It refuses the observability-console
-arrangement (cards, chips, stat tiles, colored lanes) entirely.
-OWN-WORLD (modernized 2026-07-28 at the user's direction — "modern text,
-modern feel"; the evidence-page structure stayed, the bookish rendition
-went): white ground, the system's modern sans, hairline table rules (no
-vertical rules, no boxes, no radii, no cards), captions above tables,
-daggers and table notes for qualifications, quiet margin labels for
-speakers, monospace only for code and tool calls, one accent: signal red,
-spent only on failure and fault.
-STORY: A researcher opens the file, reads Table 1's verdict grid in seconds,
-follows a mark into a run's transcript set like an appendix, and trusts what
-they read because it cites its files.
-FIRST VIEWPORT: Title block with draft line; contents line (1 Runs,
-2 Shipped-task runs, 3 Sweep evidence); the summary sentence; Table 1 (the
-verdict matrix) with its caption and note. Primary action: any verdict mark.
-FORM: Proceedings/booktabs evidence page — rank 1 of 7 derived from the
-audience's world (the repo ships a LaTeX report); chosen by the user over
-telemetry strip-chart, terminal ledger, and the category standard. Seed
-scripts unavailable (no Node); the hand was dealt by hand and disclosed.
-FINISH: unreviewed and undocumented is unfinished; this build ends with the
-finish review, the verdict, and DESIGN.md.
+THESIS: a dashboard you read at a glance. Every status ships as three
+channels at once — a color, an icon, and a word — so the verdicts survive
+color-blindness, grayscale, and forced-colors, and the basic facts about a
+run are legible before any prose is.
+HISTORY: this file used to be an academic evidence page — numbered table
+captions, footnote marks, one rationed accent, and a founding refusal of
+"cards, chips, badges, tiles, lanes". The user overturned that direction on
+2026-07-28: it read as a costume, the text was too dense, and the facts
+about a run could not be found at a glance. Of the three replacements
+weighed (a run-card grid, a master-detail split, an overview over tables),
+the overview-over-tables option was chosen.
+FIRST VIEWPORT: title, source line, three tabs (Runs, Shipped-task runs,
+Evidence files), the failure-signal chips, then the verdict grid. Primary
+action: any verdict badge or table row opens that run.
+NOT HERE, BY DECISION: stat tiles and a hero figure were built on
+2026-07-28 and removed the same day — they restated the tables. The
+File System Access folder connection is retired; no permission prompt
+stands in front of the data.
+The system is documented in DESIGN.md, and the parts that are computable —
+every token in all three theme scopes, and the WCAG contrast of each status
+color on both of its grounds — are tested in forge/tests/test_viewer.py.
 
 Auto-loading: the page carries its data — a JSON snapshot of every log
 artifact sits in the #embedded-logs block, so opening the file is the whole
@@ -36,58 +35,91 @@ Supplementary files can be dropped on the page or opened via the quiet
 sweep row files.
 -->
 <style>
+  /* Design tokens. The status palette is the dataviz reference instance:
+     mark colors carry state on dots and rails, the -ink variants are the
+     text-safe steps (>=4.5:1 on both grounds of their mode), and the -tint
+     variants are the badge and panel fills. `--warn` is deliberately
+     sub-3:1 on light -- the icon + label pairing is the mitigation, so a
+     status color never carries meaning by itself. */
   :root {
     color-scheme: light;
-    --paper: #ffffff;
-    --ink: #16181d;
-    --ink-2: #4d5158;
-    --faint: #676c73;   /* ≥4.5:1 on white — citations must stay legible */
-    --rule: rgba(22, 24, 29, 0.55);
-    --hair: rgba(22, 24, 29, 0.14);
-    --wash: rgba(22, 24, 29, 0.035);
-    --panel: #fbfbfc;
-    --shadow: 0 1px 2px rgba(22, 24, 29, 0.05);
-    --red: #b42318;     /* signal red, spent only on failure and fault */
+    --surface: #fcfcfb;
+    --plane:   #f9f9f7;
+    --ink:     #0b0b0b;
+    --ink-2:   #52514e;
+    --muted:   #898781;   /* 3.41:1 -- de-emphasized labels only, never prose */
+    --grid:    #e1e0d9;
+    --axis:    #c3c2b7;
+    --hair:    rgba(11, 11, 11, 0.10);
+    --wash:    rgba(11, 11, 11, 0.035);
+    --shadow:  0 1px 2px rgba(11, 11, 11, 0.06);
+    --pass:      #0ca30c;
+    --warn:      #fab219;
+    --fail:      #d03b3b;
+    --pass-ink:  #006300;
+    --warn-ink:  #8a5a00;
+    --fail-ink:  #b42318;
+    --pass-tint: rgba(12, 163, 12, 0.10);
+    --warn-tint: rgba(250, 178, 25, 0.16);
+    --fail-tint: rgba(208, 59, 59, 0.10);
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --paper: #101114;
-    --ink: #e8eaed;
-    --ink-2: #aab0b7;
-    --faint: #868c94;
-    --rule: rgba(232, 234, 237, 0.5);
-    --hair: rgba(232, 234, 237, 0.14);
-    --wash: rgba(232, 234, 237, 0.05);
-    --panel: #15161a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --red: #f2655c;
+    --surface: #1a1a19;
+    --plane:   #0d0d0d;
+    --ink:     #ffffff;
+    --ink-2:   #c3c2b7;
+    --muted:   #898781;
+    --grid:    #2c2c2a;
+    --axis:    #383835;
+    --hair:    rgba(255, 255, 255, 0.10);
+    --wash:    rgba(255, 255, 255, 0.05);
+    --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
+    --pass:      #0ca30c;
+    --warn:      #fab219;
+    --fail:      #d03b3b;
+    --pass-ink:  #3ecb4a;
+    --warn-ink:  #fab219;
+    --fail-ink:  #f2655c;
+    --pass-tint: rgba(12, 163, 12, 0.16);
+    --warn-tint: rgba(250, 178, 25, 0.16);
+    --fail-tint: rgba(208, 59, 59, 0.20);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
-      --paper: #101114;
-      --ink: #e8eaed;
-      --ink-2: #aab0b7;
-      --faint: #868c94;
-      --rule: rgba(232, 234, 237, 0.5);
-      --hair: rgba(232, 234, 237, 0.14);
-      --wash: rgba(232, 234, 237, 0.05);
-      --panel: #15161a;
-      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-      --red: #f2655c;
+      --surface: #1a1a19;
+      --plane:   #0d0d0d;
+      --ink:     #ffffff;
+      --ink-2:   #c3c2b7;
+      --muted:   #898781;
+      --grid:    #2c2c2a;
+      --axis:    #383835;
+      --hair:    rgba(255, 255, 255, 0.10);
+      --wash:    rgba(255, 255, 255, 0.05);
+      --shadow:  0 1px 2px rgba(0, 0, 0, 0.4);
+      --pass:      #0ca30c;
+      --warn:      #fab219;
+      --fail:      #d03b3b;
+      --pass-ink:  #3ecb4a;
+      --warn-ink:  #fab219;
+      --fail-ink:  #f2655c;
+      --pass-tint: rgba(12, 163, 12, 0.16);
+      --warn-tint: rgba(250, 178, 25, 0.16);
+      --fail-tint: rgba(208, 59, 59, 0.20);
     }
   }
 
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   body {
-    background: var(--paper); color: var(--ink);
+    background: var(--plane); color: var(--ink);
     font: 14px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text",
           "Segoe UI", Inter, Roboto, system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
   }
-  ::selection { background: var(--ink); color: var(--paper); }
+  ::selection { background: var(--ink); color: var(--plane); }
 
   #page { max-width: 1080px; margin: 0 auto; padding: 40px 40px 120px; }
   @media (max-width: 720px) { #page { padding: 22px 16px 90px; } }
@@ -104,21 +136,24 @@ sweep row files.
   }
 
   /* ---------- title block ---------- */
+  header .titlerow {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
   header h1 {
-    font-size: 21px; font-weight: 650; letter-spacing: -0.015em;
-    margin: 0 0 3px; line-height: 1.2;
+    font-size: 22px; font-weight: 650; letter-spacing: -0.02em;
+    margin: 0; line-height: 1.2;
   }
-  header .draftline { color: var(--ink-2); font-size: 12.5px; margin: 0; }
-  header .colophon { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
-  header .colophon .sep { color: var(--faint); padding: 0 7px; }
-  header .colophon button, header .colophon label {
-    font: inherit; color: inherit; background: var(--panel);
-    border: 1px solid var(--hair); border-radius: 7px; padding: 2.5px 10px;
-    cursor: pointer;
+  header .acts { display: flex; gap: 8px; }
+  header .acts button, header .acts label {
+    font: inherit; font-size: 12.5px; color: var(--ink-2);
+    background: var(--surface); border: 1px solid var(--hair);
+    border-radius: 8px; padding: 4px 12px; cursor: pointer;
   }
-  header .colophon button:hover, header .colophon label:hover {
+  header .acts button:hover, header .acts label:hover {
     border-color: var(--ink-2); color: var(--ink);
   }
+  header .source { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
   input[type="file"] { display: none; }
 
   nav#contents {
@@ -134,20 +169,69 @@ sweep row files.
   nav#contents .item:hover { color: var(--ink); }
 
   .lede { font-size: 13.5px; color: var(--ink-2); margin: 16px 0 4px; max-width: 78ch; }
-  .lede b, .runmeta b { color: var(--ink); font-weight: 600; }
-  .bad { color: var(--red); }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .dim { color: var(--muted); }
+  .warn-text { color: var(--warn-ink); }
+  table.tab td.sm { font-size: 11.5px; color: var(--ink-2); }
+
+  /* ---------- status badges: color + icon + word, always all three ---------- */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+    line-height: 1.5;
+  }
+  .badge .ic { font-size: 11px; line-height: 1; }
+  .badge.pass { background: var(--pass-tint); color: var(--pass-ink); }
+  .badge.fail { background: var(--fail-tint); color: var(--fail-ink); }
+  .badge.warn { background: var(--warn-tint); color: var(--warn-ink); }
+  .tag {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    border-radius: 999px; border: 1px solid var(--hair);
+    font-size: 11px; color: var(--ink-2); white-space: nowrap;
+  }
+
+  .signals { display: flex; flex-wrap: wrap; gap: 9px; margin: 14px 0 0; }
+  .signal {
+    font: inherit; font-size: 12px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--hair); background: var(--surface);
+    color: var(--ink-2);
+  }
+  .signal .ic { font-size: 11px; line-height: 1; }
+  .signal.warn { background: var(--warn-tint); color: var(--warn-ink);
+                 border-color: transparent; }
+  .signal.fail { background: var(--fail-tint); color: var(--fail-ink);
+                 border-color: transparent; }
+  .signal:hover { border-color: var(--ink-2); }
+  .signal.on { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  .panel-title {
+    font-size: 14px; font-weight: 650; color: var(--ink);
+    margin: 28px 0 9px; letter-spacing: -0.01em;
+  }
+  .panel-title .sub { font-weight: 400; color: var(--ink-2); font-size: 12.5px; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    margin: 0 0 10px; font-size: 12px; color: var(--ink-2);
+  }
+  .legend .key { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .dot {
+    width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+  }
+  .legend .dot.pass { background: var(--pass); }
+  .legend .dot.fail { background: var(--fail); }
 
   /* ---------- tables: soft framed panels, no sideways scrolling ---------- */
-  .tcap { margin: 26px 0 8px; font-size: 13px; color: var(--ink-2); }
-  .tcap b { font-weight: 600; color: var(--ink); }
   .tabwrap {
-    overflow-x: auto; background: var(--panel);
+    overflow-x: auto; background: var(--surface);
     border: 1px solid var(--hair); border-radius: 10px;
     box-shadow: var(--shadow);
   }
   table.tab { border-collapse: collapse; width: 100%; font-size: 13.5px; }
   table.tab th {
-    text-align: left; font-weight: 500; font-size: 12px; color: var(--faint);
+    text-align: left; font-weight: 500; font-size: 12px; color: var(--muted);
     padding: 9px 16px 8px 0; border-bottom: 1px solid var(--hair);
     white-space: nowrap;
   }
@@ -160,22 +244,22 @@ sweep row files.
   table.tab th:first-child, table.tab td:first-child { padding-left: 16px; }
   table.tab th:last-child, table.tab td:last-child { padding-right: 16px; }
   table.tab th.n, table.tab td.n { text-align: right; }
-  /* wrap-mode tables trade taller rows for zero horizontal scrolling */
-  table.tab.wrap td { white-space: normal; overflow-wrap: anywhere; max-width: none; }
+  /* Break inside a word only when the word alone cannot fit -- a long path or
+     id. Ordinary values wrap at spaces, so cells never read as "compl/eted". */
+  table.tab.wrap td {
+    white-space: normal; overflow-wrap: break-word; word-break: normal; max-width: none;
+  }
   td.wrapok { white-space: normal !important; }
   table.tab tr.click { cursor: pointer; }
   table.tab tbody tr:hover td { background: var(--wash); }
   table.tab .sortable { cursor: pointer; }
-  .yes { color: var(--ink); }
-  .no  { color: var(--red); }
-  .runlab { color: var(--faint); font-size: 11px; }
-  .dag { font-size: 0.85em; vertical-align: super; line-height: 0; }
-  .tnote { font-size: 12px; color: var(--faint); margin: 8px 0 0; max-width: 84ch; }
+  .runlab { color: var(--muted); font-size: 11px; }
+  .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 84ch; }
 
   .mono, .call .sig, pre {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
-  .path { font-size: 11.5px; color: var(--faint); word-break: break-all; margin: 3px 0 0; }
+  .path { font-size: 11.5px; color: var(--muted); word-break: break-all; margin: 3px 0 0; }
 
   /* ---------- filter line ---------- */
   .filterline {
@@ -183,63 +267,142 @@ sweep row files.
     margin: 12px 0 10px; font-size: 12.5px; color: var(--ink-2);
   }
   .filterline input[type="search"], .filterline select {
-    font: inherit; color: var(--ink); background: var(--panel);
+    font: inherit; color: var(--ink); background: var(--surface);
     border: 1px solid var(--hair); border-radius: 7px; padding: 3px 9px;
   }
   .filterline input[type="search"] { min-width: 200px; }
   .filterline input:focus, .filterline select:focus { border-color: var(--ink-2); }
-  .filterline .count { margin-left: auto; color: var(--faint); }
+  .filterline .count { margin-left: auto; color: var(--muted); }
   .filterline label.t { cursor: pointer; }
   .filterline label.t input { accent-color: var(--ink); }
 
   /* ---------- section headings ---------- */
   h2.sec { font-size: 16px; font-weight: 650; letter-spacing: -0.01em;
            margin: 30px 0 4px; }
-  h3.subsec { font-size: 15px; font-weight: 650; letter-spacing: -0.01em;
-              margin: 4px 0 2px; }
 
   /* ---------- run detail ---------- */
   .backline { margin: 0 0 18px; font-size: 12.5px; color: var(--ink-2); }
-  .runmeta { max-width: 84ch; margin: 8px 0 0; color: var(--ink-2); }
-  .rationale {
-    max-width: 84ch; margin: 10px 0 0; padding: 9px 12px;
-    background: var(--wash); border-radius: 8px;
-    color: var(--ink-2); font-size: 12.5px;
-    white-space: pre-wrap; overflow-wrap: anywhere;
+
+  /* ---------- run header: pinned so context never scrolls away ---------- */
+  .runbar {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--plane); border-bottom: 1px solid var(--hair);
+    padding: 12px 0 11px; margin-bottom: 4px;
+  }
+  .runbar h3 {
+    margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .runbar .facts {
+    margin-top: 7px; font-size: 12px; color: var(--ink-2);
+    display: flex; flex-wrap: wrap; gap: 4px 16px;
+  }
+  .runbar .facts b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- the verdict, read before the transcript ---------- */
+  .verdict-panel {
+    margin: 16px 0 0; padding: 13px 16px; border-radius: 10px;
+    background: var(--wash); border: 1px solid var(--hair);
+    font-size: 13px; color: var(--ink-2);
+  }
+  .verdict-panel.fail { background: var(--fail-tint); border-color: transparent; }
+  .verdict-panel .head {
+    font-weight: 650; color: var(--ink); font-size: 13.5px; margin-bottom: 7px;
+  }
+  .verdict-panel .gold {
+    margin: 8px 0 0; padding: 9px 12px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--hair);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px; color: var(--ink); white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .verdict-panel details { margin-top: 9px; }
+  .verdict-panel summary {
+    cursor: pointer; font-size: 12px; color: var(--ink-2); width: fit-content;
+  }
+  .verdict-panel pre {
+    margin: 7px 0 0; font-size: 11px; line-height: 1.45; max-height: 260px;
+    overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+    color: var(--ink-2);
   }
 
-  /* ---------- transcript: dialogue with margin speakers ---------- */
-  .transcript { margin-top: 18px; border-top: 1px solid var(--hair); }
-  .turn {
-    display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 0 20px;
-    padding: 8px 0; border-bottom: 1px solid var(--wash);
+  /* Shaping signals sit beside the verdict, never instead of it. */
+  .credit {
+    display: flex; flex-wrap: wrap; gap: 5px 18px; align-items: baseline;
+    margin: 11px 0 0; font-size: 12px; color: var(--ink-2);
   }
-  @media (max-width: 720px) { .turn { grid-template-columns: 96px minmax(0, 1fr); } }
+  .credit .lab {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .credit b { color: var(--ink); font-weight: 650; }
+
+  /* ---------- transcript: a timeline with a status rail ---------- */
+  .transcript { margin-top: 20px; }
+  .turn {
+    position: relative;
+    display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 0 26px;
+    padding: 10px 0;
+  }
+  /* the rail runs through the gutter between the speaker and the matter */
+  .turn::after {
+    content: ""; position: absolute; left: 130px; top: 0; bottom: 0;
+    width: 2px; background: var(--grid);
+  }
+  .turn:first-child::after { top: 15px; }
+  .turn:last-child::after { bottom: auto; height: 15px; }
+  .turn::before {
+    content: ""; position: absolute; left: 126px; top: 13px; z-index: 1;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--axis); border: 2px solid var(--plane);
+  }
+  .turn[data-status="pass"]::before { background: var(--pass); }
+  .turn[data-status="fail"]::before { background: var(--fail); }
+  .turn[data-status="stage"]::before { background: var(--grid); }
+  @media (max-width: 720px) {
+    .turn { grid-template-columns: 84px minmax(0, 1fr); gap: 0 20px; }
+    .turn::after { left: 92px; }
+    .turn::before { left: 88px; }
+  }
   .turn .spk {
-    color: var(--faint); font-size: 11.5px; font-weight: 550;
+    color: var(--ink-2); font-size: 11.5px; font-weight: 600;
     text-align: right; padding-top: 2px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .turn .spk .t { display: block; font-weight: 400; font-size: 10.5px;
-                  color: var(--faint); }
+  .turn .spk .t {
+    display: block; font-weight: 400; font-size: 10.5px; color: var(--muted);
+  }
   .turn .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
-  .turn.stage .txt { color: var(--faint); }
-  .turn.fail .spk { color: var(--red); font-weight: 650; }
-  .turn.pivot { border-top: 2px solid var(--red); }
-  .pivotflag { color: var(--red); font-size: 11px; font-weight: 600; margin-bottom: 3px; }
-  .turn .report { margin-top: 5px; color: var(--ink-2); }
+  .turn.stage .txt { color: var(--muted); }
+  .turn.fail .spk { color: var(--fail-ink); }
+  /* the pivot is the first faulting event: frozen prefix above it, the
+     trainable suffix from it down. It marks a boundary, so it gets a rule
+     across the turn rather than another dot on the rail. */
+  .turn.pivot { border-top: 2px solid var(--fail); }
+  .pivotflag {
+    color: var(--fail-ink); font-size: 11px; font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .turn .report { margin-top: 6px; color: var(--ink-2); }
   .turn .report b { color: var(--ink); font-weight: 600; }
 
-  details.calls { margin-top: 5px; }
+  details.calls { margin-top: 7px; }
   details.calls summary {
-    cursor: pointer; font-size: 11.5px; color: var(--faint);
-    width: fit-content;
+    cursor: pointer; font-size: 11.5px; color: var(--ink-2); width: fit-content;
   }
-  .call { padding: 6px 0 2px; }
-  .call .sig { font-size: 11.5px; overflow-wrap: anywhere; }
-  .call .flag { color: var(--red); font-size: 11.5px; }
+  .call {
+    padding: 7px 0 3px 10px; margin-top: 5px;
+    border-left: 2px solid var(--grid);
+  }
+  .call.bad { border-left-color: var(--fail); }
+  .call .sig { font-size: 11.5px; overflow-wrap: anywhere; color: var(--ink); }
+  /* the summary's flag sits outside .call, so it is named here too -- without
+     it the faulted count reads as body text and the count stops standing out */
+  .call .flag, details.calls summary .flag {
+    color: var(--fail-ink); font-size: 11.5px; font-weight: 600;
+  }
   .call pre {
-    margin: 4px 0 4px 0; padding: 8px 11px;
+    margin: 5px 0; padding: 8px 11px;
     background: var(--wash); border-radius: 8px;
     max-height: 240px; overflow: auto;
     font-size: 11px; line-height: 1.45;
@@ -271,11 +434,15 @@ sweep row files.
 <body>
 <div id="page">
   <header>
-    <h1>Trajectory evidence</h1>
-    <p class="draftline" id="draftline">multi-agent-rl-datagen — no data loaded</p>
-    <p class="colophon">
-      <label for="pick" tabindex="0" role="button">open files</label><input id="pick" type="file" accept=".json,application/json" multiple><span class="sep">·</span><button id="theme">theme</button>
-    </p>
+    <div class="titlerow">
+      <h1>Run dashboard</h1>
+      <div class="acts">
+        <label for="pick" tabindex="0" role="button">open files</label>
+        <input id="pick" type="file" accept=".json,application/json" multiple>
+        <button id="theme">theme</button>
+      </div>
+    </div>
+    <p class="source" id="draftline">multi-agent-rl-datagen — no data loaded</p>
   </header>
 
   <nav id="contents"></nav>
@@ -297,6 +464,8 @@ const sessions = [];
 let tab = "runs";          // runs | breakdowns | sweeps
 let detail = null;         // session index, or null for the section view
 let sweepSel = 0;
+let issueFilter = null;    // null | "malformed" | "blocked" | "errors"
+let pendingQuery = null;   // a search string the next runs-table render adopts
 let savedScroll = 0;
 
 function detect(data) {
@@ -333,6 +502,9 @@ function artifact(name, path, data) {
 }
 
 async function addFiles(fileList) {
+  /* `detail` is an index into `sessions`, and sorting moves rows under it.
+     Remember what the reader actually had open, not where it sat. */
+  const openPath = (detail !== null && sessions[detail]) ? sessions[detail].path : null;
   let added = 0;
   for (const f of [...fileList].filter(f => JSON_FILE.test(f.name))) {
     const path = f.webkitRelativePath || f.name;
@@ -352,7 +524,12 @@ async function addFiles(fileList) {
   } else if (added) {
     sourceLine = `picked files — ${added} artifacts`;
   }
-  sortSessions(); render();
+  sortSessions();
+  if (openPath !== null) {
+    const i = sessions.findIndex(s => s.path === openPath);
+    detail = i >= 0 ? i : null;
+  }
+  render();
 }
 $("#pick").addEventListener("change", e => { addFiles(e.target.files); e.target.value = ""; });
 for (const ev of ["dragover", "dragleave", "drop"]) {
@@ -407,12 +584,135 @@ function countMalformed(d) {
   return n;
 }
 
-/* Verdicts are typeset, not badged. The dagger marks the official soft
-   judge; the table note explains it, as a paper would. */
-function verdictText(ok, judge) {
-  const dag = judge && judge !== "scripted" ? `<span class="dag">†</span>` : "";
-  return ok ? `<span class="yes">✓ success${dag}</span>`
-            : `<span class="no">✗ failure${dag}</span>`;
+/* A malformed line is a protocol fault and has its own counter; counting it
+   here too would make the two signal chips overlap while reading as disjoint. */
+function countErrors(d) {
+  const faulted = s => s && s !== "ok" && s !== "malformed";
+  let n = 0;
+  for (const e of d.events || []) {
+    if (e.type === "call" && faulted(e.status)) n++;
+    if (e.type === "delegation")
+      for (const c of e.calls || []) if (faulted(c.status)) n++;
+  }
+  return n;
+}
+
+function runStats(eps) {
+  let malformed = 0, blocked = 0, errors = 0;
+  for (const s of eps) {
+    malformed += countMalformed(s.data);
+    blocked += s.data.blocked || 0;
+    errors += countErrors(s.data);
+  }
+
+  /* The worst scenario is the one with the lowest pass rate; ties break to
+     the one with more runs, so a single unlucky run does not top the list. */
+  const byScenario = new Map();
+  for (const s of eps) {
+    const key = s.data.scenario_id;
+    const seen = byScenario.get(key) || {scenario: key, passed: 0, total: 0};
+    seen.total++;
+    if (s.data.verdict && s.data.verdict.success) seen.passed++;
+    byScenario.set(key, seen);
+  }
+  const worst = [...byScenario.values()].sort((a, b) =>
+    (a.passed / a.total) - (b.passed / b.total) || b.total - a.total)[0] || null;
+
+  return {malformed, blocked, errors, worst};
+}
+
+function renderSignals(content, stats) {
+  /* Signals only appear when they have something to report: a row of zeros
+     is noise that trains you to stop reading the row. */
+  const signals = [];
+  if (stats.malformed)
+    signals.push({key: "malformed", kind: "warn",
+                  label: `${stats.malformed} malformed protocol line${stats.malformed === 1 ? "" : "s"}`});
+  if (stats.blocked)
+    signals.push({key: "blocked", kind: "warn",
+                  label: `${stats.blocked} blocked call${stats.blocked === 1 ? "" : "s"}`});
+  if (stats.errors)
+    signals.push({key: "errors", kind: "warn",
+                  label: `${stats.errors} faulted tool call${stats.errors === 1 ? "" : "s"}`});
+  if (stats.worst && stats.worst.passed < stats.worst.total)
+    signals.push({key: "worst", kind: "fail",
+                  label: `worst scenario ${shortScenario(stats.worst.scenario)} — ${
+                    stats.worst.passed}/${stats.worst.total} passed`});
+
+  if (!signals.length) return;
+  const row = document.createElement("div");
+  row.className = "signals";
+  row.innerHTML = signals.map(sig => `<button class="signal ${sig.kind}${
+    issueFilter === sig.key ? " on" : ""}" data-issue="${esc(sig.key)}">
+    <span class="ic" aria-hidden="true">${ICONS[sig.kind]}</span>${esc(sig.label)}</button>`).join("");
+  row.querySelectorAll("[data-issue]").forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset.issue;
+      if (key === "worst") {
+        /* The query and the issue filter compose, exactly as the search box
+           and the dropdowns do. A chip must not silently undo a filter the
+           reader chose; if nothing matches, the count line says so. */
+        pendingQuery = shortScenario(stats.worst.scenario);
+      } else {
+        issueFilter = issueFilter === key ? null : key;
+        pendingQuery = null;
+      }
+      render();
+    };
+  });
+  content.appendChild(row);
+}
+
+/* Status is carried by three channels at once -- color, icon, and word --
+   so it survives colorblindness, grayscale printing, and forced-colors. */
+const ICONS = {pass: "✓", fail: "✕", warn: "▲"};
+
+function badge(kind, label) {
+  return `<span class="badge ${kind}"><span class="ic" aria-hidden="true">${
+    ICONS[kind]}</span>${esc(label)}</span>`;
+}
+
+/* judge display names: only "scripted" (deterministic) and anything else
+   (Gaia2's soft judge, a model-as-checker) exist in practice. */
+function judgeLabel(judge) {
+  return judge && judge !== "scripted" ? "soft judge" : "scripted judge";
+}
+
+function verdictBadge(ok, judge) {
+  const soft = judge && judge !== "scripted"
+    ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
+  return badge(ok ? "pass" : "fail", ok ? "pass" : "fail") + soft;
+}
+
+/* The scripted judge reports a failure as a wall of text: a headline, the
+   oracle call it wanted, its arguments, then every attempt it tried to match.
+   Only the first three lines answer "what went wrong", so they get pulled to
+   the front and the attempt log goes behind a disclosure. */
+function parseRationale(text) {
+  const raw = String(text || "") === "None" ? "" : String(text || "");
+  const toolName = (raw.match(/tool name:\s*(\S+)/) || [])[1] || null;
+
+  const args = [];
+  const argBlock = raw.split(/tool args:\s*/)[1];
+  if (argBlock) {
+    for (const line of argBlock.split("\n")) {
+      if (/^\s*List of matching attempts:/.test(line)) break;
+      if (line.startsWith("-")) {
+        args.push(line.slice(1).trim());
+      } else if (args.length && line.trim()) {
+        /* a wrapped value -- an email body, say -- belongs to the argument
+           above it, not to a new one */
+        args[args.length - 1] += "\n" + line;
+      }
+    }
+  }
+
+  const [before, after] = raw.split("List of matching attempts:");
+  const attempts = after
+    ? after.split("\n").map(l => l.replace(/^-/, "").trim()).filter(Boolean)
+    : [];
+
+  return {toolName, args, attempts, rest: (before || raw).trim()};
 }
 
 function openDetail(i) {
@@ -456,11 +756,11 @@ function render() {
 
   if (!sessions.length) {
     content.innerHTML = `<div class="abstract">
-      <h2>No artifacts loaded</h2>
-      <p>This file carries a snapshot of the repository's logs inside itself;
-      this copy's snapshot is empty. Refresh it with
-      <code>uv run python -m scripts.embed_logs</code>, or drop trajectory
-      JSON files anywhere on this page (or use <i>open files</i> above).</p></div>`;
+      <h2>No runs loaded</h2>
+      <p>This page carries its own data — a snapshot of the repository's logs
+      is embedded in the file — and this copy's snapshot is empty. Refresh it
+      with <code>uv run python -m scripts.embed_logs</code>, or drop trajectory
+      JSON files anywhere on this page.</p></div>`;
     return;
   }
   if (detail !== null && sessions[detail]) {
@@ -497,23 +797,36 @@ function renderRuns(content) {
       <span class="mono">scripts.gaia2_cell_run</span>.</p>`;
     return;
   }
-  const ok = eps.filter(s => s.data.verdict && s.data.verdict.success).length;
   const scenarios = [...new Set(eps.map(s => s.data.scenario_id))];
-  const softCount = eps.filter(s => (s.data.judge || "scripted") !== "scripted").length;
 
-  content.insertAdjacentHTML("beforeend",
-    `<h2 class="sec">Runs</h2>
-    <p class="lede"><b>${eps.length}</b> judged episodes over
-    <b>${scenarios.length}</b> scenario${scenarios.length === 1 ? "" : "s"} —
-    ${ok} success, <span class="${eps.length - ok ? "bad" : ""}">${eps.length - ok}
-    failure</span>.</p>`);
+  content.insertAdjacentHTML("beforeend", `<h2 class="sec">Runs</h2>`);
+  const stats = runStats(eps);
+  renderSignals(content, stats);
 
   /* -- Table 1: the verdict matrix -- */
   const configs = [...new Set(eps.map(s => s.data.config))].sort((a, b) =>
     (a.startsWith("open") ? 0 : 1) - (b.startsWith("open") ? 0 : 1) || a.localeCompare(b));
+
+  /* Tagging every mark with its judge drowned the grid (264 tags on 314
+     marks). Only the minority judge is worth a tag; the majority becomes
+     the note's stated default instead. */
+  const judgeCounts = new Map();
+  for (const s of eps) {
+    const j = s.data.judge || "scripted";
+    judgeCounts.set(j, (judgeCounts.get(j) || 0) + 1);
+  }
+  /* Ties break on name so the stated default never depends on run order. */
+  const majorityJudge = [...judgeCounts]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
+
   const wrap = document.createElement("div");
-  wrap.innerHTML = `<p class="tcap"><b>Table 1:</b> Verdicts by scenario and
-      configuration. Every mark opens its run's transcript.</p>
+  wrap.innerHTML = `<div class="panel-title">Verdicts by scenario and configuration
+       <span class="sub">— every mark opens that run's transcript</span></div>
+     <div class="legend">
+       <span class="key"><span class="dot pass"></span>pass</span>
+       <span class="key"><span class="dot fail"></span>fail</span>
+       <span class="key">— not run</span>
+     </div>
     <div class="tabwrap"><table class="tab">
     <thead><tr><th>scenario</th><th class="n">apps</th>${
       configs.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead>
@@ -525,24 +838,31 @@ function renderRuns(content) {
           const runs = mine.filter(s => s.data.config === cfg)
             .sort((a, b) => String(a.data.started_at || "")
               .localeCompare(String(b.data.started_at || "")));
-          if (!runs.length) return `<td class="wrapok"><span style="color:var(--faint)">—</span></td>`;
+          if (!runs.length) return `<td class="wrapok"><span class="dim">—</span></td>`;
           return `<td class="wrapok">${runs.map(s => {
             const okr = !!(s.data.verdict && s.data.verdict.success);
+            const judge = s.data.judge || "scripted";
+            const tag = judge !== majorityJudge
+              ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
             return `<a class="xref" data-i="${sessions.indexOf(s)}"
               tabindex="0" role="button"
               title="${esc(String(s.data.answer ?? ""))}">${
-              verdictText(okr, s.data.judge)}${
-              s.data.label ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
-          }).join('<span style="color:var(--faint)"> · </span>')}</td>`;
+              badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${tag}${
+              runs.length > 1 && s.data.label
+                ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
+          }).join('<span class="dim"> · </span>')}</td>`;
         }).join("")}</tr>`;
     }).join("")}</tbody></table></div>
-    <p class="tnote">✓ and ✗ are the benchmark's own write-action verdicts:
-      the judge compares the agent's write calls against the scenario's gold
-      writes, so ✗ means a gold write was missing, mismatched in its
-      arguments, duplicated, or a later phase never unlocked — not that the
-      harness errored.${softCount ? ` † judged by Gaia2's official soft judge
-      (gpt-5.6-sol as checker); unmarked runs use the deterministic scripted
-      judge. Two marks in one cell are the same cell under both judges.` : ""}</p>`;
+    <p class="note">A verdict is the benchmark's own write-action check: the
+      judge compares the agent's write calls against the scenario's gold
+      writes, so a failure means a gold write was missing, its arguments were
+      wrong, it was duplicated, or a later phase never unlocked — not that the
+      harness errored. Verdicts are scored by
+      ${majorityJudge === "scripted"
+        ? "the deterministic scripted judge"
+        : "Gaia2's official soft judge"} (${esc(majorityJudge)} as checker) by
+      default; a mark tagged with a different judge used that judge instead.
+      Two marks in one cell are the same run under both judges.</p>`;
   wrap.querySelectorAll("a[data-i]").forEach(a =>
     a.onclick = () => openDetail(Number(a.dataset.i)));
   content.appendChild(wrap);
@@ -552,9 +872,8 @@ function renderRuns(content) {
   const judges = [...new Set(eps.map(s => s.data.judge || "scripted"))];
 
   content.insertAdjacentHTML("beforeend",
-    `<p class="tcap"><b>Table 2:</b> All runs, with cost counters read from
-     each trajectory: delegations, specialist turns, waits, blocked calls,
-     and malformed protocol lines.</p>`);
+    `<div class="panel-title">All runs
+       <span class="sub">— newest first; click a row for its transcript</span></div>`);
   const fbar = document.createElement("div");
   fbar.className = "filterline";
   fbar.innerHTML = `<span>restrict to
@@ -574,39 +893,52 @@ function renderRuns(content) {
   const twrap = document.createElement("div");
   twrap.className = "tabwrap";
   twrap.innerHTML = `<table class="tab"><thead><tr>
-      <th>when</th><th>scenario</th><th>configuration</th><th>ability</th>${
-      hasLabels ? "<th>run</th>" : ""}<th>verdict</th>
-      <th class="n">deleg</th><th class="n">turns</th><th>issues</th>
-      <th>answer</th><th class="n">wall&nbsp;s</th>
+      <th>verdict</th><th>when</th><th>scenario</th><th>configuration</th>
+      <th>ability</th><th>models</th>${hasLabels ? "<th>run</th>" : ""}
+      <th>issues</th><th>answer</th><th class="n">wall&nbsp;s</th>
     </tr></thead><tbody>${
     newestFirst.map(s => {
       const d = s.data, okr = !!(d.verdict && d.verdict.success);
-      const mal = countMalformed(d);
+      const mal = countMalformed(d), err = countErrors(d), blk = d.blocked || 0;
       const issues = [
-        d.blocked ? `${d.blocked} blocked` : "",
+        blk ? `${blk} blocked` : "",
         mal ? `${mal} malformed` : "",
+        err ? `${err} faulted` : "",
       ].filter(Boolean).join(" · ");
+      const tags = [mal ? "malformed" : "", blk ? "blocked" : "",
+                    err ? "errors" : ""].filter(Boolean).join(" ");
+      const models = d.main_model === d.sub_model
+        ? esc(String(d.main_model ?? "—"))
+        : `${esc(String(d.main_model ?? "?"))} <span class="dim">/</span> ${
+            esc(String(d.sub_model ?? "?"))}`;
+      const judge = d.judge || "scripted";
+      const jtag = judge !== majorityJudge
+        ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
       return `<tr class="click" data-i="${sessions.indexOf(s)}" tabindex="0"
         data-verdict="${okr ? "ok" : "bad"}"
         data-ability="${esc(d.ability || "control")}"
-        data-judge="${esc(d.judge || "scripted")}"
+        data-judge="${esc(judge)}"
+        data-issues="${tags}"
         data-text="${esc(JSON.stringify([d.scenario_id, d.config, d.ability,
-                        d.judge, d.label, d.answer]).toLowerCase())}">
+                        d.judge, d.label, d.answer, d.main_model]).toLowerCase())}">
+        <td>${badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${jtag}</td>
         <td>${fmtWhen(d.started_at)}</td>
         <td>${esc(shortScenario(d.scenario_id))}</td>
         <td>${esc(d.config || "")}</td>
-        <td>${esc(d.ability || "control")}</td>${
+        <td>${esc(d.ability || "control")}</td>
+        <td class="mono sm">${models}</td>${
         hasLabels ? `<td>${d.label ? esc(d.label) : "—"}</td>` : ""}
-        <td>${verdictText(okr, d.judge)}</td>
-        <td class="n">${d.delegations ?? ""}</td>
-        <td class="n">${d.specialist_turns ?? ""}</td>
-        <td>${issues ? `<span class="no">${esc(issues)}</span>`
-                     : `<span style="color:var(--faint)">—</span>`}</td>
+        <td>${issues ? `<span class="warn-text">${esc(issues)}</span>`
+                     : `<span class="dim">clean</span>`}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 44))}</td>
-        <td class="n">${d.seconds ?? ""}</td></tr>`;
+        <td class="n">${esc(String(d.seconds ?? ""))}</td></tr>`;
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
   trs.forEach(tr => tr.onclick = () => openDetail(Number(tr.dataset.i)));
+  if (pendingQuery) {
+    $("input[type=search]", fbar).value = pendingQuery;
+    pendingQuery = null;
+  }
   const apply = () => {
     const q = $("input[type=search]", fbar).value.toLowerCase();
     const sel = {};
@@ -616,7 +948,8 @@ function renderRuns(content) {
       const hit = (!q || tr.dataset.text.includes(q))
         && (!sel.verdict || tr.dataset.verdict === sel.verdict)
         && (!sel.ability || tr.dataset.ability === sel.ability)
-        && (!sel.judge || tr.dataset.judge === sel.judge);
+        && (!sel.judge || tr.dataset.judge === sel.judge)
+        && (!issueFilter || tr.dataset.issues.split(" ").includes(issueFilter));
       tr.style.display = hit ? "" : "none";
       shown += hit;
     }
@@ -638,14 +971,19 @@ function renderBreakdowns(content) {
       <span class="mono">jobs/**/verifier/breakdown.json</span>.</p>`;
     return;
   }
-  const ok = bds.filter(s => s.data.success).length;
+  const bok = bds.filter(s => s.data.success).length;
+  const partials = bds.map(s => s.data.partial).filter(v => typeof v === "number");
+  const meanPartial = partials.length
+    ? (partials.reduce((a, b) => a + b, 0) / partials.length).toFixed(2) : null;
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Shipped-task runs</h2>
      <p class="lede"><b>${bds.length}</b> containerized AppWorld episodes from
-     <span class="mono">jobs/</span> — ${ok} success,
-     <span class="${bds.length - ok ? "bad" : ""}">${bds.length - ok} failure</span>.
-     The reward is AppWorld's own per-requirement check.</p>
-     <p class="tcap"><b>Table 3:</b> Verifier results by campaign and trial.</p>`);
+     <span class="mono">jobs/</span> — ${bok} passed,
+     <span class="${bds.length - bok ? "warn-text" : ""}">${bds.length - bok}
+     failed</span>, scored by AppWorld's own per-requirement check${
+     meanPartial ? `, mean partial credit <b>${meanPartial}</b>` : ""}.</p>
+     <div class="panel-title">Verifier results
+       <span class="sub">— by campaign and trial; click a row for its ledger</span></div>`);
 
   const fbar = document.createElement("div");
   fbar.className = "filterline";
@@ -665,9 +1003,9 @@ function renderBreakdowns(content) {
       return `<tr class="click" data-i="${sessions.indexOf(s)}" tabindex="0"
         data-text="${esc((s.path + " " + JSON.stringify([d.answer, d.partial])).toLowerCase())}">
         <td title="${esc(s.path)}">${esc(breakdownLabel(s))}</td>
-        <td>${verdictText(okr)}</td>
-        <td class="n">${d.partial ?? ""}</td>
-        <td class="n">${d.delegations ?? (d.ledger || []).length}</td>
+        <td>${verdictBadge(okr)}</td>
+        <td class="n">${esc(String(d.partial ?? ""))}</td>
+        <td class="n">${esc(String(d.delegations ?? (d.ledger || []).length))}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 60))}</td></tr>`;
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
@@ -706,9 +1044,8 @@ function renderSweeps(content) {
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Evidence files</h2>
      <p class="lede">The repository's measurement evidence from
-     <span class="mono">sweep/</span> — one summary file per claim (the
-     directory name is repo convention; these are not parameter sweeps).
-     Column heads sort; the blank restricts.</p>`);
+     <span class="mono">sweep/</span> — one summary file per claim. Click a
+     column head to sort.</p>`);
 
   const fbar = document.createElement("div");
   fbar.className = "filterline";
@@ -734,8 +1071,9 @@ function renderSweeps(content) {
   let sortKey = null, asc = true, query = "";
 
   content.insertAdjacentHTML("beforeend",
-    `<p class="tcap"><b>Table 4:</b> <span class="mono">${esc(s.path)}</span></p>${
-     note ? `<p class="tnote">${esc(note)}</p>` : ""}`);
+    `<div class="panel-title">${esc(s.name)}
+       <span class="sub">— ${esc(s.path)}</span></div>${
+     note ? `<p class="note">${esc(note)}</p>` : ""}`);
   const twrap = document.createElement("div");
   twrap.className = "tabwrap";
   content.appendChild(twrap);
@@ -764,7 +1102,7 @@ function renderSweeps(content) {
         return `<td class="${num ? "n" : ""}" title="${esc(text)}">${esc(text.slice(0, 120))}</td>`;
       }).join("")}</tr>`).join("")
     }</tbody></table>` + (data.length > 2000
-      ? `<p class="tnote">first 2000 matching rows shown</p>` : "");
+      ? `<p class="note">first 2000 matching rows shown</p>` : "");
     twrap.querySelectorAll("th").forEach(th => th.onclick = () => {
       const k = th.dataset.k;
       asc = (sortKey === k) ? !asc : true;
@@ -783,7 +1121,7 @@ function renderSweeps(content) {
 function renderRaw(content, s, inline) {
   if (!inline) backline(content, "back to the tables");
   content.insertAdjacentHTML("beforeend",
-    `<h3 class="subsec">${esc(s.name)}</h3>
+    `<div class="panel-title">${esc(s.name)}</div>
      <p class="path">${esc(s.path)}</p>
      <pre class="blk">${esc(JSON.stringify(s.data, null, 1).slice(0, 400000))}</pre>`);
 }
@@ -797,50 +1135,83 @@ function renderEpisode(content, s) {
 
   const judge = d.judge || "scripted";
   const mal = countMalformed(d);
-  const meta = document.createElement("div");
-  meta.innerHTML = `
-    <h3 class="subsec">Run ${esc(shortScenario(d.scenario_id || s.name))} —
-      ${esc(d.config || "?")}${d.label ? " · " + esc(d.label) : ""} —
-      ${verdictText(okr, d.judge)}</h3>
-    <p class="path">${esc(s.path)}</p>
-    <p class="runmeta">Ability <i>${esc(d.ability || "control")}</i>;
-      roster ${(d.roster || []).map(a => esc(a)).join(", ") || "—"};
-      judged by the ${judge === "scripted"
-        ? "deterministic scripted judge"
-        : `official soft judge (<span class="mono">${esc(judge)}</span>)`};
-      Main <span class="mono">${esc(d.main_model || "?")}</span>,
-      specialists <span class="mono">${esc(d.sub_model || "?")}</span>${
-      d.objective_action_contract
-        ? `; contract <span class="mono">${esc(d.objective_action_contract)}</span>`
-        : ""}.
-      ${d.delegations ?? 0} delegations, ${d.specialist_turns ?? 0} specialist
-      turns, ${d.waits ?? 0} wait${(d.waits ?? 0) === 1 ? "" : "s"},
-      ${d.user_turns ?? 0} user turn${(d.user_turns ?? 0) === 1 ? "" : "s"},
-      ${d.blocked ? `<span class="bad">${d.blocked} blocked</span>` : "0 blocked"},
-      ${mal ? `<span class="bad">${mal} malformed</span>` : "0 malformed"};
-      ${d.seconds ?? "—"} s wall clock${
-      d.started_at ? `, started ${esc(d.started_at)}` : ""}.
-      ${d.answer != null ? `Final answer: <b>${esc(d.answer)}</b>.` : ""}</p>
-    ${d.verdict && d.verdict.rationale && d.verdict.rationale !== "None"
-      ? `<div class="rationale">Judge's rationale — ${esc(String(d.verdict.rationale).slice(0, 1600))}</div>`
-      : (!okr ? `<p class="tnote">The scripted judge reports no rationale;
-         ✗ failure means the agent's write calls did not match the scenario's
-         gold writes exactly — a write missing, its arguments off, or a later
-         phase never unlocked. The transcript's tool calls below are the
-         evidence.</p>` : "")}
-    ${(d.blocked_reasons || []).length
-      ? `<p class="tnote">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>` : ""}
-    ${d.credit ? `<p class="tnote">Shaping signals (beside the verdict, never
-      instead of it): partial reward <b>${d.credit.partial_reward}</b>
-      (coverage ${d.credit.coverage}, exact-argument fidelity
-      ${d.credit.fidelity} over ${d.credit.gold_total} gold writes)${
-      d.credit.pivot != null
-        ? `; pivot at event ${d.credit.pivot} (${esc(d.credit.pivot_kind)}) —
-           ${d.credit.pivot} events of frozen prefix, the fault and after are
-           the trainable suffix, marked red below`
-        : "; no located fault — the failure is missing work, not a wrong step"
-      }.</p>` : ""}`;
-  content.appendChild(meta);
+  const bar = document.createElement("div");
+  bar.className = "runbar";
+  bar.innerHTML = `
+    <h3>${verdictBadge(okr, d.judge)}
+      <span>${esc(shortScenario(d.scenario_id || s.name))}</span>
+      <span class="dim">·</span>
+      <span>${esc(d.config || "?")}</span>${
+      d.label ? ` <span class="tag">${esc(d.label)}</span>` : ""}</h3>
+    <div class="facts">
+      <span>ability <b>${esc(d.ability || "control")}</b></span>
+      <span>models <b>${esc(d.main_model || "?")}</b>${
+        d.sub_model && d.sub_model !== d.main_model
+          ? ` / <b>${esc(d.sub_model)}</b>` : ""}</span>
+      <span><b>${esc(String(d.delegations ?? 0))}</b> delegations</span>
+      <span><b>${esc(String(d.specialist_turns ?? 0))}</b> specialist turns</span>
+      <span><b>${esc(String(d.seconds ?? "—"))}</b> s</span>
+      <span>judge <b>${esc(judge)}</b></span>
+      ${mal ? `<span class="warn-text">${esc(String(mal))} malformed</span>` : ""}
+      ${d.blocked ? `<span class="warn-text">${esc(String(d.blocked))} blocked</span>` : ""}
+    </div>`;
+  content.appendChild(bar);
+
+  const parsed = parseRationale(d.verdict && d.verdict.rationale);
+  const panel = document.createElement("div");
+  panel.className = "verdict-panel" + (okr ? "" : " fail");
+  if (okr) {
+    panel.innerHTML = `<div class="head">Passed</div>
+      <div>The agent's write calls matched the scenario's gold writes.${
+        d.answer != null ? ` Final answer: <b>${esc(d.answer)}</b>.` : ""}</div>`;
+  } else if (parsed.toolName) {
+    panel.innerHTML = `<div class="head">Missing gold write</div>
+      <div>The judge expected this call and did not find a match:</div>
+      <div class="gold">${esc(parsed.toolName)}${
+        parsed.args.length ? "\n  " + parsed.args.map(esc).join("\n  ") : ""}</div>${
+      parsed.attempts.length
+        ? `<details><summary>${parsed.attempts.length} matching attempt${
+            parsed.attempts.length === 1 ? "" : "s"} the judge tried</summary>
+           <pre>${esc(parsed.attempts.join("\n"))}</pre></details>` : ""}${
+      d.answer != null
+        ? `<div style="margin-top:9px">Final answer: <b>${esc(d.answer)}</b>.</div>` : ""}`;
+  } else {
+    panel.innerHTML = `<div class="head">Failed</div>
+      <div>${parsed.rest
+        ? esc(parsed.rest.slice(0, 1200))
+        : `The judge reports no rationale. A failure means the agent's write
+           calls did not match the scenario's gold writes exactly — a write
+           missing, its arguments off, or a later phase never unlocked. The
+           tool calls below are the evidence.`}</div>${
+      d.answer != null
+        ? `<div style="margin-top:9px">Final answer: <b>${esc(d.answer)}</b>.</div>` : ""}`;
+  }
+  content.appendChild(panel);
+
+  /* Shaping signals sit beside the verdict, never instead of it: a partial
+     reward says how much of the gold work landed, the pivot says where the
+     run first went wrong. */
+  if (d.credit) {
+    const credit = document.createElement("div");
+    credit.className = "credit";
+    credit.innerHTML = `<span class="lab">shaping signals</span>
+      <span>partial reward <b>${esc(String(d.credit.partial_reward))}</b></span>
+      <span>coverage <b>${esc(String(d.credit.coverage))}</b></span>
+      <span>fidelity <b>${esc(String(d.credit.fidelity))}</b> of
+        ${esc(String(d.credit.gold_total))} gold writes</span>
+      ${d.credit.pivot != null
+        ? `<span class="warn-text">pivot at event ${esc(String(d.credit.pivot))}
+             (${esc(d.credit.pivot_kind)}) — frozen prefix above, trainable
+             suffix below</span>`
+        : `<span class="dim">no located fault — the failure is missing work,
+             not a wrong step</span>`}`;
+    content.appendChild(credit);
+  }
+
+  if ((d.blocked_reasons || []).length)
+    content.insertAdjacentHTML("beforeend",
+      `<p class="note">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>`);
+  content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>`);
 
   const types = [...new Set((d.events || []).map(e => e.type))];
   const fbar = document.createElement("div");
@@ -876,15 +1247,28 @@ function renderEpisode(content, s) {
 }
 
 function callHtml(c) {
+  const bad = c.status && c.status !== "ok";
   if (c.status === "malformed" || c.status === "false-outage") {
-    const label = c.status === "malformed" ? "unparseable line —"
-      : "rejected false outage claim —";
-    return `<div class="call"><span class="flag">${label}</span>
-      <span class="sig">${esc(String(c.raw ?? c.result ?? "").slice(0, 400))}</span></div>`;
+    const label = c.status === "malformed" ? "unparseable line"
+      : "rejected false outage claim";
+    return `<div class="call bad"><span class="flag">${label}</span>
+      <div class="sig">${esc(String(c.raw ?? c.result ?? "").slice(0, 400))}</div></div>`;
   }
-  const flag = c.status === "ok" ? "" : ` <span class="flag">${esc(c.status)}</span>`;
-  return `<div class="call"><div class="sig">${esc(c.tool)}(${esc(JSON.stringify(c.args))})${flag}</div>
+  const flag = bad ? ` <span class="flag">${esc(c.status)}</span>` : "";
+  return `<div class="call${bad ? " bad" : ""}">
+    <div class="sig">${esc(c.tool)}(${esc(JSON.stringify(c.args))})${flag}</div>
     <pre>${esc(c.result ?? "")}</pre></div>`;
+}
+
+/* The rail's dot answers "where did this go wrong" without reading a word. */
+function turnStatus(e) {
+  if (e.type === "surrender" || e.type === "stop") return "fail";
+  if (e.type === "done") return "pass";
+  if (e.type === "wait" || e.type === "notification") return "stage";
+  if (e.type === "call" && e.status && e.status !== "ok") return "fail";
+  if (e.type === "delegation"
+      && (e.calls || []).some(c => c.status && c.status !== "ok")) return "fail";
+  return "plain";
 }
 
 /* One event, set as a dialogue turn: speaker in the margin, matter in the
@@ -917,8 +1301,8 @@ function turnNode(e) {
     body = esc(e.brief ?? "") +
       `<div class="report"><b>${esc(e.specialist ?? "")}:</b> ${esc(e.report ?? "")}</div>` +
       (calls.length
-        ? `<details class="calls"><summary>${calls.length} tool call${
-            calls.length > 1 ? "s" : ""}${bad ? ` <span class="no">(${bad} faulted)</span>` : ""
+        ? `<details class="calls"${bad ? " open" : ""}><summary>${calls.length} tool call${
+            calls.length > 1 ? "s" : ""}${bad ? ` <span class="flag">${bad} faulted</span>` : ""
           }</summary>${calls.map(callHtml).join("")}</details>`
         : "");
   } else if (e.type === "call") {
@@ -929,6 +1313,7 @@ function turnNode(e) {
   div.innerHTML = `<div class="spk">${esc(spk)}${time}</div><div class="txt">${body}</div>`;
   div.dataset.type = e.type;
   div.dataset.text = JSON.stringify(e).toLowerCase();
+  div.dataset.status = turnStatus(e);
   return div;
 }
 
@@ -937,21 +1322,30 @@ function turnNode(e) {
 function renderBreakdownDetail(content, s) {
   const d = s.data;
   backline(content, "back to the tables");
-  const meta = document.createElement("div");
-  meta.innerHTML = `
-    <h3 class="subsec">${esc(breakdownLabel(s))} — ${verdictText(!!d.success)}</h3>
-    <p class="path">${esc(s.path)}</p>
-    <p class="runmeta">Partial reward ${d.partial ?? "—"}${
-      d.passes != null ? ` (${d.passes} requirement${d.passes === 1 ? "" : "s"} passed,
-      ${d.failures ?? "?"} failed)` : ""};
-      ${d.delegations ?? d.ledger.length} delegations,
-      ${d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)} specialist turns,
-      ${d.ledger.reduce((n, l) => n + (l.blocked || 0), 0)} blocked.
-      ${d.answer != null ? `Final answer: <b>${esc(d.answer)}</b>.` : ""}</p>
-    ${(d.failed || []).length ? `<details class="calls"><summary>${d.failed.length}
+  const blocked = d.ledger.reduce((n, l) => n + (l.blocked || 0), 0);
+  const bar = document.createElement("div");
+  bar.className = "runbar";
+  bar.innerHTML = `<h3>${verdictBadge(!!d.success)}
+      <span>${esc(breakdownLabel(s))}</span></h3>
+    <div class="facts">
+      <span>partial <b>${esc(String(d.partial ?? "—"))}</b></span>${
+      d.passes != null ? `<span><b>${esc(String(d.passes))}</b> requirements passed</span>
+        <span><b>${esc(String(d.failures ?? "?"))}</b> failed</span>` : ""}
+      <span><b>${esc(String(d.delegations ?? d.ledger.length))}</b> delegations</span>
+      <span><b>${esc(String(d.ledger.reduce((n, l) => n + (l.specialist_turns || 0), 0)))}</b>
+        specialist turns</span>
+      ${blocked ? `<span class="warn-text">${esc(String(blocked))} blocked</span>`
+                : `<span><b>0</b> blocked</span>`}
+    </div>`;
+  content.appendChild(bar);
+  content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>${
+    (d.failed || []).length ? `<details class="calls"><summary>${d.failed.length}
       failed requirement${d.failed.length > 1 ? "s" : ""}</summary>
-      <pre class="blk">${esc(d.failed.join("\n\n"))}</pre></details>` : ""}`;
-  content.appendChild(meta);
+      <pre class="blk">${esc(d.failed.join("\n\n"))}</pre></details>` : ""}`);
+  if (d.answer != null)
+    content.insertAdjacentHTML("beforeend",
+      `<div class="verdict-panel"><div class="head">Final answer</div>
+       <div>${esc(String(d.answer))}</div></div>`);
 
   const list = document.createElement("div");
   list.className = "transcript";
@@ -959,12 +1353,13 @@ function renderBreakdownDetail(content, s) {
   batchAppend(list, d.ledger.map(l => {
     const div = document.createElement("div");
     div.className = "turn";
+    div.dataset.status = "plain";
     div.innerHTML = `<div class="spk">main → ${esc(l.specialist)}</div>
       <div class="txt">${esc(l.brief ?? "")}
         <div class="report"><b>${esc(l.specialist)}:</b> ${esc(l.report ?? "")}
           <i>(${esc(String(l.specialist_turns ?? "?"))} turns${
-          l.blocked ? `, <span class="no">${l.blocked} blocked</span>` : ""}${
-          l.refused ? `, ${l.refused} refused` : ""})</i></div>
+          l.blocked ? `, <span class="warn-text">${esc(String(l.blocked))} blocked</span>` : ""}${
+          l.refused ? `, ${esc(String(l.refused))} refused` : ""})</i></div>
         ${(l.blocked_reasons || []).length
           ? `<div class="report">Blocked: ${esc(l.blocked_reasons.join(" · "))}</div>` : ""}</div>`;
     return div;
