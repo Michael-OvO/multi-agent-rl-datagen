@@ -44,10 +44,13 @@ budget wins precedence, so a two-knob stray is priced once, never twice);
 
 ## Per-substrate checklist
 
-1. Mine rosters and seams (`select`/`seams` on code substrates,
-   `forge/gaia2/mine` state provenance on gold-write substrates).
+1. Mine rosters and seams — a data-flow pass over reference code on code
+   substrates, `forge/gaia2/mine` state provenance on gold-write substrates.
 2. Render the three configs per seamful task, plus the one shared control.
-3. Sandwich-judge at ≥5 seeds; report yield per ability, not per config.
-4. Run the honesty probe (`scripts/appworld_honesty_probe.py` pattern):
-   any family where a truthful-failure agent scores below the do-nothing
-   floor fails admission until the *protocol* (never the judge) is fixed.
+3. Establish the ceiling and the floor *before* reading any constrained cell.
+   A control that has not cleared the floor makes every knob unpriceable, and
+   the sandwich rule will correctly refuse to certify anything.
+4. Sandwich-judge at ≥5 seeds; report yield per ability, not per config.
+5. Run the honesty probe: any family where a truthful-failure agent scores
+   below the do-nothing floor fails admission until the *protocol* (never the
+   judge) is fixed.

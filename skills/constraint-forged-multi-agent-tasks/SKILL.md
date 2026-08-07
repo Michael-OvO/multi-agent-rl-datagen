@@ -1,6 +1,6 @@
 ---
 name: constraint-forged-multi-agent-tasks
-description: Use when building RL training tasks for multi-agent capabilities (theory of mind, decomposition, role assignment, Main↔Sub communication, failure recovery). A substrate-independent method - admit an agentic task database that already ships a free programmatic oracle (AppWorld, SWE-smith, tau-bench), mine which of its tasks can carry a partition, manufacture the multi-agent structure by constraining the agent's access, and accept only the cells that score between the do-nothing floor and the unconstrained control. Never designs a world, a task, or a judge.
+description: Use when building RL training tasks for multi-agent capabilities (theory of mind, decomposition, role assignment, Main↔Sub communication, failure recovery). A substrate-independent method - admit an agentic task database that already ships a free programmatic oracle (Gaia2, SWE-smith, tau-bench), mine which of its tasks can carry a partition, manufacture the multi-agent structure by constraining the agent's access, and accept only the cells that score between the do-nothing floor and the unconstrained control. Never designs a world, a task, or a judge.
 ---
 
 # Constraint-Forged Multi-Agent Tasks
@@ -140,7 +140,7 @@ artifact with a checker already attached.*
 
 | library | oracle | verdict |
 |---|---|---|
-| **AppWorld** — 9 apps, 457 APIs, 732 tasks | state-based unit tests, **no LLM**, checks side effects | **use this** — seams are the apps |
+| **Gaia2 / Meta ARE** — scenarios in per-capability splits | write-action checks against gold actions, with a scripted mode that has **no LLM** | **use this** — seams are the apps, and ground truth is gold writes plus full initial state |
 | **SWE-smith** — 50k tasks, 128 repos | the repo's own pytest | strong oracle, but the seams are code modules → the task turns into SWE, not orchestration |
 | **SWE-Gym / R2E-Gym** — 2.4k / 8.1k tasks | repo tests | same as above |
 | **τ-bench / τ²-bench** | terminal DB state | good oracle; seams are thin (one domain API) |
@@ -153,15 +153,20 @@ skill's entire claim is about *which layer* you manufacture — constraints, not
 judges.
 
 **How far this generalises, stated honestly.** Nothing in the four moves is
-AppWorld-shaped: the admission test is a property of a substrate, the roster is
-read off whatever a reference solution touches, the constraints act on an access
-surface, and the acceptance rule needs only a floor and a control. But the table
-above is a **survey, not a set of results** — this method has been run end to end
-on **exactly one substrate**. The reach claimed here is therefore the admission
-test's, not a measured one: *any database clearing all four requirements should
-work, and one has.* A second substrate is the cheapest thing anyone could do to
-falsify that, and nobody has done it. Do not upgrade "should" to "does" on the
-strength of a table.
+shaped by any one substrate: the admission test is a property of a database, the
+roster is read off whatever the **ground truth** touches, the constraints act on
+an access surface, and the acceptance rule needs only a floor and a control. The
+phrase "ground truth" is doing deliberate work there — it is reference *code* on
+some substrates and gold *write actions* on others, and the roster rule survives
+the change while the mechanic that implements it does not. That much is now
+measured rather than argued: the mining rules have been ported across exactly
+that difference and produced seam distributions on the far side.
+
+What has **not** been shown on more than one substrate is an end-to-end priced
+knob. The table above remains a **survey, not a set of results**. The reach
+claimed here is therefore mostly the admission test's: *any database clearing all
+four requirements should work.* Do not upgrade "should" to "does" on the strength
+of a table.
 
 #### Disqualifiers, in the order they will bite
 
@@ -178,18 +183,22 @@ strength of a table.
   roles no matter how you prompt it.
 - **The oracle grades the trajectory, not the state** → multiple valid paths
   satisfy the same goal; path-matching will punish correct work. (This is why
-  τ-bench, τ²-bench and AppWorld all converged on terminal-state checks.)
+  τ-bench, τ²-bench and Gaia2 all converged on terminal-state checks.)
 
 #### Verify the oracle by hand before building anything
 
 Solve one task manually, call the judge, and see it say **yes**. Not "it looks
 programmatic" — see `success=True` with your own eyes.
 
-This took an hour on AppWorld and was worth it twice over: it proved the oracle
-reachable *and* surfaced that the shipped ground-truth solutions are reference
-implementations using internal helpers, which do not run in the agent sandbox. A
-naive "run the GT to check the oracle" would have failed and looked like the
-oracle was broken.
+This has taken about an hour per substrate and paid for itself every time. On one
+it proved the oracle reachable *and* surfaced that the shipped ground-truth
+solutions were reference implementations using internal helpers, which do not run
+in the agent sandbox — a naive "run the GT to check the oracle" would have failed
+and looked like the oracle was broken. On another, whose ground truth is a list of
+gold write actions rather than a script, the same hour surfaced the opposite
+problem: there is **nothing runnable to replay**, so solvability has no cheap
+proof and the unconstrained control silently inherits that job. Find out which of
+those two you are in before you budget the work.
 
 **If you cannot make the oracle say yes, you do not have an oracle.**
 
@@ -218,14 +227,20 @@ need; drop tasks that cannot be coordinated. `MIN_ROSTER = 2`.
 #### Infrastructure will masquerade as a collaborator
 
 This is where the mining goes wrong, and it goes wrong in the flattering
-direction. In AppWorld, `supervisor.complete_task` is the **submit channel** and
-appears in **all 147** ground-truth tasks:
+direction. Every substrate has a channel the agent uses to report back — a
+`complete_task` call, a user-interface app — and it appears in **every** task by
+construction. Count it as a collaborator and 100% of your corpus looks
+multi-agent. Two filters, measured on one substrate's 160-scenario split:
 
 | filter | usable |
 |---|---|
-| naive — count every seam the GT touches | 147 / 147 (**100%**) |
-| strict — drop the submit channel | **51 / 147 (34.7%)** |
-| information seam — a fact must cross roles | **39 / 147 (26.5%)** |
+| naive — count every seam the GT touches | 160 / 160 (**100%**) |
+| strict — drop the submit channel, require roster ≥ 2 | **111 / 160 (69%)** |
+| information seam — a fact must cross roles | **17 / 160 (11%)** |
+
+On a denser split of the same substrate the second row reached 99% while the
+third stayed at 19% — **four fifths of what looks coordinatable was decorative.**
+The gap between the last two rows is the whole measurement. Do not skip it.
 
 100% is the number that would have gone in the write-up. It would have shipped 96
 single-seam puzzles with a decorative second agent — each passing every check and
@@ -290,10 +305,10 @@ agent a thin client.
 in a system prompt. Verify from inside the running container:
 
 ```
-import appworld            -> ModuleNotFoundError
-curl /state (no token)     -> 403
-ask <off-roster specialist> -> refused
-ls /tests                  -> does not exist during the agent phase
+import <the substrate's package>  -> ModuleNotFoundError
+curl /state (no token)           -> 403
+ask <off-roster specialist>      -> refused
+ls /tests                        -> does not exist during the agent phase
 ```
 
 #### The boundary you will forget is the specialist's
@@ -307,10 +322,10 @@ wrote the brief that produced the specialist's code. So the Main could ask a
 specialist to print the process environment, which held the verifier token, and
 report it back. Then it could just read the score.
 
-The environment sandbox will not save you: AppWorld's allows `os` and denies only
-*functions*, so `os.environ` was never covered, and `execute()` runs in-process.
-That is not a bug — that guard exists to stop a *benign* agent damaging the host,
-and its source says so. **Containing an adversarial agent is always your job, not
+The environment sandbox will not save you. One substrate's guard allows `os` and
+denies only *functions*, so `os.environ` was never covered, and its `execute()`
+runs in-process. That is not a bug — that guard exists to stop a *benign* agent
+damaging the host, and its source says so. **Containing an adversarial agent is always your job, not
 your dependency's.** Read the guard before you rely on it.
 
 Gate model-written code at the single choke point where it enters the world. Then
@@ -513,12 +528,11 @@ first thing every specialist runs is `show_api_descriptions`; venmo's catalog is
 exist, which was true of what it had been shown. Truncation must announce itself,
 and any cap must be pinned by a test against the measured worst case.
 
-**Confirm the agent can see its own output.** AppWorld's `execute()` returns
-captured *stdout*, not the expression value: a bare `apis.api_docs.show(...)`
-returns the string `"Execution successful."` and no data. Our prompt instructed
-exactly that call, without `print`. Every specialist's first act returned nothing
-for two days. Run one turn by hand and *look at the bytes* before trusting a
-sweep.
+**Confirm the agent can see its own output.** One substrate's `execute()` returns
+captured *stdout*, not the expression value: a bare `show_docs(...)` returned
+`"Execution successful."` and no data. The prompt instructed exactly that call,
+without `print`. Every specialist's first act returned nothing for two days. Run
+one turn by hand and *look at the bytes* before trusting a sweep.
 
 **Log the names, not the counts.** `passes=5, failures=1` cannot tell you which
 requirement failed, and the oracle you need it for is the one that fails. The
@@ -539,8 +553,7 @@ agent tried and failed"* from *"the agent never ran"*.
 **Check what you actually changed.** A drop of 0.83→0.17 was attributed to the
 partition while the specialists had *also* been downgraded to a weaker model. Two
 variables moved. The confound had to be tested (it lost — re-running with the
-specialists upgraded still scored 0.167; `sweep/appworld_confound.json`) — but it
-was nearly shipped.
+specialists upgraded scored the same) — but it was nearly shipped.
 
 **Measure the arm you ship, not the one that is convenient to run.** The fastest
 harness is in-process; the thing you deliver is a container. Ours diverged twice
@@ -557,9 +570,9 @@ convenience.** Write a test that renders both paths and diffs them.
 
 **Check that failing cannot score worse than not trying.** An agent that did the
 work and reported it honestly scored **0.167**; an agent that did nothing and
-said `completed` scored **0.333**. AppWorld's `assert answers match` wants an
-action task's answer (`None`), so prose fails it — and the do-nothing baseline,
-which submits `None`, clears a bar the honest failure does not. **The reward paid
+said `completed` scored **0.333**. The verifier's answer check wanted an action
+task's answer (`None`), so prose failed it — and the do-nothing baseline, which
+submits `None`, cleared a bar the honest failure did not. **The reward paid
 1/6 for lying**, and no gate saw it, because every gate compares scores to the
 floor and this was *under* the floor. The floor is not a floor: it is the score
 of an agent that answers correctly and does nothing.

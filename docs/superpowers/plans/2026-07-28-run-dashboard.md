@@ -28,6 +28,7 @@ These apply to **every** task. Copy them into your working memory before startin
 - **Exactly one hero figure per view** (the ≥48px number). It is the Runs success rate. Everything else is a normal stat tile.
 - **`tabular-nums` in table columns only.** Stat-tile values and the hero figure use default proportional figures.
 - **Run the full test file after every task**, not just the new test: `uv run pytest forge/tests/test_viewer.py -v`.
+- **A test that asserts a string is ABSENT must search `viewer_source(viewer_html)`, never `viewer_html`.** That helper (added in Task 0) strips the embedded JSON snapshot, which carries arbitrary prose lifted from run transcripts and will otherwise produce false hits. Tests asserting a string is *present* may use either.
 
 ## File Structure
 
@@ -526,7 +527,7 @@ def test_verdict_badges_pair_every_color_with_an_icon_and_a_word(viewer_html):
 
 def test_the_dagger_footnote_is_gone(viewer_html):
     """Soft-judged runs get a readable tag, not a symbol you must decode."""
-    assert '<span class="dag">' not in viewer_html
+    assert '<span class="dag">' not in viewer_source(viewer_html)
     assert "soft judge" in viewer_html
 ```
 
@@ -628,7 +629,11 @@ git commit -m "Typeset verdicts as badges: color, icon, and word together"
 
 ### Task 3: The Runs overview band
 
-The headline of the plan: four stat tiles and a clickable failure-signals line above the Runs tables.
+A clickable failure-signals line above the Runs tables.
+
+**Amended 2026-07-28, after the tiles shipped and were seen.** This task originally added four boxed stat tiles (episodes, success rate as a hero figure, failures, models) above the signals. The user removed them on sight — "unnecessary and ugly" — because the numbers restate what the tables already show. The signal chips stay: they are light, and clicking one filters the runs table.
+
+What that means for anyone reading this task now: build the `.signals` row and its click wiring, and skip every `.stats` / `.tile` / `.tile.hero` rule and the tile markup in `renderOverview`. `runStats` computes only what the chips consume — `malformed`, `blocked`, `errors`, `worst`. There is no hero figure on any view.
 
 **Files:**
 - Modify: `trajectory_viewer.html` — overview CSS; new `runStats()` and `renderOverview()` helpers; call from `renderRuns`
@@ -749,12 +754,15 @@ Add to the "shared pieces" section, after `countMalformed`:
 ```js
 /* Every counter in one pass, so the tiles and the signals line can never
    disagree about what the same runs contain. */
+/* A malformed line is a protocol fault and has its own counter; counting it
+   here too would make the two signal chips overlap while reading as disjoint. */
 function countErrors(d) {
+  const faulted = s => s && s !== "ok" && s !== "malformed";
   let n = 0;
   for (const e of d.events || []) {
-    if (e.type === "call" && e.status && e.status !== "ok") n++;
+    if (e.type === "call" && faulted(e.status)) n++;
     if (e.type === "delegation")
-      for (const c of e.calls || []) if (c.status && c.status !== "ok") n++;
+      for (const c of e.calls || []) if (faulted(c.status)) n++;
   }
   return n;
 }
@@ -884,7 +892,7 @@ Delete the now-unused `ok` and `softCount`… **keep `softCount`** — the Table
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 17 tests.
+Expected: PASS, 18 tests.
 
 - [ ] **Step 9: Verify in the browser**
 
@@ -917,9 +925,14 @@ Append to `forge/tests/test_viewer.py`:
 
 ```python
 def test_academic_captions_are_gone(viewer_html):
-    """No reader of a dashboard counts tables by number."""
-    assert not re.search(r"<b>Table \d+:</b>", viewer_html)
-    assert 'class="tcap"' not in viewer_html
+    """No reader of a dashboard counts tables by number.
+
+    Searches the hand-written source: a judge's rationale in the embedded
+    snapshot can contain the words this test forbids.
+    """
+    source = viewer_source(viewer_html)
+    assert not re.search(r"<b>Table \d+:</b>", source)
+    assert 'class="tcap"' not in source
 
 
 def test_the_grid_ships_a_legend(viewer_html):
@@ -981,6 +994,48 @@ and replace the trailing `<p class="tnote">…</p>` with the same text under a n
       under both judges.` : ""}</p>`
 ```
 
+- [ ] **Step 4a: Annotate only the exception, never the rule**
+
+Measured on the live snapshot before this step: the grid printed **264 "soft judge" tags across 314 badges** and a run label on nearly every cell — three lines per cell. That is the density this redesign exists to remove. An annotation carried by 84% of cells is not information.
+
+The principle: *a per-cell annotation that is nearly universal carries no information. State it once, and annotate only what deviates.*
+
+Tally the judges before building the grid, and break ties on name so the stated default never depends on the order runs happen to arrive in:
+
+```js
+  const judgeCounts = new Map();
+  for (const s of eps) {
+    const j = s.data.judge || "scripted";
+    judgeCounts.set(j, (judgeCounts.get(j) || 0) + 1);
+  }
+  const majorityJudge = [...judgeCounts]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
+  const judgeLabel = j => j === "scripted" ? "scripted judge" : "soft judge";
+```
+
+Each mark then calls `badge()` **directly** rather than `verdictBadge()`, so the cell controls its own tagging — a tag only when the run departs from the majority, and a run label only where a cell holds more than one mark to tell apart:
+
+```js
+            const judge = s.data.judge || "scripted";
+            const tag = judge !== majorityJudge
+              ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
+            const lab = (runs.length > 1 && s.data.label)
+              ? ` <span class="runlab">${esc(s.data.label)}</span>` : "";
+```
+
+The note then names the common case once. It must branch on which judge actually won — "official" belongs to Gaia2's soft judge and must never be glued to the deterministic scripted fallback:
+
+```js
+      Verdicts are scored by ${majorityJudge === "scripted"
+        ? "the deterministic scripted judge"
+        : "Gaia2's official soft judge (gpt-5.6-sol as checker)"} by default;
+      a mark tagged with a different judge used that judge instead.
+```
+
+`softCount` is superseded by the tally — delete its declaration.
+
+On the snapshot this was built against the judge split is `gpt-5.6-sol` 132 / `scripted` 25, so roughly **25** marks carry a tag and none reads "soft judge".
+
 - [ ] **Step 5: Rename the `.tnote` rule**
 
 The `.tnote` class is used in several places. Rename the CSS rule to `.note` and update every use:
@@ -1000,7 +1055,7 @@ In the grid cell builder, the "not run" placeholder currently reads `<span style
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 19 tests.
+Expected: PASS, 21 tests.
 
 - [ ] **Step 8: Verify in the browser**
 
@@ -1152,7 +1207,7 @@ Replace the `<p class="tcap"><b>Table 2:</b> …</p>` insertion with:
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 21 tests.
+Expected: PASS, 23 tests.
 
 - [ ] **Step 9: Verify in the browser**
 
@@ -1571,7 +1626,7 @@ function callHtml(c) {
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 26 tests.
+Expected: PASS, 28 tests.
 
 - [ ] **Step 11: Verify in the browser**
 
@@ -1604,13 +1659,20 @@ Append to `forge/tests/test_viewer.py`:
 
 ```python
 def test_no_view_still_wears_the_paper_costume(viewer_html):
-    """One surface, one design: no leftovers from the evidence-page era."""
+    """One surface, one design: no leftovers from the evidence-page era.
+
+    Searches the hand-written source: "Table 3:" and its kin can occur inside
+    a run's transcript text, which lives in the embedded snapshot.
+    """
+    source = viewer_source(viewer_html)
     for relic in ('class="draftline"', 'class="colophon"', "Table 3:", "Table 4:"):
-        assert relic not in viewer_html, f"{relic} survived the redesign"
+        assert relic not in source, f"{relic} survived the redesign"
 
 
-def test_shipped_task_runs_get_an_overview_too(viewer_html):
-    assert "function breakdownStats(bds)" in viewer_html
+def test_no_stat_tiles_anywhere(viewer_css):
+    """The boxed summary band was removed on 2026-07-28; keep it removed."""
+    for gone in (".stats", ".tile", ".tile.hero"):
+        assert gone + " {" not in viewer_css, f"{gone} came back"
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1665,48 +1727,27 @@ Replace the header CSS block (`header h1` through `input[type="file"]`) with:
 
 Also change the page background: in the `body` rule, `background: var(--paper)` became `var(--plane)` in Task 1 — confirm it reads `var(--plane)`.
 
-- [ ] **Step 4: Give the shipped-task view an overview**
+- [ ] **Step 4: Give the shipped-task view a summary line**
 
-In `renderBreakdowns`, add this helper above it:
+**Amended 2026-07-28:** this step originally added a row of stat tiles here. Tiles were removed from the product — the user called the boxed summary band unnecessary and ugly — so this step now writes a one-line summary in prose instead. Do not add tiles, cards, or a display-size figure.
+
+Replace the `content.insertAdjacentHTML("beforeend", …)` heading block in `renderBreakdowns` with:
 
 ```js
-function breakdownStats(bds) {
-  const total = bds.length;
-  const passed = bds.filter(s => s.data.success).length;
+  const bok = bds.filter(s => s.data.success).length;
   const partials = bds.map(s => s.data.partial).filter(v => typeof v === "number");
   const meanPartial = partials.length
-    ? partials.reduce((a, b) => a + b, 0) / partials.length : null;
-  return {total, passed, failed: total - passed,
-          rate: total ? Math.round((passed / total) * 100) : 0, meanPartial};
-}
-```
-
-and replace the `content.insertAdjacentHTML("beforeend", …)` heading block in `renderBreakdowns` with:
-
-```js
-  const bstats = breakdownStats(bds);
+    ? (partials.reduce((a, b) => a + b, 0) / partials.length).toFixed(2) : null;
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Shipped-task runs</h2>
-     <div class="stats">
-       <div class="tile"><div class="lab">Episodes</div>
-         <div class="val">${bstats.total}</div>
-         <div class="sub">containerized AppWorld runs</div></div>
-       <div class="tile hero"><div class="lab">Success rate</div>
-         <div class="val">${bstats.rate}%</div>
-         <div class="sub">${bstats.passed} of ${bstats.total} passed</div></div>
-       <div class="tile"><div class="lab">Failures</div>
-         <div class="val${bstats.failed ? " fail" : ""}">${bstats.failed}</div>
-         <div class="sub">by AppWorld's own check</div></div>
-       <div class="tile"><div class="lab">Mean partial</div>
-         <div class="val">${bstats.meanPartial == null ? "—"
-           : bstats.meanPartial.toFixed(2)}</div>
-         <div class="sub">per-requirement credit</div></div>
-     </div>
+     <p class="lede"><b>${bds.length}</b> containerized AppWorld episodes from
+     <span class="mono">jobs/</span> — ${bok} passed,
+     <span class="${bds.length - bok ? "warn-text" : ""}">${bds.length - bok}
+     failed</span>, scored by AppWorld's own per-requirement check${
+     meanPartial ? `, mean partial credit <b>${meanPartial}</b>` : ""}.</p>
      <div class="panel-title">Verifier results
        <span class="sub">— by campaign and trial; click a row for its ledger</span></div>`);
 ```
-
-Because the Runs tab and this tab are never on screen together, each may hold its own hero figure.
 
 - [ ] **Step 5: Restyle the evidence-files view**
 
@@ -1777,7 +1818,7 @@ Expected: no output.
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 28 tests.
+Expected: PASS, 30 tests.
 
 - [ ] **Step 10: Verify in the browser**
 
@@ -1844,7 +1885,7 @@ Delete every mention of the retired system: signal red, hairline table grammar a
 
 Run: `uv run pytest forge/tests/test_viewer.py -v`
 
-Expected: PASS, 29 tests.
+Expected: PASS, 31 tests.
 
 Then confirm nothing else in the repo broke:
 

@@ -1,0 +1,184 @@
+{
+ "kind": "gaia2-episode",
+ "scenario_id": "scenario_universe_30_h2qroi",
+ "category": "adaptability",
+ "ability": "delegation-economy",
+ "config": "star-docs-b6",
+ "roster": [
+  "Cabs",
+  "Calendar",
+  "Chats",
+  "Contacts",
+  "Emails",
+  "InternalContacts"
+ ],
+ "conditioned_env_events": 2,
+ "delegation_target_heuristic": 6,
+ "main_model": "gpt-5.6-sol",
+ "sub_model": "gpt-5.6-sol",
+ "answer": "(environment stopped)",
+ "judge": "gpt-5.6-sol",
+ "label": "v3",
+ "started_at": "2026-07-31 00:35:47",
+ "verdict": {
+  "success": false,
+  "rationale": "Failure: Agent did not perform the following oracle tool call:\ntool name: EmailClientV2__send_email\ntool args:\n-recipients: ['astrid.macpherson@gaia2mail.com']\n-subject: New Web Design Project\n-content: Dear Astrid,\n\nAre you available tomorrow at 9AM-10AM for me to visit you at your home to discuss a new web design project?\n\nBest,\nRohini Deshpande\n-cc: []\n-attachment_paths: []\n\nList of matching attempts:\n-Failure matching agent event (ID: Event-USER-6215bb69-c57b-492f-a4df-48d225a593db) with oracle event (ID: OracleEvent-AGENT-519ad977-e025-4284-bc4f-2a13967419ff), reason: already matched\n-Failure matching agent event (ID: AGENT-Calendar.add_calendar_event-db4adab9-3fdd-4346-b686-d3242b9f2af7) with oracle event (ID: OracleEvent-AGENT-519ad977-e025-4284-bc4f-2a13967419ff), reason: already matched\n-Failure matching agent event (ID: AGENT-Emails.send_email-7643de20-b23a-4b21-9d9c-38e7d5a65948) with oracle event (ID: OracleEvent-AGENT-519ad977-e025-4284-bc4f-2a13967419ff), reason: tool judge reject",
+  "exception": null
+ },
+ "seconds": 28.5,
+ "objective_action_contract": "objective-actions-v1",
+ "events": [
+  {
+   "type": "user",
+   "sim_time": "2024-10-15 07:00:00",
+   "content": "Received at: 2024-10-15 07:00:00\nSender: User\nMessage: I need to visit Astrid MacPherson to discuss a new web design project. Schedule a tentative event 'Web Design Project' for a 1 hour time slot tomorrow at 9am. Send Astrid an email to ask her if she is available at that time for me to come visit her at her home to discuss the project. Let me know when the email has been sent. If she replies suggesting a new date and/or time, reschedule the event for when she is available and cancel all events that conflicts with that time. Also cancel all events happening in the 2 hours before and 2 hours after the event. Book a premium cab to pick me up from home going to her address 10 minutes before the new event. Send her a Chats message confirming the new time and let her know that I will bring my laptop to show her my new project.\nAlready read: True\nRead at: 2024-10-15 07:00:00"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:03",
+   "content": "DELEGATE Contacts :: Search for Astrid MacPherson and return her email address, home address, and exact full name/contact ID."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:06",
+   "specialist": "Contacts",
+   "brief": "Search for Astrid MacPherson and return her email address, home address, and exact full name/contact ID.",
+   "report": "Astrid MacPherson \u2014 Contact ID: e824792f91834bf79b6f09ec0e5e594f; email: astrid.macpherson@gaia2mail.com; home address: 14/2 Marchmont Road, Edinburgh, EH9 1HQ.",
+   "calls": [
+    {
+     "tool": "Contacts__search_contacts",
+     "args": {
+      "query": "Astrid MacPherson"
+     },
+     "status": "ok",
+     "result": "[\n \"\\nContact ID: e824792f91834bf79b6f09ec0e5e594f\\nFirst Name: Astrid\\nLast Name: MacPherson\\nGender: Gender.FEMALE\\nAge: 57\\nNationality: British\\nCity Living: Edinburgh\\nCountry: United Kingdom\\nStatus: Status.EMPLOYED\\nJob: Backend Web Developer\\nDescription: A seasoned backend web developer with a passion for crafting semantic HTML documents.\\nPhone: +441311234569\\nEmail: astrid.macpherson@gaia2mail.com\\nIs User: False\\nAddress: 14/2 Marchmont Road, Edinburgh, EH9 1HQ\\n\"\n]"
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:09",
+   "content": "DELEGATE Calendar :: Create exactly one tentative calendar event titled 'Web Design Project' for 2024-10-16 09:00:00 to 10:00:00, with location '14/2 Marchmont Road, Edinburgh, EH9 1HQ', attendee Astrid MacPherson, and description noting it is tentative pending Astrid's availability. Return the event ID."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:13",
+   "specialist": "Calendar",
+   "brief": "Create exactly one tentative calendar event titled 'Web Design Project' for 2024-10-16 09:00:00 to 10:00:00, with location '14/2 Marchmont Road, Edinburgh, EH9 1HQ', attendee Astrid MacPherson, and description noting it is tentative pending Astrid's availability. Return the event ID.",
+   "report": "Created exactly one tentative \u201cWeb Design Project\u201d event; event ID: 78fafe25ab8fd7b2918d02bbf7440072",
+   "calls": [
+    {
+     "tool": "Calendar__add_calendar_event",
+     "args": {
+      "title": "Web Design Project",
+      "start_datetime": "2024-10-16 09:00:00",
+      "end_datetime": "2024-10-16 10:00:00",
+      "tag": "Tentative",
+      "description": "Tentative pending Astrid's availability.",
+      "location": "14/2 Marchmont Road, Edinburgh, EH9 1HQ",
+      "attendees": [
+       "Astrid MacPherson"
+      ]
+     },
+     "status": "ok",
+     "result": "78fafe25ab8fd7b2918d02bbf7440072"
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:16",
+   "content": "DELEGATE Emails :: Send exactly one email to astrid.macpherson@gaia2mail.com with subject 'Web Design Project' asking whether she is available tomorrow, Wednesday October 16, 2024, at 9:00 AM for the user to visit her at her home to discuss the new web design project. Return confirmation and sent email ID."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:22",
+   "specialist": "Emails",
+   "brief": "Send exactly one email to astrid.macpherson@gaia2mail.com with subject 'Web Design Project' asking whether she is available tomorrow, Wednesday October 16, 2024, at 9:00 AM for the user to visit her at her home to discuss the new web design project. Return confirmation and sent email ID.",
+   "report": "Sent exactly one email to astrid.macpherson@gaia2mail.com with subject \u201cWeb Design Project.\u201d Sent email ID: 2e71fd0e6a2ced414b4113d9d0a7a367.",
+   "calls": [
+    {
+     "tool": "Emails__send_email",
+     "args": {
+      "recipients": [
+       "astrid.macpherson@gaia2mail.com"
+      ],
+      "subject": "Web Design Project",
+      "content": "Hi Astrid,\n\nAre you available tomorrow, Wednesday, October 16, 2024, at 9:00 AM for me to visit you at your home to discuss the new web design project?\n\nBest regards"
+     },
+     "status": "ok",
+     "result": "2e71fd0e6a2ced414b4113d9d0a7a367"
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:25",
+   "content": "USER :: The email asking Astrid MacPherson whether she is available for a home visit at 9:00 AM tomorrow, Wednesday, October 16, has been sent, and the tentative \u201cWeb Design Project\u201d event is scheduled for 9:00\u201310:00 AM at 14/2 Marchmont Road, Edinburgh."
+  },
+  {
+   "type": "send_user",
+   "sim_time": "2024-10-15 07:00:25",
+   "content": "The email asking Astrid MacPherson whether she is available for a home visit at 9:00 AM tomorrow, Wednesday, October 16, has been sent, and the tentative \u201cWeb Design Project\u201d event is scheduled for 9:00\u201310:00 AM at 14/2 Marchmont Road, Edinburgh."
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:26",
+   "content": "WAIT 120"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:02:26",
+   "requested": 120,
+   "arrived": [
+    "SystemApp: Wait for notification timeout reached after 120 seconds"
+   ]
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:02:26",
+   "content": "SystemApp: Wait for notification timeout reached after 120 seconds"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:02:27",
+   "content": "WAIT 300"
+  },
+  {
+   "type": "wait",
+   "sim_time": "2024-10-15 07:02:27",
+   "requested": 300,
+   "arrived": [
+    "EmailClientV2: New email received from helmut.eisenstadt@t-online.de",
+    "EmailClientV2: New email received"
+   ]
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 07:02:27"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:02:27",
+   "content": "EmailClientV2: New email received from helmut.eisenstadt@t-online.de"
+  },
+  {
+   "type": "notification",
+   "sim_time": "2024-10-15 07:02:27",
+   "content": "EmailClientV2: New email received"
+  }
+ ],
+ "delegations": 3,
+ "specialist_turns": 3,
+ "refusals": 0,
+ "blocked": 0,
+ "blocked_reasons": [],
+ "waits": 2,
+ "user_turns": 1,
+ "malformed": 0,
+ "false_outages": 0,
+ "delegation_target": 6,
+ "delegations_over_target": 0,
+ "delegation_efficiency": 1.0,
+ "delegation_economy_reward": 0.0
+}

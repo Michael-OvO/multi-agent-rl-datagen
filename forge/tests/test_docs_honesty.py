@@ -14,8 +14,19 @@ published and had to withdraw.
 Patterns are word-boundary regexes, not substrings: a bare "liar" substring also
 matches "familiar" and "peculiar", which would fail this test for prose that
 claims nothing.
+
+**This module guards two substrates, and the naming carries the difference.**
+`test_the_writeup_*` guards `WRITEUP.md`, which documents the AppWorld work and
+was deliberately not migrated -- it is the engineering log of a finished
+substrate, so its numbers are history and must stay pinned to `appworld_*.json`.
+`test_the_report_*` guards `docs/*.tex`, which were migrated to Gaia2 and pin to
+`gaia2_*.json`. Two guards therefore assert opposite polarity on the same
+concept and both are correct: the write-up must *state* the do-nothing floor it
+measured, and the reports must state that no such floor has been measured on
+their substrate. Read the prefix before concluding one of them is stale.
 """
 
+import functools
 import json
 import re
 from pathlib import Path
@@ -23,8 +34,16 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
-_DOC = _ROOT / "WRITEUP.md"
 _SWEEP = _ROOT / "sweep"
+
+# -- WRITEUP.md: the AppWorld substrate, deliberately not migrated ------------
+#
+# Everything from here to the "-- the reports --" banner guards WRITEUP.md and
+# reads appworld_*.json. That is not drift: the write-up is the log of what the
+# AppWorld work measured, so re-pointing it at Gaia2 evidence would falsify a
+# record rather than update one.
+
+_DOC = _ROOT / "WRITEUP.md"
 
 _WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
 
@@ -219,28 +238,34 @@ _TEX_ZH = _ROOT / "docs" / "multi_agent_rl_data_generation_zh.tex"
 _TEX_EN = _ROOT / "docs" / "multi_agent_rl_data_generation_en.tex"
 
 #: Per-report phrasings for the checks below, keyed by the id pytest shows on
-#: failure. `directories`/`configs`/`tasks_banned` take the computed count.
+#: failure. `cells`/`scenarios`/`tasks_banned` take the computed count; the
+#: rest are matched literally.
 _REPORTS = {
     "zh": {
         "path": _TEX_ZH,
-        "directories": "{n} 个任务目录",
-        "configs": "{n} 个已实现配置",
+        "cells": "{n} 个实例",
+        "scenarios": "{n} 个信息缝场景",
         "tasks_banned": "{n} 个协作任务",
-        "chain_unbuilt": "chain-names（未实现）",
-        "insufficient": "不足以",
+        "chain_unbuilt": "未实现",
+        "insufficient": "拒绝给出",
+        "floor_unmeasured": "无动作探针",
+        "floor_negations": ("还没有跑过", "尚未被执行", "都还没做"),
         "overclaims": (
             "这说明更有价值的难度来自角色能力未知",
             "初步难度梯度",
             "展示出从 open 到 star-docs、再到 star-names",
+            "权限划分是免费的",
         ),
     },
     "en": {
         "path": _TEX_EN,
-        "directories": "{n} task directories",
-        "configs": "{n} implemented configurations",
+        "cells": "{n} cells",
+        "scenarios": "{n} seamful scenarios",
         "tasks_banned": "{n} collaborative tasks",
-        "chain_unbuilt": "chain-names (not built)",
-        "insufficient": "insufficient",
+        "chain_unbuilt": "not built",
+        "insufficient": "no verdict",
+        "floor_unmeasured": "do-nothing probe",
+        "floor_negations": ("has not been run", "have not been run", "neither has been done"),
         # No drift history here yet -- the zh list memorialises real regressions,
         # this one is the same property stated forward, in the phrasings an
         # English rewrite would reach for first.
@@ -248,9 +273,53 @@ _REPORTS = {
             "role opacity is the more effective source of difficulty",
             "preliminary difficulty gradient",
             "a difficulty gradient from open to star-docs",
+            "the partition is free",
         ),
     },
 }
+
+
+@functools.cache
+def _campaign() -> dict:
+    """The whole campaign document: `summary` by cell type, plus `rows`.
+
+    One owner for the filename, for the reason the `_SWEEP_FILE` comment above
+    gives: a guard that names its evidence in three places is a guard that can
+    end up checking a file the prose stopped citing. Cached because the
+    document is invariant for the session and every guard here is parametrized
+    over two reports.
+    """
+    return json.loads((_SWEEP / "gaia2_full_campaign.json").read_text())
+
+
+def _sentences(text: str) -> list[str]:
+    """Sentence-ish spans of a report.
+
+    Anchoring a claim to a *line* is nearly no anchor in LaTeX: a .tex
+    paragraph is one physical line running to several hundred words, so a
+    co-occurrence check passes on any two facts that happen to share a
+    paragraph. Verified, not assumed -- the mutation "a do-nothing probe
+    returned a floor of 0.081" survived the line-level check, rescued by an
+    unrelated "neither has been done" four sentences later in the same
+    paragraph. Markdown lines are short enough that the distinction never came
+    up; .tex is where it bites.
+
+    CJK terminators need no trailing space; ASCII ones do, which keeps decimals
+    like `0.081` from splitting mid-number.
+    """
+    return re.split(r"(?<=[.!?])\s+|(?<=[。！？])", text)
+
+
+@functools.cache
+def _seamful_scenarios() -> int:
+    """Unique scenarios that cleared the seam gate, across every mined split."""
+    ids = set()
+    for name in ("gaia2_mini_admission.json", "gaia2_adaptability_admission.json"):
+        for row in json.loads((_SWEEP / name).read_text()):
+            if row["seamful"]:
+                ids.add(row["scenario_id"])
+    return len(ids)
+
 
 _reports = pytest.mark.parametrize("report", _REPORTS.values(), ids=_REPORTS.keys())
 
@@ -259,40 +328,70 @@ _reports = pytest.mark.parametrize("report", _REPORTS.values(), ids=_REPORTS.key
 def test_the_report_multiplies_the_candidate_pool_the_seam_gate_actually_leaves(report):
     """The multiplicand is the seam-filtered pool, not the strict-filtered one.
 
-    This test used to hardcode 51 -- the count *before* `seams.py` ran. That is
-    the number §4.4 exists to retire: 12 of those 51 carry no information seam,
-    so multiplying by 51 re-inflates the pool by the exact 23.5% the seam gate
-    was built to remove. Derive it from the measurement instead, so the report
-    and the gate cannot drift apart again.
+    This test used to hardcode the count *before* the seam gate ran, which is
+    the number the yield section exists to retire: most multi-app tasks carry no
+    information seam, so multiplying by the strict-filtered pool re-inflates it
+    by exactly the fraction the gate was built to remove. Derive it from the
+    measurement instead, so the report and the gate cannot drift apart again.
     """
-    from forge.appworld.cli import SHIPPED_CONFIGS
-
     text = report["path"].read_text()
-    n = len(SHIPPED_CONFIGS)
-    seams = json.loads((_SWEEP / "appworld_seams.json").read_text())
-    pool = sum(1 for r in seams if r["seams"])
+    pool = _seamful_scenarios()
+    # Tuple, not concatenation: `a` + `bc` and `ab` + `c` are the same string,
+    # and a dedupe key that can collide undercounts in exactly the flattering
+    # direction. The campaign writer keys on the same pair.
+    cells = {(r["scenario_id"], r["cell_type"]) for r in _campaign()["rows"]}
 
-    assert report["directories"].format(n=pool * n) in text, (
-        f"the report must say {pool * n} directories for {pool} seam-bearing "
-        f"tasks x {n} shipped configs"
+    assert report["scenarios"].format(n=pool) in text, (
+        f"the report must state the seam-filtered pool ({pool} scenarios)"
     )
-    assert report["configs"].format(n=n) in text
-    # 78 counts configurations, not tasks. Calling them tasks is the framing
-    # section 4 exists to correct, and section 6 used to undo it.
-    assert report["tasks_banned"].format(n=pool * n) not in text, (
-        f"the report calls configurations tasks again; {pool} x {n} is not "
-        f"{n} x {pool} new tasks"
+    assert report["cells"].format(n=len(cells)) in text, (
+        f"the report must say {len(cells)} cells for {pool} seamful scenarios"
+    )
+    # The cell count counts configurations, not tasks. Calling them tasks is the
+    # framing the method section exists to correct.
+    assert report["tasks_banned"].format(n=len(cells)) not in text, (
+        f"the report calls configurations tasks again; {len(cells)} cells over "
+        f"{pool} scenarios is not {len(cells)} new tasks"
     )
 
 
 @_reports
-def test_the_report_states_the_do_nothing_floor_it_measured(report):
-    rows = json.loads((_SWEEP / "appworld_donothing.json").read_text())
-    floors = {r["partial"] for r in rows}
-    assert len(floors) == 1
-    floor = floors.pop()
-    assert f"{floor}" in report["path"].read_text(), (
-        f"the report must state the measured floor ({floor})"
+def test_the_report_does_not_invent_a_floor_it_never_measured(report):
+    """No do-nothing probe has been run on this substrate.
+
+    The previous substrate's floor was measured, and this guard asserted the
+    report stated it. Here the honest property is the inverse: there is no
+    floor measurement in `sweep/`, so the report must *say so* rather than
+    quoting a number that would look like one. A stated floor that nothing
+    produced is precisely the overclaim this module exists to catch -- and this
+    repo has already published a floor as a difficulty result once.
+    """
+    # Two channels, because a floor can arrive by either. A separate probe file
+    # is one; the likelier one is a `donothing` arm inside the campaign the
+    # runtime already produces, which creates no new file at all. Globbing for
+    # the file alone would never fire on that.
+    assert not list(_SWEEP.glob("gaia2_donothing*.json")), (
+        "a Gaia2 do-nothing probe now exists; this guard must be rewritten to "
+        "assert the report states the measured floor, not that it lacks one"
+    )
+    arms = {k for k in _campaign()["summary"] if k != "by_judge"}
+    assert not {a for a in arms if "nothing" in a or "floor" in a}, (
+        f"the campaign now measures a floor-shaped arm ({sorted(arms)}); this "
+        f"guard must be rewritten to assert the report states it"
+    )
+
+    # The phrase must sit on a line that also negates it. Asserting the topic
+    # word alone passes a report that says the opposite -- "a do-nothing probe
+    # returned a floor of 0.081" contains "do-nothing probe" too, and the whole
+    # point of this guard is the difference between those two sentences. Same
+    # technique as the control-rate check below: anchor the claim, not the word.
+    marker = report["floor_unmeasured"]
+    stated = [sent for sent in _sentences(report["path"].read_text())
+              if marker in sent and any(n in sent for n in report["floor_negations"])]
+    assert stated, (
+        f"no line of the report states that the floor is unmeasured: {marker!r} "
+        f"has to appear alongside one of {report['floor_negations']}, or the "
+        f"guard passes a report that quotes a floor it never measured"
     )
 
 
@@ -304,86 +403,95 @@ def test_the_report_does_not_claim_an_unimplemented_operator_is_shipped(report):
     it is not built, rather than built-but-unshipped. The report had it as the
     latter, which reads as a knob one flag away from working.
     """
-    from forge.appworld.cli import SHIPPED_CONFIGS
     from forge.appworld.partition import Topology
 
     text = report["path"].read_text()
-    shipped_topologies = {t for t, _, _ in SHIPPED_CONFIGS}
-    assert Topology.CHAIN not in shipped_topologies
+    assert not any(r["config"].startswith(Topology.CHAIN.value)
+                   for r in _campaign()["rows"]), (
+        "a chain cell was measured; the report may no longer call it unbuilt"
+    )
     assert report["chain_unbuilt"] in text, (
         "chain is unimplemented, not merely unshipped; its handoff has no caller"
     )
 
 
-def _yields() -> dict:
-    """Each shipped config's usable-cell count, computed from the sweep."""
-    from forge.appworld.validity import judge_cells, yield_by_config
-
-    rows = json.loads((_SWEEP / _SWEEP_FILE).read_text())
-    floors = {r["partial"] for r in json.loads(
-        (_SWEEP / "appworld_donothing.json").read_text())}
-    assert len(floors) == 1
-    return yield_by_config(judge_cells(rows, floors.pop()))
-
-
 @_reports
 def test_the_report_does_not_conclude_more_than_the_validity_rule_allows(report):
-    """Section 4 builds the sandwich rule; sections 7-9 must not violate it.
+    """The method section builds the sandwich rule; the results must obey it.
 
-    star-names yields fewer usable cells than star-docs, and the gap between
-    their *means* is a floored cell paying for an honest answer rather than a
-    harder task. Concluding from the mean that role-opacity is the better knob
-    is the reading the rule disqualifies -- and it stays disqualified at five
-    seeds, where star-docs reaches 3/3 and star-names 2/3.
+    The rule's third clause refuses to read a constrained score against a
+    control that has not itself cleared the floor. On this substrate the control
+    succeeded on 2 of 37 scenarios and every constrained arm landed within a
+    few hundredths of it, so *no* knob is priced -- and the report must say that
+    rather than reading the ordering of four statistically indistinguishable
+    means. Reporting "the partition is free" off this campaign is the same
+    error, pointed the other way, as publishing a floor as a difficulty result.
     """
     text = report["path"].read_text()
-    ys = _yields()
-    docs, names = ys["star-docs-binf"], ys["star-names-binf"]
+    summary = _campaign()["summary"]
+    control = summary["control"]
+    # Everything that is not the control and not the judge breakdown, rather
+    # than a hardcoded three names: a fifth arm added to the campaign must widen
+    # this check, not slip past it while the guard keeps reporting on three.
+    constrained = {k: v for k, v in summary.items()
+                   if k not in ("control", "by_judge")}
+    assert constrained, "the campaign has no constrained arms to compare"
 
-    # The premise of the ban, asserted rather than assumed. If star-names ever
-    # overtakes star-docs the banned sentences below become *true* and this
-    # guard would be enforcing a stale conclusion -- which is the failure the
-    # whole module is about, wearing the guard's own clothes.
-    assert names.valid <= docs.valid, (
-        f"star-names ({names.valid}/{names.total}) now yields at least as much "
-        f"as star-docs ({docs.valid}/{docs.total}); the bans below no longer "
-        f"follow from the sweep and this test must be rewritten, not silenced"
+    # The premise of the ban, asserted rather than assumed. If the control ever
+    # separates from the constrained arms, the banned sentences below may become
+    # *true* and this guard would be enforcing a stale conclusion -- which is
+    # the failure the whole module is about, wearing the guard's own clothes.
+    spread = max(abs(v["mean_partial_reward"] - control["mean_partial_reward"])
+                 for v in constrained.values())
+    assert spread < 0.1, (
+        f"a constrained arm now differs from the control by {spread:.3f}; the "
+        f"bans below no longer follow from the campaign and this test must be "
+        f"rewritten, not silenced"
     )
 
-    # Banned phrasings, each one a conclusion the sweep does not support. The
-    # first version of this guard listed only the first, and the report went on
-    # withdrawing the claim in section 7 and asserting it again in the
-    # conclusion -- which is the same drift the guard exists to stop, three
-    # pages later. Test the property, not one sentence.
+    # Banned phrasings, each one a conclusion the campaign does not support. The
+    # first version of this guard listed only one, and the report went on
+    # withdrawing the claim in the results and asserting it again in the
+    # conclusion -- the same drift the guard exists to stop, three pages later.
+    # Test the property, not one sentence.
+    #
+    # Quoted spans are stripped first, because a substring ban cannot tell an
+    # assertion from its own disavowal and the most honest sentence a report can
+    # write is the one that names the error in order to reject it. Both reports
+    # tripped this on exactly that sentence, and the fix applied was to contort
+    # the prose -- a tax on honesty, payable every time the report grows. The
+    # module docstring already learned this shape once ("a bare 'liar' substring
+    # also matches 'familiar'"): match the claim, not the characters. An author
+    # can still assert inside scare quotes, which is unnatural enough to be
+    # worth the trade.
+    asserted = re.sub(r"``[^']*''|“[^”]*”", "", text)
     for banned in report["overclaims"]:
-        assert banned not in text, (
-            f"the report claims {banned!r}, which its own section 4 criterion "
-            f"rejects: star-names yields {names.valid}/{names.total} usable "
-            f"cells against star-docs' {docs.valid}/{docs.total}"
+        assert banned not in asserted, (
+            f"the report asserts {banned!r}, which its own acceptance criterion "
+            f"rejects: the control succeeded on "
+            f"{control['success']}/{control['cells']} scenarios, so no knob "
+            f"stacked on it can be priced. To name the claim in order to "
+            f"withdraw it, put it in quotes -- quoted spans are exempt."
         )
 
-    # The measured rate, stated in the report, derived here -- and anchored to
-    # the row that means it.
+    # The control's own result, stated in the report, derived here -- and
+    # anchored to a sentence that also names the control.
     #
     # `rate in text` is not good enough, and both ways it can fail have already
-    # happened in this file. It asserted the literal "0/3" and went on passing
-    # after star-names stopped being 0/3, because chain-names' row carries
-    # "0/3". Rewritten to compute the rate, it passed a mutation that removed
-    # star-names' number entirely -- because the task ids `2a163ab_1/2/3`
-    # contain the substring "2/3". A bare fraction is three characters; a
-    # 600-line report contains all of them somewhere. Requiring the rate on a
-    # line that also names the config is what makes this a check rather than a
-    # coincidence.
-    rate = f"{names.valid}/{names.total}"
-    stated = [ln for ln in text.splitlines()
-              if "star-names" in ln and rate in ln]
+    # happened in this file. An earlier version asserted a bare fraction and
+    # went on passing because an unrelated row carried the same three
+    # characters. Requiring the rate in a sentence that also names the arm is
+    # what makes this a check rather than a coincidence.
+    rate = f"{control['success']}/{control['cells']}"
+    stated = [sent for sent in _sentences(text)
+              if rate in sent and ("control" in sent or "对照" in sent)]
     assert stated, (
-        f"no line of the report states star-names' yield ({rate}); the sandwich "
-        f"rule's verdict on the shipped visibility knob has to appear next to "
-        f"the knob"
+        f"no sentence of the report states the control's result ({rate}) beside the "
+        f"control; the acceptance rule's verdict has to appear beside the arm "
+        f"that caused it"
     )
     assert report["insufficient"] in text, (
-        "the report must say the evidence is insufficient where it is"
+        "the report must say the criterion returned no verdict where it did"
     )
 
 
@@ -398,13 +506,31 @@ def test_every_evidence_file_the_docs_name_exists():
     the prose kept citing them.
     """
     named = set()
-    for doc in (_DOC, _ROOT / "README.md",
+    # The .tex reports name their own evidence and were the only documents this
+    # scan ever missed -- which is how a whole substrate's citations went
+    # unguarded while the four per-claim guards above were being rewritten.
+    for doc in (_DOC, _ROOT / "README.md", _TEX_EN, _TEX_ZH,
                 _ROOT / "skills" / "constraint-forged-multi-agent-tasks" / "SKILL.md"):
-        named |= set(re.findall(r"`?(?:sweep/)?(\w+\.json)`?", doc.read_text()))
+        # LaTeX escapes underscores, so `sweep/gaia2\_full\_campaign.json` would
+        # otherwise yield the fragment `_campaign.json`. Un-escape before
+        # matching, which is a no-op for the markdown documents.
+        text = doc.read_text().replace(r"\_", "_")
+        named |= set(re.findall(r"`?(?:sweep/)?(\w+\.json)`?", text))
 
     on_disk = {p.name for p in _SWEEP.glob("*.json")}
-    # Only names that look like this repo's evidence, not e.g. package.json.
-    claimed = {n for n in named if n in on_disk or n.startswith(("appworld_", "tom_"))}
+    # "Looks like this repo's evidence" was a hardcoded prefix list, so a name
+    # under any substrate the list predated -- gaia2_* among them -- was dropped
+    # silently and read as checkable while nothing checked it. Derive the
+    # prefixes from what sweep/ actually holds, so a new substrate is covered
+    # the moment it writes its first evidence file rather than whenever someone
+    # remembers this line.
+    #
+    # `if head` drops the empty prefix that merge_seeds' `_seed_1.json` outputs
+    # would otherwise contribute: a bare "_" matches every name that contains an
+    # underscore anywhere, which turns this guard into an unconditional failure.
+    prefixes = tuple({head + "_" for head, _, rest in
+                      (n.partition("_") for n in on_disk) if head and rest})
+    claimed = {n for n in named if n in on_disk or n.startswith(prefixes)}
     missing = sorted(claimed - on_disk)
     assert not missing, f"the docs name evidence files that do not exist: {missing}"
 

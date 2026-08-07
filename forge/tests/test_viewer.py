@@ -74,6 +74,19 @@ def theme_scopes(css: str) -> dict[str, dict[str, str]]:
     return out
 
 
+def viewer_source(html: str) -> str:
+    """The page minus its embedded data line.
+
+    The snapshot is machine-generated JSON carrying arbitrary prose from run
+    transcripts, so searching it for an identifier yields false hits. Strip
+    exactly that one block and keep everything else -- markup, stylesheet,
+    and the whole app script are hand-written and must be searched.
+    """
+    return re.sub(
+        r'(<script type="application/json" id="embedded-logs">).*?(</script>)',
+        r"\1\2", html, flags=re.S)
+
+
 #: Every identifier the File System Access layer was built from. The spec
 #: retired that data source: the page carries its own snapshot, so opening
 #: the file is the whole workflow and no permission prompt stands in front
@@ -87,9 +100,13 @@ _FOLDER_CONNECT_RELICS = [
 
 def test_the_folder_connect_layer_is_gone(viewer_html):
     """One loading model: the embedded snapshot, plus drop and pick."""
-    body = viewer_html.split('<script type="application/json"')[0] \
-        + viewer_html.split("</script>")[-1]
-    survivors = [relic for relic in _FOLDER_CONNECT_RELICS if relic in body]
+    source = viewer_source(viewer_html)
+    # Guard the guard: if the app script ever falls outside the searched
+    # region, this test silently stops testing anything.
+    assert '"use strict"' in source, (
+        "the app script must be inside the searched region -- the "
+        "snapshot-stripping regex is eating real code")
+    survivors = [relic for relic in _FOLDER_CONNECT_RELICS if relic in source]
     assert not survivors, f"folder-connect machinery survives: {survivors}"
 
 
@@ -110,3 +127,339 @@ def test_embed_logs_block_still_matches_its_rewriter(viewer_html):
         r'(<script type="application/json" id="embedded-logs">).*?(</script>)',
         re.S)
     assert len(pattern.findall(viewer_html)) == 1
+
+
+#: Every token the dashboard is built from. A later task that needs a new
+#: token adds it here first.
+REQUIRED_TOKENS = [
+    "--surface", "--plane", "--ink", "--ink-2", "--muted", "--grid", "--axis",
+    "--hair", "--wash", "--shadow",
+    "--pass", "--warn", "--fail",
+    "--pass-ink", "--warn-ink", "--fail-ink",
+    "--pass-tint", "--warn-tint", "--fail-tint",
+]
+
+
+def test_every_token_is_defined_in_all_three_theme_scopes(viewer_css):
+    scopes = theme_scopes(viewer_css)
+    for scope_name, tokens in scopes.items():
+        missing = [t for t in REQUIRED_TOKENS if t not in tokens]
+        assert not missing, f"{scope_name} scope is missing {missing}"
+
+
+def test_the_two_dark_scopes_agree(viewer_css):
+    """A viewer whose toggle and OS setting disagree is two designs."""
+    scopes = theme_scopes(viewer_css)
+    for token in REQUIRED_TOKENS:
+        assert scopes["dark-os"][token].strip() == scopes["dark-toggle"][token].strip(), (
+            f"{token} differs between the OS-dark and toggle-dark scopes")
+
+
+@pytest.mark.parametrize("mode,scope", [("light", "light"), ("dark", "dark-toggle")])
+def test_status_text_colors_clear_body_text_contrast(viewer_css, mode, scope):
+    """Status *text* is read, so it needs 4.5:1 on both of its grounds."""
+    tokens = theme_scopes(viewer_css)[scope]
+    for token in ("--pass-ink", "--warn-ink", "--fail-ink"):
+        color = tokens[token].strip()
+        worst = min(contrast(color, ground) for ground in _GROUNDS[mode])
+        assert worst >= 4.5, (
+            f"{mode} {token} ({color}) is {worst:.2f}:1 -- body text needs 4.5:1")
+
+
+@pytest.mark.parametrize("mode,scope", [("light", "light"), ("dark", "dark-toggle")])
+def test_pass_and_fail_marks_clear_non_text_contrast(viewer_css, mode, scope):
+    """Dots, rails, and tint borders are non-text marks: 3:1."""
+    tokens = theme_scopes(viewer_css)[scope]
+    for token in ("--pass", "--fail"):
+        color = tokens[token].strip()
+        worst = min(contrast(color, ground) for ground in _GROUNDS[mode])
+        assert worst >= 3.0, (
+            f"{mode} {token} ({color}) is {worst:.2f}:1 -- marks need 3:1")
+
+
+def test_warning_is_the_documented_low_contrast_exception(viewer_css):
+    """`--warn` is sub-3:1 on light by design.
+
+    The dataviz reference palette ships it that way and mitigates with the
+    icon + label pairing. This test pins the exception so nobody "fixes" the
+    hex and quietly breaks the palette's validated CVD separation.
+    """
+    light = theme_scopes(viewer_css)["light"]["--warn"].strip()
+    assert light == "#fab219"
+    assert min(contrast(light, g) for g in _GROUNDS["light"]) < 3.0
+
+
+def test_verdict_badges_pair_every_color_with_an_icon_and_a_word(viewer_html):
+    """The founding accessibility rule: color is never the only channel."""
+    builder = re.search(r"function badge\(kind, label\) \{(.*?)\n\}",
+                        viewer_html, re.S)
+    assert builder, "badge() builder is missing"
+    body = builder.group(1)
+    assert "ICONS[kind]" in body, "the badge must render an icon"
+    assert "esc(label)" in body, "the badge must render an escaped text label"
+    assert 'aria-hidden="true"' in body, (
+        "the icon is decorative next to its label; hide it from readers")
+
+
+def test_the_dagger_footnote_is_gone(viewer_html):
+    """Soft-judged runs get a readable tag, not a symbol you must decode."""
+    assert '<span class="dag">' not in viewer_source(viewer_html)
+    assert "soft judge" in viewer_html
+
+
+def test_the_signal_row_computes_what_its_chips_report(viewer_html):
+    stats = re.search(r"function runStats\(eps\) \{(.*?)\n\}", viewer_html, re.S)
+    assert stats, "runStats() is missing"
+    body = stats.group(1)
+    for key in ("malformed", "blocked", "errors", "worst"):
+        assert f"{key}:" in body or f"{key} =" in body, (
+            f"runStats() does not compute {key}")
+    assert "b.total - a.total" in body, (
+        "worst must break ties toward the scenario with more runs")
+
+
+def test_the_signal_counters_do_not_double_report(viewer_html):
+    """A malformed line is a protocol fault, not also a tool fault.
+
+    Both counters walk the same events, so without an explicit exclusion the
+    same call feeds the "malformed" chip and the "faulted" chip, and two
+    chips a reader reads as disjoint silently overlap.
+    """
+    fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", viewer_html, re.S)
+    assert fn, "countErrors() is missing"
+    assert '!== "malformed"' in fn.group(1), (
+        "countErrors must exclude malformed, which countMalformed reports")
+
+
+def test_signals_are_clickable_filters(viewer_html):
+    assert "let issueFilter = null" in viewer_html
+    assert 'data-issue=' in viewer_html
+
+
+def test_the_stat_tiles_stay_gone(viewer_css):
+    """Removed 2026-07-28 as unnecessary chrome; do not reintroduce."""
+    for gone in (".stats {", ".tile {", ".tile.hero"):
+        assert gone not in viewer_css, f"{gone} came back"
+
+
+def test_academic_captions_are_gone(viewer_html):
+    """No reader of a dashboard counts tables by number.
+
+    Searches the hand-written source: a judge's rationale in the embedded
+    snapshot can contain the words this test forbids.
+    """
+    source = viewer_source(viewer_html)
+    assert not re.search(r"<b>Table \d+:</b>", source)
+    assert 'class="tcap"' not in source
+
+
+def test_the_grid_ships_a_legend(viewer_html):
+    assert 'class="legend"' in viewer_html
+
+
+def test_the_grid_tags_only_the_minority_judge(viewer_html):
+    """264 "soft judge" tags on 314 badges is not an annotation, it's noise.
+
+    The grid must call badge() directly (not verdictBadge()) so it can tag
+    only the judge that is NOT the scenario set's majority judge -- the
+    majority becomes the note's stated default instead of a tag repeated on
+    84% of cells. softCount, which used to gate the note's soft-judge
+    sentence, is unused now that the note always states a default.
+    """
+    source = viewer_source(viewer_html)
+    grid = re.search(
+        r"-- Table 1: the verdict matrix --\s*\*/(.*?)-- Table 2:", source, re.S)
+    assert grid, "the grid-building block moved; update this test's anchors"
+    body = grid.group(1)
+    assert "verdictBadge(" not in body, (
+        "the grid must call badge() directly so it can control tagging")
+    assert "badge(" in body
+    assert "majorityJudge" in body and "judgeLabel(" in body
+    assert "softCount" not in source, (
+        "softCount is unused once the grid stops tagging every cell")
+
+
+def test_the_note_does_not_call_the_scripted_judge_official(viewer_html):
+    """"Official" is Gaia2's soft judge; the scripted fallback is not it.
+
+    The note states whichever judge is the majority as the default, so the
+    phrase has to depend on which one won rather than gluing "official" to
+    both.
+    """
+    source = viewer_source(viewer_html)
+    assert 'majorityJudge === "scripted"' in source, (
+        "the note must branch on which judge is the majority")
+    assert not re.search(r'official \$\{judgeLabel\(majorityJudge\)', source), (
+        "the note still calls whichever judge won the majority 'official'")
+
+
+def test_the_runs_table_shows_which_models_ran(viewer_html):
+    """'What models ran this?' is a headline question, not a detail-page one."""
+    assert "<th>models</th>" in viewer_html
+
+
+def test_rows_carry_their_issues_for_the_signal_filter(viewer_html):
+    assert "data-issues=" in viewer_html
+    assert "issueFilter" in viewer_html
+    assert "dataset.issues" in viewer_html
+
+
+def test_the_run_header_sticks(viewer_css):
+    """Scroll 200 turns down and you still know which run you are reading."""
+    bar = re.search(r"\.runbar \{(.*?)\}", viewer_css, re.S)
+    assert bar, ".runbar rule is missing"
+    assert "position: sticky" in bar.group(1)
+
+
+def test_the_judges_rationale_is_parsed_not_dumped(viewer_html):
+    fn = re.search(r"function parseRationale\(text\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "parseRationale() is missing"
+    body = fn.group(1)
+    assert "tool name:" in body, "the missing gold write must be extracted"
+    assert "List of matching attempts" in body, (
+        "the attempt dump must be separated from the headline")
+
+
+def test_failed_tool_calls_open_by_default(viewer_html):
+    """The evidence for a failure should not be behind a click."""
+    assert 'bad ? " open" : ""' in viewer_html, (
+        "delegation call lists must render <details open> when a call faulted")
+    assert 'class="call bad"' in viewer_html, (
+        "a faulted call must be marked so its rail turns red")
+
+
+def test_the_transcript_has_a_status_rail(viewer_css, viewer_html):
+    assert re.search(r"\.turn\[data-status=\"fail\"\]::before", viewer_css), (
+        "each turn needs a rail dot colored by its status")
+    assert "function turnStatus(e)" in viewer_html
+
+
+def test_the_shaping_signals_feature_survived_the_rebuild(viewer_html):
+    """Partial reward and the pivot marker predate this redesign (d844695).
+
+    The transcript rebuild restyles them; it does not get to drop them.
+    Searches the hand-written source: transcript prose in the embedded
+    snapshot could otherwise mask the feature's deletion.
+    """
+    source = viewer_source(viewer_html)
+    assert "d.credit" in source, "the shaping-signals block is gone"
+    assert "pivotAt" in source, "the pivot-marking loop is gone"
+    assert "pivotflag" in source, "the pivot flag is gone"
+    assert 'classList.add("pivot")' in source
+
+
+def test_the_gold_write_panel_keeps_multi_line_arguments(viewer_html):
+    """A wrapped value must not silently end the argument list.
+
+    An email body spanning lines used to break the loop, so every argument
+    after it vanished while the panel still read as the complete call.
+    """
+    fn = re.search(r"function parseRationale\(text\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "parseRationale() is missing"
+    body = fn.group(1)
+    assert "List of matching attempts:" in body, (
+        "the argument loop must run to the attempts log, not to the first "
+        "line that does not start with a dash")
+    assert 'args[args.length - 1] +=' in body, (
+        "a wrapped line must fold into the argument above it")
+    assert '=== "None"' in body, (
+        'a rationale of literal "None" must be treated as absent')
+
+
+def test_the_ledger_view_sets_a_rail_status(viewer_html):
+    """The Shipped-task ledger reuses .turn, so it needs a status too."""
+    fn = re.search(r"function renderBreakdownDetail\(content, s\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "renderBreakdownDetail() is missing"
+    assert 'dataset.status = "plain"' in fn.group(1), (
+        "ledger rows draw an uncoloured rail dot without an explicit status")
+
+
+def test_no_view_still_wears_the_paper_costume(viewer_html):
+    """One surface, one design: no leftovers from the evidence-page era.
+
+    Searches the hand-written source: "Table 3:" and its kin can occur inside
+    a run's transcript text, which lives in the embedded snapshot.
+    """
+    source = viewer_source(viewer_html)
+    for relic in ('class="draftline"', 'class="colophon"', "Table 3:", "Table 4:"):
+        assert relic not in source, f"{relic} survived the redesign"
+
+
+_DESIGN = _ROOT / "DESIGN.md"
+
+
+def test_design_doc_describes_the_shipped_palette():
+    """A design doc that contradicts the artifact is worse than none."""
+    text = _DESIGN.read_text()
+    for token in ("#0ca30c", "#d03b3b", "#fab219"):
+        assert token in text, f"DESIGN.md never mentions {token}"
+    assert "signal red" not in text.lower(), (
+        "the one-accent rule was overturned on 2026-07-28")
+
+
+def test_design_doc_does_not_document_retired_rules():
+    """Every refusal the shipped file breaks has to leave the doc with it.
+
+    A rule the artifact contradicts is read as the artifact being wrong, and
+    the next reader "fixes" the file back toward the retired system.
+    """
+    text = _DESIGN.read_text()
+    for retired in ("Table N", "dagger", "†", "No-Chrome Rule",
+                    "Bold-Figure Rule"):
+        assert retired not in text, (
+            f"DESIGN.md still documents the retired {retired!r} rule")
+    assert not re.search(r"\bTable \d", text), (
+        "numbered table captions were retired on 2026-07-28")
+
+
+def test_the_ledger_header_reports_blocked_and_the_answer(viewer_html):
+    """These have no other home in that view.
+
+    The per-turn blocked counts appear in the transcript rows but are summed
+    nowhere else, and the ledger has no verdict panel to carry the answer.
+
+    Asserts on the aggregate, not on `l.blocked`: that substring also matches
+    the per-turn row template built lower in the same function, so deleting
+    the header's sum would leave the old assertion passing.
+    """
+    fn = re.search(r"function renderBreakdownDetail\(content, s\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "renderBreakdownDetail() is missing"
+    body = fn.group(1)
+    # No DOTALL: the sum and its accumulator must sit on one line together,
+    # which the per-turn row template never does.
+    assert re.search(r"ledger\.reduce\(.*l\.blocked", body), (
+        "the ledger header must sum the per-turn blocked counts")
+    assert re.search(r'class="verdict-panel"', body) and "d.answer" in body, (
+        "the ledger must still report the final answer in its own panel")
+
+
+def test_the_ledger_header_escapes_both_of_its_sums(viewer_html):
+    """Two fields summed from the ledger must both be escaped before they
+    reach innerHTML -- whether the sum is injected inline or first hoisted
+    into a variable (as `blocked` is, a few lines above its own `<span>`).
+
+    A naive `[^)]*` regex can't span the reduce call's own arrow-function
+    parens (`(n, l) => ...`), so this allows one level of nesting instead.
+    """
+    fn = re.search(r"function renderBreakdownDetail\(content, s\) \{(.*?)\n\}",
+                   viewer_html, re.S)
+    assert fn, "renderBreakdownDetail() is missing"
+    body = fn.group(1)
+    sums = re.findall(r"d\.ledger\.reduce\((?:[^()]|\([^()]*\))*\)", body)
+    assert len(sums) >= 2, f"expected two summed fields, found {len(sums)}"
+    for s in sums:
+        inline = f"esc(String({s}))" in body
+        hoisted = re.search(r"const (\w+) = " + re.escape(s), body)
+        via_variable = hoisted and f"esc(String({hoisted.group(1)}))" in body
+        assert inline or via_variable, (
+            f"this sum reaches innerHTML unescaped: {s}")
+
+
+def test_no_status_class_paints_nothing(viewer_css):
+    """A colour rule whose every match overrides it is dead weight."""
+    assert not re.search(r"^\s*\.bad \{", viewer_css, re.M), (
+        ".bad's colour was inert -- every match overrode it")
