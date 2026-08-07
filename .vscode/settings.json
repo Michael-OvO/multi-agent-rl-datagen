@@ -1,0 +1,19 @@
+{
+  // The main environment, the one pyproject.toml + uv.lock describe. Without
+  // this the editor resolves against whatever venv it last had selected --
+  // which was .venv-gaia2, where `appworld` is deliberately absent, so every
+  // scripts/appworld_*.py lit up with unresolved-import errors that were
+  // artefacts of the wrong interpreter rather than anything in the code.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+
+  // Do not auto-activate that venv into new terminals. Activation is what
+  // exports VIRTUAL_ENV, and an exported VIRTUAL_ENV silently retargets every
+  // later `uv pip` in the shell -- including ones meant for the other
+  // environment. Reach both through uv instead, which is explicit about which
+  // one it means:
+  //
+  //   uv run pytest                                            # main
+  //   uv pip sync --python .venv-gaia2/bin/python requirements-gaia2.txt
+  //   .venv-gaia2/bin/python -m scripts.gaia2_cell_run ...     # Gaia2
+  "python.terminal.activateEnvironment": false
+}

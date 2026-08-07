@@ -6,11 +6,23 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates build-essential && rm -rf /var/lib/apt/lists/*
 
-# Pinned to the versions the local .venv-gaia2 measured with. The official
-# harness (Meta's Agents Research Environments; import name are.simulation)
-# needs pydantic 2, which is why this sidecar exists at all: the AppWorld
-# sidecar's environment carries pydantic 1 and the two cannot share an image.
-RUN pip install --no-cache-dir meta-agents-research-environments==1.2.0 openai==2.49.0
+# The same file the local .venv-gaia2 installs -- repo root's
+# requirements-gaia2.txt, shipped verbatim into every rendered task by
+# harbor.VERBATIM_COPIES. This line used to repeat the two pins by hand, which
+# meant the sweep's environment and the shipped task's environment were two
+# lists that nothing compared. There is one list now, and it is fully closed:
+# all 95 transitive versions, not just the two anyone thinks to bump.
+#
+# It is resolved `--universal`, so this linux/amd64 image and the maintainer's
+# macos/arm64 venv install the same versions rather than two resolutions of the
+# same constraints.
+#
+# The official harness (Meta's Agents Research Environments; import name
+# are.simulation) needs pydantic 2, which is why this sidecar exists at all:
+# the AppWorld sidecar's environment carries pydantic 1 and the two cannot
+# share an image.
+COPY requirements.txt /opt/maf/requirements.txt
+RUN pip install --no-cache-dir -r /opt/maf/requirements.txt
 
 WORKDIR /opt/maf
 

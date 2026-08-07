@@ -56,6 +56,12 @@ SIDECAR_APPWORLD_MODULES = ("__init__.py", "partition.py", "runtime.py", "sandbo
 #: be added without being guarded (the AppWorld lesson, kept).
 VERBATIM_COPIES = {
     "environment/Dockerfile.sidecar": _RUNTIME / "Dockerfile.sidecar",
+    # The sidecar's whole environment, closed over its transitives. The same
+    # file .venv-gaia2 installs, so the sweep and the shipped task cannot
+    # resolve to different Gaia2s -- and because it travels through this
+    # manifest, the byte-identity guard catches a bumped pin that was never
+    # re-rendered.
+    "environment/requirements.txt": Path(__file__).parents[2] / "requirements-gaia2.txt",
     "environment/team": _RUNTIME / "team",
     "environment/server.py": _RUNTIME / "server.py",
     # Shared with AppWorld on purpose: the verifier computes nothing, so

@@ -259,16 +259,33 @@ needs it, and needs **Docker running**.
 
 The official Gaia2 harness (Meta's Agents Research Environments, import name
 `are.simulation`) needs pydantic 2, which the main environment does not pin, so
-it lives in its own virtualenv:
+it lives in its own virtualenv, installed from its own lock file:
 
 ```bash
 uv venv .venv-gaia2 --python 3.11
-VIRTUAL_ENV=.venv-gaia2 uv pip install meta-agents-research-environments==1.2.0 openai==2.49.0
+uv pip sync --python .venv-gaia2/bin/python requirements-gaia2.txt
 ```
+
+`requirements-gaia2.txt` is compiled from `requirements-gaia2.in` and pins all
+95 transitive versions, not just the two packages worth naming. Its header
+carries the command that rebuilds it, `--exclude-newer` and all — that cutoff is
+the resolution the committed campaign actually ran under, so a recompile
+reproduces the environment the episodes were measured in instead of quietly
+resolving forward. `uv pip sync` rather than `install`: it removes anything the
+file does not declare, which is what makes the guard in
+`forge/tests/test_environment.py` able to insist the environment on disk matches.
+
+The same file builds the Harbor sidecar. `forge/gaia2/container/Dockerfile.sidecar`
+installs `-r requirements.txt`, and the renderer ships this exact file into every
+task as that `requirements.txt` — so the environment you sweep in and the one a
+reviewer's container runs are one list, not two that agree until they don't.
 
 **Anything that touches `are.simulation` runs under `.venv-gaia2`, never the main
 `.venv`.** That covers `gaia2_cell_run`, `gaia2_campaign`, and the Harbor sidecar.
 Static analysis — fetching, admission, rendering — runs under the main `.venv`.
+Address it by path (`--python .venv-gaia2/bin/python`) rather than by exporting
+`VIRTUAL_ENV`: an exported one silently retargets every later `uv pip` in the
+shell, including ones meant for the main environment.
 
 ```bash
 uv run pytest

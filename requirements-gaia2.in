@@ -1,0 +1,33 @@
+# The Gaia2 measurement environment, stated as intent. The compiled closure is
+# requirements-gaia2.txt, and its own header carries the command that rebuilds
+# it byte-for-byte -- including `--exclude-newer 2026-07-28T12:00:00Z`.
+#
+# That timestamp is not decoration. It is the resolution the campaign in
+# output/rollouts/ actually ran under: compiling at that cutoff reproduces the
+# 93 installed versions exactly. Without it a recompile silently walks the
+# transitive closure forward -- 12 packages had already moved by 2026-08-07 --
+# and the file would stop describing the episodes it is supposed to describe.
+#
+# To deliberately move the environment: bump the pins below, move the cutoff to
+# now, recompile, `uv pip sync`, and re-measure. All four, in that order.
+#
+# Two packages, and the reason for each:
+#
+#   * The official harness -- Meta's Agents Research Environments, import name
+#     `are.simulation`. It needs pydantic 2, and appworld resolves pydantic 1,
+#     which is why this environment is separate from the one pyproject.toml
+#     describes rather than a dependency group inside it.
+#   * The model client the specialists and the soft judge both speak through.
+#     A different major here is a different judge, and the judge is what every
+#     yield in output/rollouts/ was scored by.
+#
+# Nothing else belongs here. Anything that does not touch `are.simulation` runs
+# under the main .venv and is declared in pyproject.toml.
+#
+# `--universal` matters: this same file is installed by the local .venv-gaia2 on
+# macOS/arm64 and by forge/gaia2/container/Dockerfile.sidecar on linux/amd64. A
+# platform-specific resolution would give the shipped task a different Gaia2
+# than the sweep measured, which is the exact drift this design removes.
+
+meta-agents-research-environments==1.2.0
+openai==2.49.0
