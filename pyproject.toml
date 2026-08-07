@@ -6,10 +6,18 @@ requires-python = ">=3.11"
 
 # Pinned to exactly what forge/appworld/container/Dockerfile.sidecar installs.
 #
-# These are not dev conveniences -- this is the environment every measurement in
-# WRITEUP.md was taken in. If they drift from the sidecar, the sweep measures a
-# different AppWorld than the shipped task runs and nothing would say so.
-# forge/tests/test_environment.py fails if they stop matching.
+# These are not dev conveniences -- this is the environment the AppWorld
+# measurements in WRITEUP.md were taken in. If they drift from the sidecar, that
+# sweep measures a different AppWorld than the shipped task runs and nothing
+# would say so. forge/tests/test_environment.py fails if they stop matching.
+#
+# This is *not* the environment the current campaign runs in. Gaia2 is the
+# substrate now, it needs pydantic 2, and appworld resolves pydantic 1 -- so the
+# two cannot share an interpreter. Gaia2's environment is requirements-gaia2.txt
+# and lives in .venv-gaia2; see the README, and the Gaia2 half of
+# forge/tests/test_environment.py. AppWorld stays declared here because
+# scripts/appworld_*.py and forge/appworld/ still import it: the probes that
+# produced WRITEUP.md have to keep running, or those numbers become unbacked.
 dependencies = [
     "appworld==0.1.3.post1",
     "openai==2.16.0",

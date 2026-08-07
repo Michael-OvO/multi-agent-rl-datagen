@@ -159,6 +159,24 @@ def test_committed_tasks_match_the_generator(task, dest):
         f"`python -m forge.gaia2.cli render`")
 
 
+def test_the_sidecar_pin_file_travels_with_every_task():
+    """The container installs the same file `.venv-gaia2` installs.
+
+    `forge/tests/test_environment.py` forbids the sidecar from naming a version
+    inline, which only helps if the file it installs instead actually arrives in
+    the rendered task. Putting it in VERBATIM_COPIES also buys the byte-identity
+    guard above for free -- a bumped pin that is not re-rendered fails there.
+    """
+    assert "environment/requirements.txt" in VERBATIM_COPIES, (
+        "the sidecar installs -r requirements.txt but the renderer does not "
+        "ship it; every rendered task would fail to build"
+    )
+    assert VERBATIM_COPIES["environment/requirements.txt"] == (
+        REPO / "requirements-gaia2.txt"), (
+        "the task's requirements.txt must be the repo's own gaia2 pin file, "
+        "not a second copy that can drift from it")
+
+
 @pytest.mark.skipif(not _TASKS, reason="no rendered gaia2 tasks in the repo")
 @pytest.mark.parametrize("task", _TASKS, ids=lambda p: p.name)
 def test_committed_tasks_ship_no_module_the_generator_dropped(task):
