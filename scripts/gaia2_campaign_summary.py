@@ -28,6 +28,53 @@ def cell_type(config: str) -> str:
     return "context" if config.endswith("binf") else "economy"
 
 
+def _mean(values):
+    values = [v for v in values if v is not None]
+    return round(sum(values) / len(values), 3) if values else None
+
+
+def summarize(rows) -> dict:
+    """Verdicts and shaping signals by cell type, each split by judge.
+
+    The split inside every arm is the point, not decoration. The grader is
+    welded to the scenario -- reply-conditioned rows go to the soft judge,
+    the rest to the scripted verifier -- so an arm's pooled success count
+    mixes two graders over disjoint populations. In v3 that shape was misread
+    twice in one sitting: pooled arm rates looked comparable while every
+    success sat in the scripted column. The pooled number stays (it is what
+    the campaign yielded), but never without its decomposition.
+    """
+    summary: dict = {}
+    for t in ("control", "discovery", "context", "economy"):
+        sub = [r for r in rows if r["cell_type"] == t]
+        if not sub:
+            continue
+        entry = {
+            "cells": len(sub),
+            "success": sum(1 for r in sub if r["success"]),
+            "by_judge": {
+                j: {"cells": len(g), "success": sum(1 for r in g if r["success"])}
+                for j in sorted({r["judge"] for r in sub})
+                for g in [[r for r in sub if r["judge"] == j]]
+            },
+            "mean_partial_reward": _mean(r["partial_reward"] for r in sub),
+            "pivot_kinds": dict(Counter(
+                r["pivot_kind"] for r in sub if r["pivot_kind"])),
+        }
+        if t == "economy":
+            entry["mean_economy_reward"] = _mean(
+                r["delegation_economy_reward"] for r in sub)
+        summary[t] = entry
+
+    by_judge = defaultdict(lambda: [0, 0])
+    for r in rows:
+        by_judge[r["judge"]][0] += 1
+        by_judge[r["judge"]][1] += r["success"]
+    summary["by_judge"] = {
+        j: {"cells": n, "success": s} for j, (n, s) in sorted(by_judge.items())}
+    return summary
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--label", default="full")
@@ -68,32 +115,7 @@ def main() -> None:
         })
     rows.sort(key=lambda r: (r["scenario_id"], r["cell_type"]))
 
-    def mean(values):
-        values = [v for v in values if v is not None]
-        return round(sum(values) / len(values), 3) if values else None
-
-    summary: dict = {}
-    for t in ("control", "discovery", "context", "economy"):
-        sub = [r for r in rows if r["cell_type"] == t]
-        if not sub:
-            continue
-        entry = {
-            "cells": len(sub),
-            "success": sum(1 for r in sub if r["success"]),
-            "mean_partial_reward": mean(r["partial_reward"] for r in sub),
-            "pivot_kinds": dict(Counter(
-                r["pivot_kind"] for r in sub if r["pivot_kind"])),
-        }
-        if t == "economy":
-            entry["mean_economy_reward"] = mean(
-                r["delegation_economy_reward"] for r in sub)
-        summary[t] = entry
-    by_judge = defaultdict(lambda: [0, 0])
-    for r in rows:
-        by_judge[r["judge"]][0] += 1
-        by_judge[r["judge"]][1] += r["success"]
-    summary["by_judge"] = {
-        j: {"cells": n, "success": s} for j, (n, s) in sorted(by_judge.items())}
+    summary = summarize(rows)
 
     matrix = defaultdict(dict)
     for r in rows:
@@ -108,7 +130,11 @@ def main() -> None:
             "scenarios soft-judged, unconditioned ones script-judged, with "
             "partial-credit/pivot shaping signals from "
             "sweep/gaia2_credit.json stamped per row. Single seed: this is "
-            "the first pass of the five-seed sweep, not the sweep."),
+            "the first pass of the five-seed sweep, not the sweep. Read each "
+            "arm's by_judge split before its pooled success count: the "
+            "grader is welded to the scenario population, so the pooled "
+            "number mixes two graders over disjoint populations and prices "
+            "neither."),
         "summary": summary,
         "verdict_matrix": dict(sorted(matrix.items())),
         "rows": rows,
