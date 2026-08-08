@@ -83,9 +83,12 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(f"{span.scenario_id}: roster {span.roster} has nothing "
                          "to coordinate; this scenario was never admitted")
     if span.roster_blind:
-        facts = ", ".join(
+        # dict.fromkeys: one line per distinct fact -- roster_blind keeps an
+        # entry per consuming write, so the same missing file appears once
+        # for each gold email that attaches it.
+        facts = ", ".join(dict.fromkeys(
             f"{f.arg} needs {f.leaf!r} (only in {'/'.join(f.sources)})"
-            for f in span.roster_blind[:3])
+            for f in span.roster_blind))
         raise SystemExit(
             f"{span.scenario_id}: roster-blind, refusing to spend an episode "
             f"on it -- the gold writes consume facts no seat can read: "

@@ -146,3 +146,32 @@ def test_direct_cell_run_refuses_a_blind_scenario_before_spending():
     fixture = "forge/tests/fixtures/gaia2/blind.json"
     with pytest.raises(SystemExit, match="roster-blind"):
         main(["--scenario", fixture, "--ability", "control"])
+
+
+def test_the_blind_refusal_names_each_missing_fact_once():
+    # s24 has two gold emails, each attaching the same file, so roster_blind
+    # honestly carries two facts -- and the refusal printed "attachment_paths
+    # needs 'wikipedia_41.txt' (only in Files)" twice. The data keeps every
+    # consuming write; the message names each distinct fact once.
+    import json
+
+    import pytest
+
+    from scripts.gaia2_cell_run import main
+
+    fixture = json.loads(
+        open("forge/tests/fixtures/gaia2/blind.json").read())
+    fixture["events"].append(json.loads(json.dumps(
+        next(e for e in fixture["events"]
+             if e["class_name"] == "OracleEvent")
+    )) | {"event_id": "OracleEvent-AGENT-fixture-2"})
+    path = "forge/tests/fixtures/gaia2/.blind_twice.json"
+    open(path, "w").write(json.dumps(fixture))
+    try:
+        with pytest.raises(SystemExit) as exc:
+            main(["--scenario", path, "--ability", "control"])
+        message = str(exc.value)
+        assert message.count("lease_agreement_2023.txt") == 1, message
+    finally:
+        import os
+        os.unlink(path)
