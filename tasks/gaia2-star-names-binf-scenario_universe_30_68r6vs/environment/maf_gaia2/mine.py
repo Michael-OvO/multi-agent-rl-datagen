@@ -51,6 +51,14 @@ MAX_SEAM_SOURCES = 2
 
 MIN_ROSTER = 2  # below this there is no coordination to test
 
+#: Containment matching (a state leaf appearing *inside* a gold argument)
+#: needs a stricter floor than equality: below this, containment is
+#: coincidence -- short tokens, dates, and first names recur across apps.
+#: At or above it, a leaf inside an argument is the fact itself, carried
+#: whole: a filename inside a serialized attachment list, a job title
+#: inside a composed email body.
+CONTAINMENT_MIN_LEN = 12
+
 
 @dataclass(frozen=True)
 class GoldWrite:
@@ -70,6 +78,25 @@ class Seam:
     value: str
     function: str
     arg: str
+
+
+@dataclass(frozen=True)
+class BlindFact:
+    """A fact a gold write consumes that no roster seat can read.
+
+    The leaf provably exists in the world -- inside `sources`' initial
+    state -- and provably reaches the gold argument, but every app that
+    holds it is outside the roster. Under this partition the scenario is
+    unsolvable by construction, and every episode run on it is money spent
+    measuring nothing. v4 paid for four of them on one scenario before
+    this existed.
+    """
+
+    app: str
+    function: str
+    arg: str
+    leaf: str
+    sources: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -94,10 +121,19 @@ class Gaia2Span:
     #: environment/user barriers, and chooses one source when a seam fact is
     #: available from alternative apps. See delegation_heuristic().
     delegation_target: int = 0
+    #: Facts the gold writes consume that only off-roster apps hold. Any
+    #: entry means the partition is incomplete and the scenario cannot be
+    #: solved from its own seats -- see BlindFact.
+    roster_blind: tuple[BlindFact, ...] = ()
 
     @property
     def usable(self) -> bool:
         return len(self.roster) >= MIN_ROSTER
+
+    @property
+    def partition_complete(self) -> bool:
+        """Whether every consumed fact is reachable from some seat."""
+        return not self.roster_blind
 
     @property
     def seamful(self) -> bool:
@@ -527,6 +563,77 @@ def delegation_target(scenario: dict) -> int:
     return delegation_heuristic(scenario).target
 
 
+def _given_text(scenario: dict) -> str:
+    """Everything the world hands the agent: the instruction, plus the
+    content of every non-oracle event (notifications, delivered messages,
+    scheduled replies). A fact that arrives through any of these channels
+    is given, not blind -- scenario_universe_22_6wkrhc's chat partner is
+    named only in the off-roster Chats state, but an environment event
+    delivers a message bearing the name, so the scenario is solvable.
+
+    Oracle events are excluded: their args are the answer key, and counting
+    them as given would mark every scenario solvable by definition.
+    """
+    parts = [user_text(scenario)]
+    for event in _events(scenario):
+        if event.get("class_name") == "OracleEvent":
+            continue
+        for arg in (event.get("action") or {}).get("args") or []:
+            value = arg.get("value")
+            if isinstance(value, str):
+                parts.append(value)
+    return "\n".join(parts)
+
+
+def roster_blind_facts(scenario: dict) -> tuple[BlindFact, ...]:
+    """Facts consumed by gold writes that only off-roster apps can supply.
+
+    The seam pass compares argument values against state leaves by equality.
+    That misses containment: scenario_universe_24_tg3h3h's gold emails carry
+    attachment_paths='["/Documents/wiki/wikipedia_41.txt"]', and the Files
+    app's leaves are `wikipedia_41.txt` and `demo_filesystem/Documents/wiki/
+    wikipedia_41.txt` -- provably the source, never equal to the serialized
+    list. Files stayed off the roster and all four v4 arms burned their whole
+    budget searching mailboxes for a file no seat could reach.
+
+    This pass asks the narrower admission question: is there a leaf that
+    (a) appears inside a gold argument whole (equality, or containment at
+    CONTAINMENT_MIN_LEN or longer), (b) is never handed to the agent --
+    not in the instruction, not in anything a non-oracle event delivers
+    mid-episode -- and (c) exists only in apps outside the roster? The
+    ambient guard mirrors the seam rule: a leaf held by more than
+    MAX_SEAM_SOURCES apps is scenery, not provenance.
+    """
+    states = app_state_values(scenario)
+    given = _given_text(scenario)
+    roster = set(derive_roster(scenario))
+    blind: list[BlindFact] = []
+    for write in gold_writes(scenario):
+        for arg_name, value in write.args:
+            if len(value) < MIN_VALUE_LEN or value in given:
+                continue
+            leaves = {
+                leaf
+                for values in states.values()
+                for leaf in values
+                if leaf == value
+                or (len(leaf) >= CONTAINMENT_MIN_LEN and leaf in value)
+            }
+            for leaf in sorted(leaves):
+                if leaf in given:
+                    continue
+                providers = sorted(
+                    app for app, values in states.items() if leaf in values)
+                if not providers or len(providers) > MAX_SEAM_SOURCES:
+                    continue
+                if any(app in roster for app in providers):
+                    continue
+                blind.append(BlindFact(
+                    app=write.app, function=write.function, arg=arg_name,
+                    leaf=leaf, sources=tuple(providers)))
+    return tuple(blind)
+
+
 def admit(scenario: dict) -> Gaia2Span:
     """Measure one scenario. `usable` and `seamful` are read off the result."""
     seams = tuple(information_seams(scenario))
@@ -537,4 +644,5 @@ def admit(scenario: dict) -> Gaia2Span:
         seams=seams,
         conditioned_env_events=conditioned_env_events(scenario),
         delegation_target=delegation_target(scenario),
+        roster_blind=roster_blind_facts(scenario),
     )

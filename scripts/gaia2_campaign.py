@@ -48,6 +48,11 @@ def eligible(span, scripted_only: bool) -> bool:
     """
     if not (span.usable and span.seamful):
         return False
+    if span.roster_blind:
+        # The partition provably omits a fact the gold writes consume (see
+        # mine.BlindFact): every seat is locked out of it, so every episode
+        # is a guaranteed failure. v4 bought four of these on one scenario.
+        return False
     return not (scripted_only and span.reply_conditioned)
 
 

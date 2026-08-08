@@ -16,9 +16,10 @@ from scripts.gaia2_campaign import eligible
 from scripts.gaia2_campaign_summary import summarize
 
 
-def span(usable=True, seamful=True, reply_conditioned=False):
+def span(usable=True, seamful=True, reply_conditioned=False, roster_blind=()):
     return SimpleNamespace(usable=usable, seamful=seamful,
-                           reply_conditioned=reply_conditioned)
+                           reply_conditioned=reply_conditioned,
+                           roster_blind=roster_blind)
 
 
 # -- eligible: admission plus the judge-uniform restriction -----------------
@@ -38,6 +39,17 @@ def test_the_full_grid_keeps_reply_conditioned_scenarios():
 def test_scripted_only_drops_exactly_the_soft_judged_population():
     assert not eligible(span(reply_conditioned=True), scripted_only=True)
     assert eligible(span(reply_conditioned=False), scripted_only=True)
+
+
+def test_a_roster_blind_scenario_never_runs():
+    # v4 bought four guaranteed failures on scenario_universe_24_tg3h3h: its
+    # gold attachment lives in Files, and Files is not on the roster, so no
+    # seat -- control included -- could ever produce the required emails. A
+    # scenario whose partition provably omits a consumed fact is excluded
+    # from every grid, under either judge.
+    blind = (("Emails", "send_email", "attachment_paths"),)
+    for flag in (False, True):
+        assert not eligible(span(roster_blind=blind), scripted_only=flag)
 
 
 # -- summarize: the per-arm x judge split -----------------------------------
