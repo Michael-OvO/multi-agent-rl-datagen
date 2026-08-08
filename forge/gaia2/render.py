@@ -76,6 +76,11 @@ def render_cells(
         span = admit(scenario)
         if not (span.usable and span.seamful):
             continue
+        if span.roster_blind:
+            # The partition provably omits a fact the gold writes consume
+            # (mine.BlindFact); every cell built from it is a guaranteed
+            # failure. Same refusal as the campaign and the render CLI.
+            continue
         structure: Structure = structure_of(scenario)
         seam_edges = tuple(
             sorted({(seam.source, seam.target) for seam in span.seams})

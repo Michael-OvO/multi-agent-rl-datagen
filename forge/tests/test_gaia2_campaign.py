@@ -130,3 +130,19 @@ def test_a_labelled_credit_run_cannot_clobber_the_cited_evidence():
     assert dest_for("v3").name == "gaia2_v3_credit.json"
     assert dest_for("v3") != dest_for("full")
     assert "v3" in note_for("v3") and "full-campaign" not in note_for("v3")
+
+
+def test_direct_cell_run_refuses_a_blind_scenario_before_spending():
+    # eligible() protects the campaign path, but scripts.gaia2_cell_run is
+    # the documented single-cell entry point, and it checked only
+    # span.usable -- a directly invoked blind scenario would still buy a
+    # guaranteed-failure episode. The refusal must fire before the
+    # .venv-gaia2 imports and before any model call, so it works (and is
+    # testable) under any interpreter.
+    import pytest
+
+    from scripts.gaia2_cell_run import main
+
+    fixture = "forge/tests/fixtures/gaia2/blind.json"
+    with pytest.raises(SystemExit, match="roster-blind"):
+        main(["--scenario", fixture, "--ability", "control"])

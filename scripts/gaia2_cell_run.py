@@ -27,12 +27,13 @@ import json
 import time
 from pathlib import Path
 
+from forge.gaia2.mine import admit
 from scripts._env import require_api_key
 
 CONTROL = "control"
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scenario", required=True, help="one fetched scenario JSON")
     parser.add_argument(
@@ -63,11 +64,32 @@ def main() -> None:
         help="override the task-derived soft bN delegation target",
     )
     parser.add_argument("--out", default="output/rollouts")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.economy_target is not None and args.economy_target < 1:
         parser.error("--economy-target must be positive")
     if args.economy_target is not None and args.ability != "delegation-economy":
         parser.error("--economy-target applies only to delegation-economy")
+
+    # Admission before the API key and before the .venv-gaia2 imports: a
+    # scenario this refuses must be refused under any interpreter, with or
+    # without credentials -- the campaign filters blind scenarios, but this
+    # script is the documented single-cell entry point and used to check
+    # only `usable`, so a direct invocation could still buy a
+    # guaranteed-failure episode.
+    scenario_path = Path(args.scenario)
+    scenario = json.loads(scenario_path.read_text())
+    span = admit(scenario)
+    if not span.usable:
+        raise SystemExit(f"{span.scenario_id}: roster {span.roster} has nothing "
+                         "to coordinate; this scenario was never admitted")
+    if span.roster_blind:
+        facts = ", ".join(
+            f"{f.arg} needs {f.leaf!r} (only in {'/'.join(f.sources)})"
+            for f in span.roster_blind[:3])
+        raise SystemExit(
+            f"{span.scenario_id}: roster-blind, refusing to spend an episode "
+            f"on it -- the gold writes consume facts no seat can read: "
+            f"{facts}")
 
     require_api_key()
 
@@ -79,20 +101,12 @@ def main() -> None:
     from forge.abilities import Ability, config_for
     from forge.appworld.partition import control_for
     from forge.gaia2.are_world import open_world
-    from forge.gaia2.mine import admit
     from forge.gaia2.runtime import (
         DEFAULT_MODEL,
         EpisodeLog,
         delegation_economy_features,
         run_main,
     )
-
-    scenario_path = Path(args.scenario)
-    scenario = json.loads(scenario_path.read_text())
-    span = admit(scenario)
-    if not span.usable:
-        raise SystemExit(f"{span.scenario_id}: roster {span.roster} has nothing "
-                         "to coordinate; this scenario was never admitted")
 
     target = (
         span.delegation_target
