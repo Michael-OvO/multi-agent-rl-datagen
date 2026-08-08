@@ -113,7 +113,13 @@ def main() -> None:
         if task is None:
             raise SystemExit(f"{span.scenario_id}: the scenario never sent a "
                              "user task; nothing to run")
-        client = OpenAI()
+        # Explicit, finite, and generous: the slowest observed reasoning turn
+        # in a v4 episode was ~3 minutes, so 300s catches a dead connection
+        # without cutting off a live long thought. Retries reconnect rather
+        # than wait -- chat completions are stateless, so a retried request
+        # costs at most a duplicate turn, never corrupted state. Library
+        # defaults left two v4 episodes blocked in SSL_read for nine hours.
+        client = OpenAI(timeout=300.0, max_retries=3)
         log = EpisodeLog()
         answer = run_main(client, world, task, config, log,
                           model=main_model, sub_model=args.sub_model,

@@ -78,6 +78,31 @@ def test_the_overall_judge_totals_survive():
     assert s["by_judge"]["gpt-5.6-sol"] == {"cells": 1, "success": 0}
 
 
+# -- the episode client must not be able to hang forever --------------------
+
+
+def test_the_episode_client_sets_an_explicit_timeout_and_retry_budget():
+    # The v4 campaign finished 18 cells in ~100 minutes and then sat for nine
+    # hours on two episodes blocked in SSL_read -- an API connection died and
+    # `OpenAI()` at library defaults waited on the dead socket indefinitely.
+    # A paid campaign must fail a request in minutes and retry on a fresh
+    # connection, not wait overnight for bytes that will never come.
+    import ast
+    from pathlib import Path
+
+    src = Path("scripts/gaia2_cell_run.py").read_text()
+    calls = [n for n in ast.walk(ast.parse(src))
+             if isinstance(n, ast.Call)
+             and getattr(n.func, "id", getattr(n.func, "attr", "")) == "OpenAI"]
+    assert calls, "gaia2_cell_run.py no longer constructs the OpenAI client?"
+    for call in calls:
+        kwargs = {kw.arg for kw in call.keywords}
+        assert {"timeout", "max_retries"} <= kwargs, (
+            f"OpenAI(...) at line {call.lineno} lacks an explicit timeout / "
+            f"max_retries; a dead connection hangs the episode forever"
+        )
+
+
 # -- the credit probe writes label-scoped evidence --------------------------
 
 
