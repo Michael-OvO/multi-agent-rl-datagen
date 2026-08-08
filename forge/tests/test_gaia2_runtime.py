@@ -495,6 +495,75 @@ def test_a_malformed_control_call_leaves_a_trajectory_event():
     assert log.malformed == 1
 
 
+def test_a_call_with_trailing_commentary_still_executes():
+    # 96 of the 108 malformed lines in the v3 campaign were a correct tool
+    # name and valid JSON followed by the model reasoning on the same line:
+    #   CALL Emails__search_emails :: {"query":"Kare Jensen"} disallowed? No.
+    # Rejecting those measured whether a reasoning model can suppress its own
+    # commentary -- not any of the three abilities under test. The arguments
+    # end where their JSON object closes; what follows is noise, not protocol.
+    client = FakeClient(
+        main_replies=[],
+        specialist_replies=[
+            'CALL Contacts__lookup :: {"name": "Kai"} disallowed? No, continue.',
+            "FINAL: 12 Rose Lane"])
+    log = EpisodeLog()
+    calls: list[dict] = []
+    run_specialist(client, FakeWorld(), "Contacts", "find Kai", log,
+                   calls_out=calls)
+    assert log.malformed == 0
+    assert calls[0]["status"] == "ok"
+    assert calls[0]["args"] == {"name": "Kai"}
+
+
+def test_trailing_commentary_recovery_respects_braces_inside_strings():
+    # The recovery scan must know that a brace inside a JSON string is data,
+    # not structure -- otherwise it truncates the object at the wrong depth
+    # and mangles the arguments it was trying to save.
+    client = FakeClient(
+        main_replies=[],
+        specialist_replies=[
+            'CALL Contacts__lookup :: {"name": "Br{ce} Kai"} hmm {thinking}',
+            "FINAL: 12 Rose Lane"])
+    log = EpisodeLog()
+    calls: list[dict] = []
+    run_specialist(client, FakeWorld(), "Contacts", "find Kai", log,
+                   calls_out=calls)
+    assert log.malformed == 0
+    assert calls[0]["args"] == {"name": "Br{ce} Kai"}
+
+
+def test_a_control_call_with_multiline_commentary_still_executes():
+    # The Main-level CALL goes through the same parser, and the trailing
+    # thought often arrives on its own line -- the regex spans newlines.
+    client = FakeClient([
+        'CALL Contacts__lookup :: {"name": "Kai"}\nWait, is that the right one?',
+        "DONE :: booked the 12:45 cab, ride 91346c"])
+    log = EpisodeLog()
+    run_main(client, FakeWorld(), "task", control_for(ROSTER), log)
+    assert log.malformed == 0
+    ok = [e for e in log.events if e["type"] == "call" and e["status"] == "ok"]
+    assert len(ok) == 1 and ok[0]["args"] == {"name": "Kai"}
+
+
+def test_truncated_json_is_still_corrected_not_guessed_at():
+    # Recovery only fires when a complete object is actually there. A call
+    # cut off mid-arguments has no faithful reading, and inventing one would
+    # execute a tool with arguments the model never finished stating.
+    client = FakeClient(
+        main_replies=[],
+        specialist_replies=['CALL Contacts__lookup :: {"name": ',
+                            'CALL Contacts__lookup :: {"name": "Kai"}',
+                            "FINAL: 12 Rose Lane"])
+    log = EpisodeLog()
+    calls: list[dict] = []
+    run_specialist(client, FakeWorld(), "Contacts", "find Kai", log,
+                   calls_out=calls)
+    assert log.malformed == 1
+    assert calls[0]["status"] == "malformed"
+    assert calls[1]["status"] == "ok"
+
+
 # -- the trajectory serializes ----------------------------------------------
 
 

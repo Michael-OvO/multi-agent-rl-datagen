@@ -61,3 +61,12 @@ def test_economy_target_is_adjustable_without_changing_other_cells():
         "star-docs-b5",
     ]
     assert all(c.delegation_target == 5 for c in cells)
+
+
+def test_blind_scenarios_render_nothing():
+    # The campaign refuses roster-blind scenarios, but render_cells was still
+    # happy to build their grid -- reproduced rendering four cells from this
+    # fixture the day the admission check landed. A partition whose gold
+    # writes consume a fact no seat can read renders zero cells, matching
+    # the render CLI's refusal.
+    assert render_cells([_load("blind")]) == []

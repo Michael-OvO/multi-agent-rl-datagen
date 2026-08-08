@@ -100,3 +100,82 @@ def test_multi_app_writes_without_crossing_fact_is_operation_seam():
 def test_infra_apps_never_join_the_roster():
     for name in ("seamful", "singleapp", "operation"):
         assert "AgentUserInterface" not in admit(_load(name)).roster
+
+
+# -- roster blindness: facts only readable from outside the partition -------
+#
+# Found by the v4 campaign, at full price. scenario_universe_24_tg3h3h's gold
+# emails attach /Documents/wiki/wikipedia_41.txt, which lives in the Files
+# app -- and Files never joined the roster, because provenance matching was
+# exact string equality and the gold argument is the *serialized list*
+# '["/Documents/wiki/wikipedia_41.txt"]'. No leaf equals that. Every seat,
+# control included, spent its whole budget searching mailboxes for a file
+# that was never reachable: 4 guaranteed failures per seed. s22_bt12gw is the
+# same defect through prose: the deciding job title exists only in Contacts,
+# and Contacts is off-roster. Containment (a state leaf appearing inside a
+# gold argument) is the provenance relation equality missed.
+
+
+def test_a_fact_only_readable_outside_the_roster_marks_the_scenario_blind():
+    span = admit(_load("blind"))
+    assert span.roster == ("Contacts", "Emails"), "fixture drifted"
+    assert span.roster_blind, (
+        "the gold attachment path exists only in Files, which is not on the "
+        "roster; nothing flagged the scenario as unsolvable")
+    assert any("Files" in fact.sources for fact in span.roster_blind)
+    assert not span.partition_complete
+
+
+def test_a_roster_covered_scenario_is_not_blind():
+    span = admit(_load("seamful"))
+    assert span.roster_blind == ()
+    assert span.partition_complete
+
+
+def test_instruction_supplied_facts_are_never_blind():
+    # Everything the user said travels with the task; only world-state the
+    # roster cannot reach makes a partition incomplete.
+    span = admit(_load("operation"))
+    assert span.roster_blind == ()
+
+
+def test_short_fragments_do_not_mark_blindness():
+    # Containment below the guard length is coincidence, not provenance --
+    # short tokens recur everywhere ("INBOX", dates, first names).
+    scenario = _load("blind")
+    for app in scenario["apps"]:
+        if app["name"] == "Files":
+            app["app_state"] = {"files": ["lease", "2023.txt"]}
+    span = admit(scenario)
+    assert span.roster_blind == ()
+
+
+def test_a_fact_delivered_by_an_environment_event_is_not_blind():
+    # scenario_universe_22_6wkrhc looked blind -- a chat partner's name only
+    # in the off-roster Chats app -- but a scheduled environment event
+    # delivers a message containing that very name mid-episode. What the
+    # world hands the agent is given, exactly like the instruction; only
+    # facts that never arrive through any channel make a partition blind.
+    scenario = _load("blind")
+    scenario["events"].append({
+        "class_name": "Event",
+        "event_type": "ENV",
+        "event_time": 1728975700.0,
+        "event_id": "Event-ENV-fixture-1",
+        "dependencies": [],
+        "event_relative_time": 100.0,
+        "action": {
+            "action_id": "Emails.deliver-fixture",
+            "app": "Emails",
+            "function": "deliver_email",
+            "operation_type": "WRITE",
+            "args": [{
+                "name": "content",
+                "value": "Reminder: the file is leases/lease_agreement_2023.txt in your documents.",
+                "value_type": "str",
+            }],
+        },
+        "metadata": None,
+    })
+    span = admit(scenario)
+    assert span.roster_blind == ()

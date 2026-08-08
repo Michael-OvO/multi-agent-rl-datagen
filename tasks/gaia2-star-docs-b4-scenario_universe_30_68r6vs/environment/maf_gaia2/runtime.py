@@ -315,8 +315,48 @@ def describe_tool(tool) -> str:
     return "\n".join(lines)
 
 
+def _first_object(raw: str) -> str | None:
+    """The first balanced {...} in `raw`, or None if no object closes.
+
+    String-aware: a brace inside a JSON string is data, not structure, so the
+    scan tracks quoting and escapes rather than counting characters.
+    """
+    start = raw.find("{")
+    if start < 0:
+        return None
+    depth, in_string, escaped = 0, False, False
+    for i in range(start, len(raw)):
+        ch = raw[i]
+        if escaped:
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif ch == '"':
+            in_string = not in_string
+        elif not in_string:
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return raw[start:i + 1]
+    return None
+
+
 def _parse_call(line: str) -> tuple[str, dict] | str:
-    """A (tool, args) pair, or the correction to send back."""
+    """A (tool, args) pair, or the correction to send back.
+
+    The arguments end where their JSON object closes, not at end-of-line. 96
+    of the 108 malformed lines in the v3 campaign were a correct tool name and
+    valid JSON with the model's reasoning spilling onto the same line --
+    `... :: {"query": "Kare Jensen"} disallowed? No, continue.` -- and every
+    one of those corrections burned a turn measuring whether a reasoning model
+    can suppress its own commentary, which is none of the abilities under
+    test. So: strict parse first, then the first balanced object; a correction
+    only when no complete object is there to read (truncated arguments have no
+    faithful reading, and guessing would run a tool with arguments the model
+    never finished stating).
+    """
     m = _CALL.match(line.strip())
     if not m:
         return ("Malformed. Use 'CALL <tool> :: {\"param\": value}' with the "
@@ -327,7 +367,14 @@ def _parse_call(line: str) -> tuple[str, dict] | str:
     try:
         args = json.loads(raw)
     except json.JSONDecodeError as e:
-        return f"Arguments are not valid JSON ({e}). Send one JSON object."
+        blob = _first_object(raw)
+        if blob is not None:
+            try:
+                args = json.loads(blob)
+            except json.JSONDecodeError:
+                return f"Arguments are not valid JSON ({e}). Send one JSON object."
+        else:
+            return f"Arguments are not valid JSON ({e}). Send one JSON object."
     if not isinstance(args, dict):
         return "Arguments must be one JSON object, e.g. {\"param\": value}."
     return tool, args

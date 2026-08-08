@@ -59,6 +59,19 @@ def main() -> None:
                 ],
                 "usable": span.usable,
                 "seamful": span.seamful,
+                # Facts the gold writes consume that only off-roster apps
+                # hold; any entry means no seat can solve the scenario and
+                # the campaign will not buy episodes on it.
+                "roster_blind": [
+                    {
+                        "app": f.app,
+                        "function": f.function,
+                        "arg": f.arg,
+                        "leaf": f.leaf,
+                        "sources": list(f.sources),
+                    }
+                    for f in span.roster_blind
+                ],
             }
         )
 
@@ -68,9 +81,11 @@ def main() -> None:
     total = len(rows)
     usable = sum(r["usable"] for r in rows)
     seamful = sum(r["seamful"] for r in rows)
+    blind = sum(1 for r in rows if r["roster_blind"])
     print(f"scenarios: {total}")
     print(f"usable (roster >= 2): {usable}  ({usable / total:.0%})")
     print(f"seamful (a fact crosses): {seamful}  ({seamful / total:.0%})")
+    print(f"roster-blind (a consumed fact no seat can read): {blind}")
 
     by_cat: Counter[str] = Counter()
     seamful_by_cat: Counter[str] = Counter()

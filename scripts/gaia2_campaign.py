@@ -36,6 +36,26 @@ GRID = (None, Ability.DISCOVERY, Ability.CONTEXT_TRANSFER,
         Ability.DELEGATION_ECONOMY)
 
 
+def eligible(span, scripted_only: bool) -> bool:
+    """Admission, plus the optional judge-uniform restriction.
+
+    `--scripted-only` exists because the grader is welded to the scenario:
+    reply-conditioned scenarios can only run under the soft judge, and in the
+    v3 campaign that judge's column was all zeros -- so every cross-arm
+    comparison rode on the 5 of 37 scenarios the deterministic verifier
+    grades. A seed spent under this flag buys 20 cells that can actually
+    move, instead of 148 of which 128 are structurally pinned to zero.
+    """
+    if not (span.usable and span.seamful):
+        return False
+    if span.roster_blind:
+        # The partition provably omits a fact the gold writes consume (see
+        # mine.BlindFact): every seat is locked out of it, so every episode
+        # is a guaranteed failure. v4 bought four of these on one scenario.
+        return False
+    return not (scripted_only and span.reply_conditioned)
+
+
 def scenario_paths() -> dict[str, Path]:
     """Every unique seamful scenario with a fetched file, mini first."""
     seen: dict[str, Path] = {}
@@ -60,6 +80,11 @@ def main() -> None:
     ap.add_argument("--out", default="output/rollouts")
     ap.add_argument("--judge-model", default="gpt-5.6-sol",
                     help="soft-judge model for reply-conditioned scenarios")
+    ap.add_argument("--scripted-only", action="store_true",
+                    help="run only scenarios the deterministic scripted judge "
+                         "can grade (5 of the 37): a judge-uniform grid, so "
+                         "arm differences cannot hide behind the soft judge's "
+                         "zero column")
     target = ap.add_mutually_exclusive_group()
     target.add_argument(
         "--economy-target",
@@ -82,7 +107,7 @@ def main() -> None:
     skipped = 0
     for sid, path in sorted(scenario_paths().items()):
         span = admit(json.loads(path.read_text()))
-        if not (span.usable and span.seamful):
+        if not eligible(span, args.scripted_only):
             continue
         soft = span.reply_conditioned
         economy_target = (

@@ -41,6 +41,33 @@ def cell_type(config: str) -> str:
     return "context" if config.endswith("binf") else "economy"
 
 
+def dest_for(label: str) -> Path:
+    """The evidence file this label's rows belong in.
+
+    The unqualified `gaia2_credit.json` is the full campaign's, cited by name
+    in the README, both papers, and the viewer -- so only `--label full` may
+    write it. Every other label gets its own file, following the campaign
+    summary's `gaia2_<label>_campaign.json` convention. Before this function
+    existed, a `--label v3` run silently replaced the full campaign's
+    committed evidence with 112 rows of a different campaign.
+    """
+    name = ("gaia2_credit.json" if label == "full"
+            else f"gaia2_{label}_credit.json")
+    return ROOT / "sweep" / name
+
+
+def note_for(label: str) -> str:
+    return (
+        f"Partial-credit and pivot annotations over the {label}-campaign "
+        "trajectories (forge/gaia2/credit.py; deterministic, judge-free "
+        "shaping signals stamped beside the benchmark's own verdict, "
+        "never instead of it). partial_reward grades gold-write coverage "
+        "and exact-argument fidelity so failed episodes with correct "
+        "prefixes are not flattened to zero; pivot locates the first "
+        "fault for prefix-replay training (freeze events[:pivot], "
+        "optimize the suffix).")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--label", default="full",
@@ -90,20 +117,13 @@ def main() -> None:
         for t, rs in sorted(by_type.items())
     }
     out = {
-        "note": (
-            "Partial-credit and pivot annotations over the full-campaign "
-            "trajectories (forge/gaia2/credit.py; deterministic, judge-free "
-            "shaping signals stamped beside the benchmark's own verdict, "
-            "never instead of it). partial_reward grades gold-write coverage "
-            "and exact-argument fidelity so failed episodes with correct "
-            "prefixes are not flattened to zero; pivot locates the first "
-            "fault for prefix-replay training (freeze events[:pivot], "
-            "optimize the suffix)."),
+        "note": note_for(args.label),
         "summary": summary,
         "rows": rows,
     }
-    (ROOT / "sweep" / "gaia2_credit.json").write_text(json.dumps(out, indent=1))
-    print(f"annotated {len(rows)} trajectories; wrote sweep/gaia2_credit.json")
+    dest = dest_for(args.label)
+    dest.write_text(json.dumps(out, indent=1))
+    print(f"annotated {len(rows)} trajectories; wrote {dest.relative_to(ROOT)}")
     for t, s in summary.items():
         print(f"  {t:10} mean partial reward {s['mean_partial_reward']:.3f} "
               f"over {s['cells']} cells; pivots {s['pivot_kinds']}")

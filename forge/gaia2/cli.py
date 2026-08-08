@@ -34,6 +34,14 @@ def cmd_render(args: argparse.Namespace) -> None:
         raise SystemExit(
             f"{span.scenario_id}: usable={span.usable} seamful={span.seamful} -- "
             "only admitted scenarios render; see sweep/gaia2_*_admission.json")
+    if span.roster_blind:
+        facts = ", ".join(dict.fromkeys(
+            f"{f.arg} needs {f.leaf!r} (only in {'/'.join(f.sources)})"
+            for f in span.roster_blind))
+        raise SystemExit(
+            f"{span.scenario_id}: roster-blind, will not render -- the gold "
+            f"writes consume facts no seat can read: {facts}. Every episode "
+            f"on this partition is a guaranteed failure.")
 
     print(f"{span.scenario_id}: roster {span.roster}")
     target = (
