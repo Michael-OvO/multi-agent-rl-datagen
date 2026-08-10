@@ -283,25 +283,86 @@ def _deliver(world, log: EpisodeLog, msgs: list[Msg], transcript: list[dict]) ->
 
 _CALL = re.compile(r"CALL\s+([A-Za-z0-9_]+)\s*(?:::\s*(.*))?$", re.S)
 
-#: A FINAL that blames infrastructure -- "tools unavailable", "no call could
-#: be executed" -- from a specialist that has executed nothing. The runtime
-#: can see both facts, so the claim is checkably false; honest inability
-#: ("I cannot know X from this app", "no address was provided") deliberately
-#: does not match.
-#:
-#: Every branch is anchored to a recorded fabrication from a paid campaign;
-#: the wordings drift, and each drift that slips through is expensive. The
-#: v5 miss was consequential: "no tool-call execution opportunity was
-#: available in this run" -- hyphenated, and "was available" is not "not
-#: available" -- so the episode failed *because* of a fabricated outage
-#: while recording false_outages: 0, and the retry it forced pushed the cab
-#: order past its temporal window.
-_FALSE_OUTAGE = re.compile(
-    r"unavailable|not available in this (?:run|session|response)"
-    r"|could not be (?:executed|completed|made)"
-    r"|no .{0,32}tool[- ]call"
-    r"|cannot execute .{0,16}tool[- ]calls?"
-    r"|tool[- ]call interface is not", re.I)
+# A FINAL that blames infrastructure -- "the interface is not exposed", "no
+# tool execution turn was available" -- from a specialist that has executed
+# nothing. The runtime can see both facts, so the claim is checkably false.
+#
+# The boundary this draws, learned from hand-sorting every zero-call report
+# across five campaigns: a fabrication denies the *execution machinery*
+# (tool calls, the interface, the turn, the window), usually scoped to this
+# run or session; honest inability states a *capability or data* limit
+# ("the Cabs tools cannot retrieve your saved home address",
+# "InternalContacts provides no lookup tools", "no recipient was provided").
+# Honest reports are what the prompt explicitly asks for and must never be
+# punished -- the first version's bare `unavailable` branch flagged a
+# truthful "delivery confirmation is unavailable" as an outage. The
+# subtlest pair: "tools do not expose <a data field>" is a true catalog
+# statement; "tools are not exposed" is a lie about the machinery -- which
+# is why the denial verbs match only their participle forms.
+
+#: The machinery being denied. Deliberately not bare "interface" or "tools":
+#: "the available interface only retrieves the current ride" and "the Cabs
+#: tools cannot retrieve X" are honest capability statements.
+_OUTAGE_MACHINERY = re.compile(
+    r"tool[- ]?(?:calls?|calling|execution|interface|results?)"
+    r"|execution (?:interface|turn|window)|interaction window"
+    r"|tools\b", re.I)
+
+#: Denial predicates, matched only in a short window AFTER the machinery
+#: term, so subject and denial must be about each other. Participle forms
+#: only ("not exposed", never "not expose"): the active voice takes a data
+#: object and is how honest catalog limits are phrased.
+_OUTAGE_DENIAL = re.compile(
+    r"unavailable|not (?:available|exposed|accessible|possible|permitted"
+    r"|completed)\b"
+    r"|did not (?:permit|accept|execute|return)"
+    r"|could not be (?:executed|completed|made|issued)"
+    r"|were not available|was not available|ended before", re.I)
+
+#: Fabrications that negate the machinery's existence up front: "no
+#: tool-call execution opportunity", "no call could be executed", "no
+#: callable Messages tool interface". `{0,3}` filler words tolerate an app
+#: name in between; the machinery nouns keep "no contacts tool is
+#: available" (a true statement from a specialist whose app has no such
+#: tool) out. A negated-machinery hit is not enough by itself -- it must be
+#: completed by a denial (`_OUTAGE_NEGATED_DENIAL` in the window after it),
+#: because "no Messages tool call can target the correct person" is the
+#: honest consequence of a missing recipient, not an execution claim.
+_OUTAGE_NEGATED = re.compile(
+    r"\bno (?:[\w()'’/]+[- ]){0,3}?(?:tool[- ]?(?:calls?|calling|execution"
+    r"|results?)|callable|executable)"
+    r"|\bno .{0,24}?calls? could\b", re.I)
+
+#: The completion that turns negated machinery into an outage claim: the
+#: thing that "was not available / could not be executed / was never
+#: provided" about this run. Participles only, as above.
+_OUTAGE_NEGATED_DENIAL = re.compile(
+    r"available|possible|executed|completed|made\b|issued|provided\b"
+    r"|accessible|exposed|permitted|opportunit|turn\b|window", re.I)
+
+#: Verb-complete fabrication shapes that need no second clause.
+_OUTAGE_VERBAL = re.compile(
+    r"cannot (?:execute|make|run|issue) .{0,24}?(?:tool[- ]?)?calls?"
+    r"|not expose[sd]? .{0,32}?tool"
+    r"|before any .{0,24}?(?:tool[- ]?)?call", re.I)
+
+#: How far past the machinery term a denial may sit and still be read as
+#: denying it.
+_OUTAGE_WINDOW = 56
+
+
+def _is_false_outage(report: str) -> bool:
+    """Whether a zero-call FINAL claims execution itself was impossible."""
+    if _OUTAGE_VERBAL.search(report):
+        return True
+    negated = _OUTAGE_NEGATED.search(report)
+    if negated and _OUTAGE_NEGATED_DENIAL.search(
+            report, negated.end(), negated.end() + _OUTAGE_WINDOW):
+        return True
+    for hit in _OUTAGE_MACHINERY.finditer(report):
+        if _OUTAGE_DENIAL.search(report, hit.end(), hit.end() + _OUTAGE_WINDOW):
+            return True
+    return False
 
 
 def describe_tool(tool) -> str:
@@ -482,7 +543,7 @@ def run_specialist(
             # privately and sometimes imagines calls that never ran). Reject
             # it once, inside the same delegation -- the Main's budget never
             # pays for a fabricated outage -- then accept whatever follows.
-            if executed == 0 and not outage_corrected and _FALSE_OUTAGE.search(report):
+            if executed == 0 and not outage_corrected and _is_false_outage(report):
                 outage_corrected = True
                 log.false_outages += 1
                 if calls_out is not None:
