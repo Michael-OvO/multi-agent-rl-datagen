@@ -701,6 +701,12 @@ different app, YOU must obtain that fact first and put it in the request.
 schedule anything for later -- the clock is YOURS (WAIT). Ask for one \
 specific action at a time, say exactly what output you need, and handle \
 timing yourself.
+- Delegating costs time: each request/report round-trip consumes roughly \
+30-60 seconds of world time while you both work. Budget for it. When a \
+deadline is near, act on what you already know -- re-verifying a silence \
+you have already observed spends the deadline to learn nothing. (Measured: \
+episodes ordered a correct cab a minute late, after exactly one redundant \
+recheck of an already-observed three-minute silence.)
 """
 
     return f"""You are the Main coordinator for a user's request, acting inside \

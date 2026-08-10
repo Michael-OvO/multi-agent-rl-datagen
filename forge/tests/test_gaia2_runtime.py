@@ -696,3 +696,23 @@ def test_the_zero_call_census_separates_flagged_from_unflagged():
     flagged, unflagged = zero_call_census(events)
     assert flagged == 1
     assert unflagged == ["I cannot determine her address from Contacts."]
+
+
+def test_the_main_is_told_what_a_delegation_costs_in_time():
+    # The one replicated constraint effect in v4 and v5: context and economy
+    # both ordered a correct cab ~60-75 seconds late, because after observing
+    # three minutes of silence they spent one more delegation re-verifying
+    # the silence. A delegation round-trip consumes tens of simulated seconds
+    # while both models think -- and no prompt ever said so. The agent
+    # cannot budget a cost it was never told exists.
+    from forge.gaia2.runtime import _main_system
+
+    constrained = _main_system(FakeWorld(), STAR_DOCS, None)
+    assert "30-60 seconds" in constrained, \
+        "the Main prompt never states the time cost of a delegation"
+    assert "already observed" in constrained, \
+        "the Main prompt never warns against re-verifying observed silence"
+    # The open control has no specialists, so the costing does not apply.
+    open_prompt = _main_system(FakeWorld(), control_for(ROSTER),
+                               {a: FakeWorld().catalog(a) for a in ROSTER})
+    assert "30-60 seconds" not in open_prompt
