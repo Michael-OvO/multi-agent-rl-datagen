@@ -21,6 +21,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from forge.gaia2.credit import assess, split_for_replay
+from forge.gaia2.runtime import zero_call_census
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -88,6 +89,7 @@ def main() -> None:
             scenarios[sid] = json.loads(src.read_text())
         credit = assess(scenarios[sid], row.get("events") or [])
         cut = split_for_replay(row.get("events") or [], credit)
+        flagged, unflagged = zero_call_census(row.get("events") or [])
         row["credit"] = credit.as_dict()
         p.write_text(json.dumps(row, indent=1))
         rows.append({
@@ -98,6 +100,8 @@ def main() -> None:
             **credit.as_dict(),
             "prefix_events": cut["prefix_events"],
             "suffix_events": cut["suffix_events"],
+            "zero_call_fabrications": flagged,
+            "zero_call_unflagged": unflagged,
             "trajectory": f"output/rollouts/{p.name}",
         })
 
@@ -116,6 +120,14 @@ def main() -> None:
         }
         for t, rs in sorted(by_type.items())
     }
+    # The outage-corpus triage feed: every zero-call report the detector did
+    # not flag, deduplicated across the campaign. New fabrication wordings
+    # appear here in the seed that produced them; move them into
+    # forge/tests/fixtures/gaia2/outage_corpus.json and extend the matcher.
+    summary["zero_call_reports"] = {
+        "fabrications_flagged": sum(r["zero_call_fabrications"] for r in rows),
+        "unflagged": sorted({u for r in rows for u in r["zero_call_unflagged"]}),
+    }
     out = {
         "note": note_for(args.label),
         "summary": summary,
@@ -125,6 +137,10 @@ def main() -> None:
     dest.write_text(json.dumps(out, indent=1))
     print(f"annotated {len(rows)} trajectories; wrote {dest.relative_to(ROOT)}")
     for t, s in summary.items():
+        if t == "zero_call_reports":
+            print(f"  zero-call reports: {s['fabrications_flagged']} flagged "
+                  f"fabrications, {len(s['unflagged'])} unflagged for triage")
+            continue
         print(f"  {t:10} mean partial reward {s['mean_partial_reward']:.3f} "
               f"over {s['cells']} cells; pivots {s['pivot_kinds']}")
 

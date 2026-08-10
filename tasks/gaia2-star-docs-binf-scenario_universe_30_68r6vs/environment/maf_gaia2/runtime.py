@@ -351,6 +351,36 @@ _OUTAGE_VERBAL = re.compile(
 _OUTAGE_WINDOW = 56
 
 
+def zero_call_census(events: list[dict]) -> tuple[int, list[str]]:
+    """(flagged count, unflagged reports) over a trajectory's delegations.
+
+    The triage feed for the outage corpus. A delegation that executed
+    nothing and reported something is either a flagged fabrication (counted
+    -- the correction already handled it) or unflagged (listed verbatim, so
+    a novel fabrication wording surfaces in the campaign's credit evidence
+    for a human to move into fixtures/gaia2/outage_corpus.json). The
+    detector's blind spots become a number and a list in every seed's
+    evidence file, instead of a review finding three rounds later.
+    """
+    flagged = 0
+    unflagged: list[str] = []
+    for event in events:
+        if event.get("type") != "delegation":
+            continue
+        calls = event.get("calls") or []
+        executed = [c for c in calls
+                    if c.get("status") not in ("malformed", "false-outage")]
+        report = str(event.get("report") or "")
+        if executed or not report or report == "(no answer within turn limit)":
+            continue
+        if any(c.get("status") == "false-outage" for c in calls) \
+                or _is_false_outage(report):
+            flagged += 1
+        else:
+            unflagged.append(report)
+    return flagged, unflagged
+
+
 def _is_false_outage(report: str) -> bool:
     """Whether a zero-call FINAL claims execution itself was impossible."""
     if _OUTAGE_VERBAL.search(report):
@@ -614,7 +644,7 @@ So:
   Jensen have been scheduled on Friday October 18, 2024", never "scheduled the \
   consultations as requested". Your report is compared against a reference \
   report of the same work, so a summary that omits the names does not match, \
-  and a bare "completed" or "done" is not a report at all.
+  and a bare one-word confirmation is not a report at all.
 - After you report, the world may move: replies, confirmations, or a new \
   request can arrive. If they do, keep working -- the episode is not over \
   until you are told it is or nothing more arrives.
@@ -685,7 +715,8 @@ a simulated world with a clock. The current simulated time is \
     WAIT <seconds>                           let simulated time pass until the \
 next notification or the timeout
     USER :: <message>                        send the user a message
-    DONE :: <one-line answer, or 'completed' if the task was an action>
+    DONE :: <one line the user will read: what you did or found, with \
+names, times, and identifiers>
     FAIL :: <one-line reason>
 {body}
 Events in this world happen on the clock: replies, confirmations and follow-ups \
