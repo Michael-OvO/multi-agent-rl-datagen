@@ -53,20 +53,41 @@ the orchestrator does everything else. CLI verbs keep working identically;
 a command file records `"by"` from the charter's `owner` field so approvals
 stay attributable.
 
-### 2. `factory_board.html` — the file-native board
+### 2. `factory_board.html` — the snapshot board
 
-A second single-file, no-server, offline HTML surface, same world and
-folder-connect mechanics as `trajectory_viewer.html` (PRODUCT.md's
+A second single-file, no-server, offline HTML surface (PRODUCT.md's
 constraints apply: self-contained, no build step, no network, truthful).
-It reads, live via the browser's folder permission with polling:
 
-* `genjobs/**/state.json` — the grid's rows;
-* `genjobs/**/attempts/<stage>-<n>/` — instructions, results, check
-  verdicts;
-* `genjobs/**/attempts/**/transcript.jsonl` — tailed for the live agent
-  view (transcripts are gitignored but present on the operator's machine,
-  which is where the board runs);
-* `ideas/*.md` — the brainstorm inbox.
+**Loading model — corrected 2026-08-10.** An earlier draft of this spec
+said the board would folder-connect and live-read, and offered that as the
+repo-native choice. That was wrong: `trajectory_viewer.html` had a File
+System Access layer and it was **deliberately retired** in `f3c66bc`
+(2026-07-28) — *"Opening the file is the whole workflow again, with no
+permission prompt in front of it."* The board therefore follows the
+committed loading model, the embedded snapshot:
+
+* `python -m forge.factory.cli board` renders `genjobs/board.html` with the
+  whole queue's state embedded as a JSON blob, exactly as
+  `scripts/embed_logs.py` does for the viewer;
+* the orchestrator's run loop re-renders it after every state transition,
+  so the file on disk is never more than one transition stale;
+* the page reloads itself on a timer (default 5s, a visible control to
+  pause), giving near-real-time without a permission prompt, a server, or
+  the retired API. The rendered `updated` timestamp is always on screen, so
+  a stopped orchestrator reads as stale rather than as live.
+
+Embedded per render: every `genjobs/**/state.json`; each attempt's
+`check.json` and `result.json` summary; the **tail** of each running
+attempt's `transcript.jsonl` (bounded, e.g. last 200 lines — transcripts
+are gitignored and can be large); and the `ideas/*.md` front-matter for the
+inbox.
+
+**Managing is CLI-side.** The board renders, for every actionable job, the
+exact command to run (`python -m forge.factory.cli approve <job> --spec`)
+with a click-to-copy affordance. It writes nothing — no browser write
+capability has ever existed here, and inventing one would mean reviving the
+retired permission flow. The command inbox (component 1) still exists for
+future non-CLI clients but is not exercised by the board in this scope.
 
 **Grid view (requirement 3).** Rows = jobs, columns = the ten stages. Each
 cell shows that stage's state: pending / running (with elapsed time and
@@ -75,12 +96,10 @@ parked-for-human / reopened. Row header: job slug, status, spend vs budget.
 Clicking a running cell opens the transcript tail; clicking a finished cell
 opens its `check.json` verdict and artifacts.
 
-**Manage actions.** Buttons write command files (component 1): approve
-spec, approve release, retry a stuck stage, abandon, queue a draft charter,
-promote an idea. Every button states the file it writes; the board never
-claims an action succeeded — it shows the orchestrator's own `done/`
-outcome when it appears. If the orchestrator is not running, the board says
-so (command files age without a `done/` entry) rather than pretending.
+**Manage affordances.** For each job needing a human, the board shows the
+verbatim CLI command and a copy control — approve spec, approve release,
+retry, abandon, queue a draft charter, promote an idea. The board asserts
+nothing about the outcome; the next render shows what actually happened.
 
 **Quality panel (requirement 4).** Per job, numbers read verbatim from the
 stage artifacts the skill already mandates — never computed by the board:
@@ -101,9 +120,20 @@ A job's headline quality line is the *worst unresolved* indicator, named —
 not a composite score (composites hide exactly the thing the reader needs;
 same rule as the trajectory viewer's verdict handling).
 
-**Design system.** The board joins the repo's committed visual world
-(DESIGN.md); it is a dashboard of evidence, in the proceedings idiom, and
-its build follows the dataviz/design skills when implementation reaches it.
+**Design system.** The board joins the repo's committed visual world,
+which is **DESIGN.md's overview-over-tables dashboard** — status carried by
+colour, icon, and word at once. The proceedings/booktabs evidence page was
+overturned on 2026-07-28 and must not be revived; the phrase survives as
+stale copy in `PRODUCT.md:24` and in an earlier draft of this spec, and
+`.impeccable/design.json` is a pre-reversal artifact that must not be read
+as the design system. Concretely the board obeys: the committed ground-and-
+ink tokens by name and hex in all three theme scopes; the three-value
+status roles (mark for non-text at 3:1, `-ink` for text at 4.5:1, `-tint`
+for fill that never carries alone); one `badge(kind, label)` builder
+emitting colour + icon + word with `aria-hidden` on the glyph; a legend
+above the stage grid keyed for every stage state including `— not run`;
+missing data drawn as explicit absence, never inferred; one centred 1080px
+column with the grid scrolling inside its own panel.
 
 ### 3. The brainstorm pathway
 
@@ -153,10 +183,10 @@ core to make status *accurate in real time*:
 * **M1 — state + queue.** `forge/factory` package: state machine as pure
   functions, `queue` (validates charter, refuses `status: draft`), `status`,
   `abandon`, atomic writes, fixtures. Offline tests only.
-* **M2 — board v1, read-only.** The grid + quality panel rendering
-  **fixture** `state.json`/attempt trees (the same fixtures M1's tests
-  use — the board is buildable before any session exists). Folder-connect,
-  polling, transcript tail on fixture files.
+* **M2 — board v1, read-only.** `cli board` renders `genjobs/board.html`
+  from a job tree, plus the grid, quality panel, and self-refresh. Built
+  and tested against the **fixture** tree M1's tests already use, so the
+  board is complete before any session exists.
 * **M3 — sessions + the front half.** Session harness (per the
   orchestrator doc), stages 1–2 with gate checkers, `awaiting-spec-approval`
   parking, the command inbox, `approve --spec`; board gains manage buttons.
