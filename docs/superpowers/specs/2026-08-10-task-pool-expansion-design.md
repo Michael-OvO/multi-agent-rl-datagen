@@ -1,179 +1,215 @@
-# Task-pool expansion — design
+# Task generation system — design
 
-**Date:** 2026-08-10. **Status:** approved design, pre-implementation.
-**Companion:** `2026-08-08-genjob-orchestrator-design.md` (the orchestrator
-this spec sequences and slices; that doc's decisions stand except where
-amended below).
+**Date:** 2026-08-10 (revised same day: generation-first, dashboard in
+scope, brainstorm pathway added). **Status:** approved design,
+pre-implementation.
+**Companion:** `2026-08-08-genjob-orchestrator-design.md` — the orchestrator
+core. Its decisions stand except where the amendments below say otherwise.
 
 ## Why this exists
 
-After the v4/v5 seeds and their fixes, the study's bottleneck moved from the
-harness to the task pool. The informative population is 3 scripted-judge
-scenarios; cell outcomes replicate exactly across seeds (12/12), so more
-seeds of the same cells buy confirmation, not information. Worse, the three
-abilities on the masthead are barely exercised: capability-discovery went
-6/6 across two seeds (the knob never bites), and context-transfer's only
-failures were delegation *timing*, not brief content. More tasks are needed
-in two senses: more scenarios that the deterministic judge can grade, and
-new task families designed so each ability is load-bearing by construction.
+The study's bottleneck is the task pool: 3 informative scenarios, abilities
+not load-bearing, outcomes replicating exactly across seeds. Michael's
+direction (2026-08-10): **build the generation flow first, then use it to
+enlarge and deepen the banks.** The generation system is the product; task
+banks are its output. Four requirements, verbatim intent:
 
-## Decisions (made 2026-08-10)
+1. CLI **and** UI viewer — the dashboard the orchestrator doc deferred is
+   now in scope.
+2. Multiple pathways to brainstorm and generate.
+3. A grid view where jobs and their agents are visible and manageable in
+   real time.
+4. Measurable, clear, accurate task-generation status and quality
+   indication.
 
-1. **Both sources, staged.** Widen the inherited Gaia2 pool first (free,
-   days); build the generation-job orchestrator second (the real
-   instrument).
-2. **Charters: agent-drafted, Michael-owned.** Amends the orchestrator
-   design's decision 4 ("charters are written by Michael. No agent-proposed
-   charters") to: charter *drafts* may be agent-written; a charter has no
-   effect until Michael personally runs `forge.factory queue` on it, and
-   that act is the approval. The human gate survives; the blank page does
-   not.
-3. **Build order: widen, then thin slices.** The orchestrator lands in four
-   offline-tested milestones rather than one push; the first real charter
-   runs as soon as stages 1–2 work.
+## Amendments to the 2026-08-08 orchestrator design
 
-## Part A — widen the inherited pool
+1. **Dashboard is in scope** (supersedes its non-goal 1). It is the
+   *factory board*, component 2 below.
+2. **Decision 4 amended** (recorded 2026-08-10, reaffirmed): charter drafts
+   may be agent-written — by hand or by the brainstorm pathway — but a
+   charter has effect only when Michael queues it. The queue action is the
+   ownership act.
+3. **Decision 3 extended, not broken:** one job type, plus an approved
+   family may later re-enter at stage 6 for instance deepening (stages 7–8
+   re-validate). Deepening and variation pathways are **deferred** until
+   the first family ships; the design leaves room, builds nothing.
 
-### A1. Roster completion (rescue the 4 blind scenarios)
+Everything else in the orchestrator doc — layout, lifecycle, stage table,
+session harness, state.json, cost control, risks — stands unmodified and is
+not restated here.
 
-Today `roster_blind_facts()` (forge/gaia2/mine.py) finds facts the gold
-writes consume that only off-roster apps hold, and admission *excludes* the
-scenario. The same evidence names the repair: the fact's `sources` are
-exactly the apps the roster is missing.
+## Components
 
-Change: `derive_roster()` gains a completion pass — after the write-apps and
-seam-sources union, compute blind facts against that provisional roster and
-add every `BlindFact.sources` app. Recorded honestly: `Gaia2Span` gains
-`roster_completed: tuple[str, ...]` naming the added apps (empty for the 33
-clean scenarios, whose rosters must remain byte-identical — pinned by a
-test). `roster_blind` is computed against the completed roster; the
-admission/eligibility/render gates all stay, catching any future scenario
-where completion cannot identify a provider (no candidate app, or more than
-`MAX_SEAM_SOURCES` — ambient facts complete nothing).
+### 1. `forge/factory` — the orchestrator core
 
-Expected effect, measured 2026-08-10 against the current pool:
+Exactly per the 2026-08-08 doc, plus one addition: a **command inbox**. The
+orchestrator's run loop polls `genjobs/<job>/commands/` for single-action
+JSON files (`approve-spec.json`, `approve-release.json`, `retry.json`,
+`abandon.json`, `queue.json`), executes each against the same code paths as
+the CLI verbs, and moves the file into `commands/done/` with the outcome
+appended. This is the entire bridge the UI needs — the board writes files,
+the orchestrator does everything else. CLI verbs keep working identically;
+a command file records `"by"` from the charter's `owner` field so approvals
+stay attributable.
 
-| scenario | roster gains | judge |
-|---|---|---|
-| scenario_universe_24_tg3h3h | Files | scripted |
-| scenario_universe_22_bt12gw | Contacts, InternalContacts | scripted |
-| scenario_universe_21_y6td7z | Messages | soft |
-| scenario_universe_21_5flf8t | Messages, Chats | soft |
+### 2. `factory_board.html` — the file-native board
 
-Scripted pool 3 → 5 (20 cells/seed). Comparability: the four rescued
-scenarios were never in any campaign's informative population (they were
-excluded or structurally lost), so no historical number changes meaning;
-the next campaign takes a new label regardless (the v6 prompt changes
-already force one).
+A second single-file, no-server, offline HTML surface, same world and
+folder-connect mechanics as `trajectory_viewer.html` (PRODUCT.md's
+constraints apply: self-contained, no build step, no network, truthful).
+It reads, live via the browser's folder permission with polling:
 
-Evidence: admission probes re-run for both fetched splits; the campaign
-`--dry-run` must show 20 scripted cells; `sweep/gaia2_*_admission.json`
-gains the `roster_completed` field.
+* `genjobs/**/state.json` — the grid's rows;
+* `genjobs/**/attempts/<stage>-<n>/` — instructions, results, check
+  verdicts;
+* `genjobs/**/attempts/**/transcript.jsonl` — tailed for the live agent
+  view (transcripts are gitignored but present on the operator's machine,
+  which is where the board runs);
+* `ideas/*.md` — the brainstorm inbox.
 
-### A2. Fetch and measure the four unfetched splits
+**Grid view (requirement 3).** Rows = jobs, columns = the ten stages. Each
+cell shows that stage's state: pending / running (with elapsed time and
+live session count) / gate-passed / gate-failed (attempt n of cap) /
+parked-for-human / reopened. Row header: job slug, status, spend vs budget.
+Clicking a running cell opens the transcript tail; clicking a finished cell
+opens its `check.json` verdict and artifacts.
 
-`scripts/gaia2_fetch.py` knows six splits; only `mini` and `adaptability`
-were ever fetched. Fetch `ambiguity`, `execution`, `search`, `time`
-(parquet download, no model cost), run the admission probe on each, dedupe
-by `scenario_id` against the known pool, and report per split: total,
-usable, seamful, script-judgeable (not reply-conditioned), roster-blind
-(should be zero after A1 completion — any nonzero is a new finding).
+**Manage actions.** Buttons write command files (component 1): approve
+spec, approve release, retry a stuck stage, abandon, queue a draft charter,
+promote an idea. Every button states the file it writes; the board never
+claims an action succeeded — it shows the orchestrator's own `done/`
+outcome when it appears. If the orchestrator is not running, the board says
+so (command files age without a `done/` entry) rather than pretending.
 
-Deliverable: `sweep/gaia2_<split>_admission.json` per split plus a summary
-table in the run report. **No paid episodes** — the seed on the widened
-pool is a separate, explicitly approved spend.
+**Quality panel (requirement 4).** Per job, numbers read verbatim from the
+stage artifacts the skill already mandates — never computed by the board:
 
-### Out of scope for A
+| indicator | source |
+|---|---|
+| ambiguity findings / resolved | stage 2 reviewer records + reconciliation |
+| implementation independence | stage 3 import-graph check verdict |
+| determinism | stage 4 replay hash comparison |
+| collaboration necessity | stage 5 counterfactual suite (control / reference / role-removal) |
+| instance yield + rejection reasons | stage 6 validation report |
+| mutation kill rate, critical mutants | stage 7 `mutation-report.json` |
+| floor / control / reference / constrained gaps | stage 8 `run-report.json` |
+| review findings by severity + dispositions | stage 9 records |
+| clean-room validation | stage 10 verdict |
 
-Re-mining seams with containment matching everywhere (it can reclassify
-facts as ambient and shrink existing seams — a full re-measurement, not a
-widening), soft-judge calibration, and the control step-cap asymmetry.
-Each is a separate decision.
+A job's headline quality line is the *worst unresolved* indicator, named —
+not a composite score (composites hide exactly the thing the reader needs;
+same rule as the trajectory viewer's verdict handling).
 
-## Part B — three charters, drafted for Michael's ownership
+**Design system.** The board joins the repo's committed visual world
+(DESIGN.md); it is a dashboard of evidence, in the proceedings idiom, and
+its build follows the dataviz/design skills when implementation reaches it.
 
-Three charter drafts, one per ability, each shaped so the ability decides
-pass/fail and the known confounds cannot:
+### 3. The brainstorm pathway
 
-* **capability-discovery**: solvable only by working out *which* role can
-  know a required fact (information placed so no roster listing reveals
-  it); explicitly no deadline pressure — non-goal: timing.
-* **context-transfer**: the brief's content decides — the fact set needed
-  by the executing role is large enough that a vague brief measurably
-  fails, with the counterfactual that a full-information single agent
-  solves it trivially; non-goal: discovery difficulty (roster is obvious).
-* **delegation-economy**: over-delegation is fatal by construction (each
-  round-trip consumes a bounded resource other than wall-time, so the cost
-  is the *count*, not the clock); non-goal: hiding information.
+`python -m forge.factory brainstorm --n N [--theme "..."]` spawns N
+concurrent headless sessions, each producing one idea file:
 
-Each draft carries the orchestrator charter fields: one-sentence capability
-claim, falsifiable counterfactual, non-goals, optional budget override.
-Drafts land as `genjobs/<date>-<slug>/charter.md` with `status: draft` in
-front-matter; `forge.factory queue` refuses drafts, and Michael's edit
-removing the marker plus running `queue` is the approval act (decision 2).
+```
+ideas/<slug>.md
+---
+status: idea
+proposed: <timestamp>
+session: <session-id>
+---
+# <capability name>
+**Pitch.** (one paragraph)
+**Capability claim.** (one sentence, the charter's future seed)
+**Falsifiable counterfactual.** (what result would disprove it)
+**Why the current bank cannot measure this.** (grounded in the study)
+**Sketch.** (roster shape, what the verifier would check — non-binding)
+```
 
-Charters are written against `skills/build-ground-up-multi-agent-tasks/
-SKILL.md` stage 1 and reviewed by its blinded provenance reviewers once the
-orchestrator can run them — the drafts do not shortcut any stage.
+Idea sessions are cheap (one session, no tools beyond read access to the
+skills and the study's evidence files, bounded tokens). The board's inbox
+lists ideas; **promote** writes `genjobs/<date>-<slug>/charter.md` with
+`status: draft` pre-filled from the idea — still inert until Michael queues
+it. Ideas never build anything; the pathway ends at a draft charter.
 
-## Part C — forge/factory in four milestones
+Duplicate pressure is handled at promotion, not generation: the inbox
+shows, next to each idea, the existing charters/families with overlapping
+capability claims (substring/keyword match — honest and dumb), and the
+human decides.
 
-The orchestrator design doc stands in full (layout, state machine, session
-harness, gate table, cost control, non-goals). This spec only slices the
-build:
+### 4. Status and quality model (requirement 4, the data side)
 
-* **M1 — state.** `forge/factory/` package: `state.json` schema +
-  atomic-write transitions as pure functions, `queue` (charter validation,
-  branch + worktree creation), `status`, `abandon`. All transition logic
-  fixture-tested offline; no session code.
-* **M2 — sessions and the front half.** The `claude -p` session harness
-  (stream-json capture, result extraction, per-role tool scoping),
-  instruction composer with golden-render tests, stages 1–2 with their gate
-  checkers, `awaiting-spec-approval` parking, `approve --spec`. Integration
-  test drives a job to the spec gate against a fake `claude` binary. The
-  first real charter may run at M2 — its output is a human-reviewed task
-  contract, cheap and informative.
-* **M3 — the build stages.** Gate checkers for stages 3–8 (import-graph
-  check, determinism re-run, counterfactual suite, instance validation,
-  mutation matrix, usefulness report). Fixture-driven pass/fail tests per
-  checker.
-* **M4 — independence and delivery.** Blinded review directories (stage 9),
-  clean-room clone and `validate.sh` (stage 10), `approve --release`,
-  stage-9 reopen logic, `stuck`/budget parking. End-to-end fake-binary test
-  through both human gates including a retry and a reopen.
+`state.json` remains the single source of job status (orchestrator doc's
+schema). The board derives, never stores. Two additions to the orchestrator
+core to make status *accurate in real time*:
 
-Each milestone merges only with its tests green and offline (the design
-doc's testing section is the contract); no milestone requires API spend to
-test. First paid session happens when Michael queues a charter after M2.
+* the session runner touches `attempts/<stage>-<n>/heartbeat` (mtime-only)
+  every poll interval while a session lives, so the board can distinguish
+  "running" from "crashed orchestrator" without a server;
+* `state.json` gains `"updated"` (timestamp of last transition), already
+  implied by atomic writes, now explicit.
 
-## Testing summary
+## Milestones (generation-first order)
 
-* A1: TDD in `forge/tests/test_gaia2_mine.py` — completion adds exactly the
-  measured apps for the 4 fixtures/real scenarios; clean scenarios'
-  rosters byte-identical; gates still refuse an uncompletable fixture.
-* A2: fetch is an existing script; the admission probe's numbers are the
-  test (deterministic, committed as evidence).
-* B: charter drafts are prose; the `queue` refusal of `status: draft` is
-  TDD'd in M1.
-* C: per the orchestrator doc — state-machine fixtures, golden renders,
-  checker fixtures, fake-binary integration. No API calls in any test.
+* **M1 — state + queue.** `forge/factory` package: state machine as pure
+  functions, `queue` (validates charter, refuses `status: draft`), `status`,
+  `abandon`, atomic writes, fixtures. Offline tests only.
+* **M2 — board v1, read-only.** The grid + quality panel rendering
+  **fixture** `state.json`/attempt trees (the same fixtures M1's tests
+  use — the board is buildable before any session exists). Folder-connect,
+  polling, transcript tail on fixture files.
+* **M3 — sessions + the front half.** Session harness (per the
+  orchestrator doc), stages 1–2 with gate checkers, `awaiting-spec-approval`
+  parking, the command inbox, `approve --spec`; board gains manage buttons.
+  Fake-`claude` integration test to the spec gate.
+* **M4 — brainstorm pathway.** `brainstorm` verb, idea files, board inbox +
+  promote. First real spend possible here (idea sessions), at Michael's
+  explicit go.
+* **M5 — build stages.** Gate checkers 3–8; board quality panel fills in.
+* **M6 — independence + delivery.** Stages 9–10, blinded directories,
+  clean room, `approve --release`, reopen logic; end-to-end fake-binary
+  test; first family ships.
 
-## Risks
+Charters: the three ability drafts already written
+(`genjobs/2026-08-10-*/charter.md` per the implementation plan) queue as
+soon as M3 exists.
 
-* **Completion legitimizes a mis-mined roster** (adds an app the task
-  didn't really need): bounded by the same guards as blindness detection
-  (containment length floor, ambient cap, given-text exclusion), and the
-  added app is recorded in `roster_completed` + admission evidence, so a
-  reviewer can audit every completion.
-* **The new splits are duplicates or soft-judge-only**: the measure-first
-  step costs nothing; if yield is poor, Part B/C carry the pool.
-* **Charter drafts anchor Michael** (agent framing narrows his design):
-  mitigated by drafts carrying explicit alternatives sections and by the
-  stage-1 blinded provenance review, which exists to catch precisely
-  inherited framing.
+## The inherited-pool track (background, does not gate the factory)
+
+Part A of the pre-revision spec (roster completion; fetch + measure the
+four unfetched splits) stays approved with its plan already written
+(`docs/superpowers/plans/2026-08-10-task-pool-expansion.md`, Tasks 1–4). It
+is free, small, and independent; it runs whenever convenient. The paid v6
+seed on the widened pool remains its own go/no-go and should wait for that
+track so the seed prices 20+ cells.
+
+## Testing
+
+Per the orchestrator doc (state fixtures, golden renders, checker
+fixtures, fake-`claude` end-to-end), plus:
+
+* the board is developed and tested against the same committed fixtures the
+  state-machine tests use — a fixture tree under
+  `forge/tests/fixtures/factory/` is the board's data contract;
+* `forge/tests/test_factory_board.py` follows `test_viewer.py`'s
+  hand-written-source assertion style (the repo already knows how to test
+  a single-file HTML surface);
+* command-inbox round-trip: a command file fixture in, state transition +
+  `done/` outcome out, pure function.
+
+## Risks beyond the orchestrator doc's
+
+* **The board shows stale state as live** (no server to push): mitigated by
+  the heartbeat files and by always rendering the `updated` timestamp;
+  "last change 4m ago" is honest where a green dot would lie.
+* **Brainstorm floods the inbox with plausible duplicates**: bounded by
+  `--n`, the overlap listing at promotion, and the human promotion gate.
+* **UI scope creep** (the board becoming an editor): the board writes
+  command files and nothing else; charters are edited in the editor, not
+  the browser. Non-goal, stated here.
 
 ## Sequencing
 
-A1 → A2 (same branch, one PR) → B drafts (parallel, prose only) → C
-milestones M1–M4 in order. The next paid seed (widened pool, v6 label,
-prompt changes included) is its own go/no-go after A lands.
+M1 → M2 → M3 → M4 → M5 → M6, with the inherited-pool track interleaved at
+will. First writing-plans session covers M1 + M2 (they share fixtures).
+Deepen/variation pathways return as a new spec after the first family
+ships.
