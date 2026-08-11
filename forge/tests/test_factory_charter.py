@@ -53,6 +53,18 @@ def test_a_charter_with_no_front_matter_is_refused():
         parse_charter("# Just a heading\n", slug="hidden-knower")
 
 
+def test_a_charter_with_an_unclosed_front_matter_fence_is_refused():
+    text = "---\nstatus: ready\nowner: michael\n"
+    with pytest.raises(SystemExit, match="never closes"):
+        parse_charter(text, slug="hidden-knower")
+
+
+def test_a_charter_with_a_malformed_front_matter_line_is_refused():
+    text = "---\nbareword\nstatus: ready\nowner: michael\n---\n\nA claim.\n"
+    with pytest.raises(SystemExit, match="key: value"):
+        parse_charter(text, slug="hidden-knower")
+
+
 def test_an_empty_body_is_refused():
     text = "---\nstatus: ready\nowner: michael\n---\n\n   \n"
     with pytest.raises(SystemExit, match="body"):
