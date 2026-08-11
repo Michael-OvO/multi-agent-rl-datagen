@@ -273,7 +273,7 @@ all three theme scopes -- are pinned in forge/tests/test_factory_board.py.
   .badge.fail    {{ background: var(--fail-tint); color: var(--fail-ink); }}
   .badge.warn    {{ background: var(--warn-tint); color: var(--warn-ink); }}
   .badge.neutral {{ background: var(--hair); color: var(--ink-2); }}
-  .badge.pending {{ background: transparent; color: var(--muted); opacity: 0.75;
+  .badge.pending {{ background: transparent; color: var(--muted);
                    border: 1px dashed var(--hair); }}
 
   /* ---------- legend ---------- */
@@ -571,7 +571,7 @@ function initControls() {{
   renderBody(data.rows, lastStage);
   initControls();
 
-  const staleAfter = Math.max(30, REFRESH_SECONDS * 3);
+  const staleAfter = Math.max(300, REFRESH_SECONDS * 3);
   tickAge(data.generated, staleAfter);
   setInterval(() => tickAge(data.generated, staleAfter), 1000);
 
