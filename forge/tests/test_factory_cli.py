@@ -11,6 +11,7 @@ import json
 
 import pytest
 
+from forge.factory import machine, store
 from forge.factory.cli import main
 
 CHARTER = """---
@@ -102,3 +103,52 @@ def test_board_writes_a_self_contained_page(tmp_path):
     page = (root / "board.html").read_text()
     assert page.lstrip().startswith("<!doctype html>")
     assert "2026-08-10-hidden-knower" in page
+
+
+def test_approve_spec_advances_a_parked_job_and_persists(tmp_path, capsys):
+    d = _charter_dir(tmp_path)
+    root = tmp_path / "genjobs"
+    main(["queue", str(d), "--root", str(root)])
+    parked = machine.park_for_spec_approval(store.read_state(d), now="2026-08-10T15:00:00-07:00")
+    store.write_state(d, parked)
+    capsys.readouterr()
+
+    main(["approve", "2026-08-10-hidden-knower", "--spec", "--by", "michael",
+          "--root", str(root)])
+    out = capsys.readouterr().out
+    assert "running" in out
+
+    after = store.read_state(d)
+    assert after.status == "running"
+    assert after.stage == 3, "stage 2 is what was approved; work resumes at 3"
+    assert after.approvals.spec is not None
+    assert after.approvals.spec.by == "michael"
+
+
+def test_approve_release_ships_a_ready_job_and_persists(tmp_path, capsys):
+    d = _charter_dir(tmp_path)
+    root = tmp_path / "genjobs"
+    main(["queue", str(d), "--root", str(root)])
+    parked = machine.park_for_release(
+        store.read_state(d), decision="READY",
+        now="2026-08-10T15:00:00-07:00")
+    store.write_state(d, parked)
+    capsys.readouterr()
+
+    main(["approve", "2026-08-10-hidden-knower", "--release", "--by", "michael",
+          "--root", str(root)])
+    out = capsys.readouterr().out
+    assert "shipped" in out
+    assert store.read_state(d).status == "shipped"
+
+
+def test_approve_requires_exactly_one_of_spec_or_release(tmp_path):
+    d = _charter_dir(tmp_path)
+    root = tmp_path / "genjobs"
+    main(["queue", str(d), "--root", str(root)])
+    with pytest.raises(SystemExit):
+        main(["approve", "2026-08-10-hidden-knower", "--by", "michael",
+              "--root", str(root)])
+    with pytest.raises(SystemExit):
+        main(["approve", "2026-08-10-hidden-knower", "--spec", "--release",
+              "--by", "michael", "--root", str(root)])

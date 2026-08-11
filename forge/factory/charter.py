@@ -75,11 +75,21 @@ def parse_charter(text: str, *, slug: str) -> Charter:
             f"{slug}: charter.md has front-matter but no body; the capability "
             f"claim and its falsifiable counterfactual are the charter")
     budget = fields.get("budget_tokens")
+    budget_tokens = None
+    if budget:
+        try:
+            budget_tokens = int(budget)
+        except ValueError:
+            raise SystemExit(
+                f"{slug}: charter.md's budget_tokens is {budget!r}, not an "
+                f"integer; budget_tokens must be a whole number of tokens, "
+                f"or omitted to take the factory's repo-level default"
+            ) from None
     return Charter(
         slug=slug,
         owner=fields["owner"],
         ability=fields.get("ability") or None,
         status=fields["status"],
-        budget_tokens=int(budget) if budget else None,
+        budget_tokens=budget_tokens,
         body=body,
     )

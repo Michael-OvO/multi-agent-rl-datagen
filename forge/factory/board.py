@@ -273,7 +273,7 @@ all three theme scopes -- are pinned in forge/tests/test_factory_board.py.
   .badge.fail    {{ background: var(--fail-tint); color: var(--fail-ink); }}
   .badge.warn    {{ background: var(--warn-tint); color: var(--warn-ink); }}
   .badge.neutral {{ background: var(--hair); color: var(--ink-2); }}
-  .badge.pending {{ background: transparent; color: var(--muted);
+  .badge.pending {{ background: transparent; color: var(--ink-2);
                    border: 1px dashed var(--hair); }}
 
   /* ---------- legend ---------- */
@@ -477,6 +477,15 @@ function jobRowHtml(row, lastStage) {{
 }}
 
 function renderBody(rows, lastStage) {{
+  if (!rows.length) {{
+    // The same "no jobs" wording cli.cmd_status uses for an empty root --
+    // a bare header row with nothing under it reads as broken, not empty.
+    const cols = 6 + lastStage;
+    $("#board-body").innerHTML = `<tr><td colspan="${{cols}}" class="no-action">`
+      + `no jobs queued yet -- run `
+      + `<code>python -m forge.factory.cli queue &lt;charter-dir&gt;</code> to add one</td></tr>`;
+    return;
+  }}
   $("#board-body").innerHTML = rows.map(r => jobRowHtml(r, lastStage)).join("");
   for (const btn of document.querySelectorAll(".copy-btn")) {{
     btn.addEventListener("click", async () => {{

@@ -4,6 +4,7 @@
     python -m forge.factory.cli status
     python -m forge.factory.cli board
     python -m forge.factory.cli abandon 2026-08-10-hidden-knower
+    python -m forge.factory.cli approve 2026-08-10-hidden-knower --spec --by michael
 
 Every verb takes `--root` so the whole surface is testable against a
 temporary directory: no git, no network, no sessions. Branch and worktree
@@ -19,6 +20,8 @@ from pathlib import Path
 
 from forge.factory.board import render_board
 from forge.factory.machine import abandon as abandon_job
+from forge.factory.machine import approve_release as approve_release_job
+from forge.factory.machine import approve_spec as approve_spec_job
 from forge.factory.store import (
     discover,
     now_iso,
@@ -71,6 +74,15 @@ def cmd_abandon(args: argparse.Namespace) -> None:
     print(f"{after.job}: {after.status}")
 
 
+def cmd_approve(args: argparse.Namespace) -> None:
+    state = _find(args.root, args.job)
+    now = now_iso()
+    after = (approve_spec_job(state, by=args.by, now=now) if args.spec
+             else approve_release_job(state, by=args.by, now=now))
+    write_state(args.root / after.job, after)
+    print(f"{after.job}: {after.status}")
+
+
 def cmd_board(args: argparse.Namespace) -> None:
     states = discover(args.root)
     args.root.mkdir(parents=True, exist_ok=True)
@@ -109,6 +121,20 @@ def main(argv: list[str] | None = None) -> None:
     p_abandon.add_argument("--root", type=Path, default=DEFAULT_ROOT,
                            help="the job queue directory (default: genjobs)")
     p_abandon.set_defaults(fn=cmd_abandon)
+
+    p_approve = sub.add_parser(
+        "approve", help="pass a human gate: the spec review or the release review")
+    p_approve.add_argument("job")
+    p_approve.add_argument("--by", required=True,
+                           help="who is approving")
+    gate = p_approve.add_mutually_exclusive_group(required=True)
+    gate.add_argument("--spec", action="store_true",
+                      help="approve the spec gate (awaiting-spec-approval)")
+    gate.add_argument("--release", action="store_true",
+                      help="approve the release gate (awaiting-release-review)")
+    p_approve.add_argument("--root", type=Path, default=DEFAULT_ROOT,
+                           help="the job queue directory (default: genjobs)")
+    p_approve.set_defaults(fn=cmd_approve)
 
     p_board = sub.add_parser("board", help="render genjobs/board.html")
     p_board.add_argument("--root", type=Path, default=DEFAULT_ROOT,

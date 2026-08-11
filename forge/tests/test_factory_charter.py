@@ -76,3 +76,9 @@ def test_the_optional_fields_default_cleanly():
     charter = parse_charter(text, slug="s")
     assert charter.ability is None
     assert charter.budget_tokens is None
+
+
+def test_a_non_numeric_budget_tokens_is_refused_not_a_raw_valueerror():
+    text = APPROVED.replace("budget_tokens: 5000000", "budget_tokens: lots")
+    with pytest.raises(SystemExit, match="budget_tokens"):
+        parse_charter(text, slug="hidden-knower")

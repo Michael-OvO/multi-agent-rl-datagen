@@ -41,7 +41,24 @@ def now_iso() -> str:
 
 
 def read_state(job_path: Path) -> JobState:
-    return state_from_dict(json.loads((job_path / STATE_FILE).read_text()))
+    """Read state.json, and refuse if it disagrees with its own directory.
+
+    `cli.cmd_abandon` and `cmd_approve` both reconstruct a job's directory
+    as `root / state.job` -- cheaper than threading a Path through every
+    transition. That reconstruction is only sound if a directory's name and
+    its state.json `job` field always agree, so the check happens at the one
+    place both are in hand: here, on read, as a named refusal instead of a
+    raw traceback wherever the mismatch would next be felt.
+    """
+    state = state_from_dict(json.loads((job_path / STATE_FILE).read_text()))
+    if state.job != job_path.name:
+        raise SystemExit(
+            f"{job_path}: state.json says job={state.job!r}, but the "
+            f"directory is named {job_path.name!r}; the two must agree, or "
+            f"anything that reconstructs this job's directory from its "
+            f"name (the CLI's abandon and approve) will look in the wrong "
+            f"place")
+    return state
 
 
 def write_state(job_path: Path, state: JobState) -> None:
@@ -68,9 +85,18 @@ def queue_job(root: Path, charter_dir: Path, *, now: str,
               worktree_root: Path) -> JobState:
     """Validate a charter and register its directory as a job.
 
-    Refuses before writing anything: a draft charter, a directory with no
-    charter, or a job that is already queued.
+    Refuses before writing anything: a charter_dir outside root, a draft
+    charter, a directory with no charter, or a job that is already queued.
     """
+    root_r = root.resolve()
+    charter_r = charter_dir.resolve()
+    if root_r not in charter_r.parents:
+        raise SystemExit(
+            f"{charter_dir}: is not inside {root}; discover({root}) only "
+            f"ever walks its own children, so a job queued outside its "
+            f"root would report 'queued' and then be invisible to every "
+            f"later `status` or `board`")
+
     slug = charter_dir.name
     charter_file = charter_dir / "charter.md"
     if not charter_file.is_file():

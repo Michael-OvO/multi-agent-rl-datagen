@@ -131,3 +131,36 @@ def test_the_page_is_one_centred_column(page):
 
 def test_figures_are_tabular(page):
     assert "font-variant-numeric: tabular-nums" in page
+
+
+def test_the_approve_command_the_board_advertises_actually_exists():
+    # HUMAN_GATES renders "approve <job> --spec/--release" for every job
+    # parked at a human gate. If cli.py never registered that subcommand,
+    # the board would be advertising a command that raises "invalid choice"
+    # -- argparse only exits 0 on --help for a subcommand it recognizes.
+    from forge.factory.cli import main as cli_main
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main(["approve", "--help"])
+    assert excinfo.value.code == 0, (
+        "'approve' must be a registered subcommand, not an unrecognized "
+        "verb the board advertises into a dead end")
+
+
+def test_the_pending_badge_uses_ink_2_not_muted_for_contrast(page):
+    # --muted is 3.41-3.50:1 in the two modes -- DESIGN.md reserves it for
+    # de-emphasized labels (timestamps, paths), not for text a reader must
+    # actually read. .badge.pending paints the "not run" word shown in most
+    # grid cells and the "queued" job status, so it needs an -ink colour.
+    match = re.search(r"\.badge\.pending\s*\{[^}]*\}", page)
+    assert match, ".badge.pending rule not found"
+    assert "var(--ink-2)" in match.group()
+    assert "var(--muted)" not in match.group()
+
+
+def test_an_empty_queue_explains_itself_instead_of_a_bare_header():
+    page = render_board([], generated=GENERATED)
+    assert "no jobs" in page.lower(), (
+        "render_board([]) must explain the empty grid, the way "
+        "cli.cmd_status does for an empty root, rather than leaving a "
+        "reader staring at a header row and nothing else")

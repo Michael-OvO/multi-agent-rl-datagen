@@ -120,3 +120,32 @@ def test_queueing_a_directory_without_a_charter_is_refused(tmp_path):
         queue_job(tmp_path / "genjobs", empty,
                   now="2026-08-10T16:00:00-07:00",
                   worktree_root=tmp_path / "scratch")
+
+
+def test_queueing_a_charter_outside_root_is_refused_before_anything_is_written(tmp_path):
+    # discover(root) only ever walks root's own children, so a charter_dir
+    # that lives somewhere else gets a state.json written and reports
+    # "queued" -- but discover(root) can never find it again. Queued into
+    # invisibility.
+    root = tmp_path / "genjobs"
+    root.mkdir()
+    charter_dir = tmp_path / "elsewhere" / "2026-08-10-hidden-knower"
+    charter_dir.mkdir(parents=True)
+    (charter_dir / "charter.md").write_text(CHARTER)
+
+    with pytest.raises(SystemExit, match="2026-08-10-hidden-knower.*genjobs|genjobs.*2026-08-10-hidden-knower"):
+        queue_job(root, charter_dir, now="2026-08-10T16:00:00-07:00",
+                  worktree_root=tmp_path / "scratch")
+    assert not (charter_dir / "state.json").exists(), (
+        "a refused charter must leave no state behind")
+
+
+def test_read_state_refuses_a_directory_name_that_disagrees_with_its_job_field(tmp_path):
+    # cli.cmd_abandon and cmd_approve both reconstruct a job's directory as
+    # `root / state.job`; if a directory's name and its state.json job field
+    # ever disagree, that reconstruction points at the wrong place. Catching
+    # the mismatch here, where the file is read, turns that into a clear
+    # refusal instead of a raw traceback three steps downstream.
+    job = _seed(tmp_path, "2026-08-10-actual-dir", job="2026-08-10-wrong-name")
+    with pytest.raises(SystemExit, match="2026-08-10-actual-dir.*2026-08-10-wrong-name|2026-08-10-wrong-name.*2026-08-10-actual-dir"):
+        read_state(job)
