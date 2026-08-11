@@ -72,3 +72,23 @@ def test_an_approval_round_trips():
     assert state.approvals.spec is not None
     assert state.approvals.spec.by == "michael"
     assert state_to_dict(state) == raw
+
+
+def test_a_fully_populated_state_round_trips_every_field():
+    raw = json.loads(json.dumps(MINIMAL))
+    raw["created"] = "2026-08-10T14:00:00-07:00"
+    raw["updated"] = "2026-08-10T16:45:22-07:00"
+    raw["spend"] = {"total_tokens": 4500000, "sessions": 3}
+    raw["approvals"] = {
+        "spec": {"by": "michael", "at": "2026-08-10T15:00:00-07:00"},
+        "release": {"by": "michael", "at": "2026-08-10T16:45:00-07:00"},
+    }
+    raw["release_decision"] = "READY"
+    state = state_from_dict(raw)
+    assert state.created != state.updated
+    assert state.spend.total_tokens == 4500000
+    assert state.spend.sessions == 3
+    assert state.approvals.release is not None
+    assert state.approvals.release.by == "michael"
+    assert state.release_decision == "READY"
+    assert state_to_dict(state) == raw
