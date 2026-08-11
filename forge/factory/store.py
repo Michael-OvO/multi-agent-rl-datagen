@@ -85,17 +85,24 @@ def queue_job(root: Path, charter_dir: Path, *, now: str,
               worktree_root: Path) -> JobState:
     """Validate a charter and register its directory as a job.
 
-    Refuses before writing anything: a charter_dir outside root, a draft
-    charter, a directory with no charter, or a job that is already queued.
+    Refuses before writing anything: a charter_dir that is not root's direct
+    child, a draft charter, a directory with no charter, or a job that is
+    already queued.
     """
     root_r = root.resolve()
     charter_r = charter_dir.resolve()
-    if root_r not in charter_r.parents:
+    if charter_r.parent != root_r:
+        # `root_r not in charter_r.parents` is not enough: that is true for
+        # ANY descendant, including root/sub/charter-dir -- but discover()
+        # only ever calls root.iterdir(), one level deep. A charter nested
+        # one directory further passes an ancestor-chain check yet is just
+        # as invisible to discover() as a charter outside root entirely, so
+        # the check has to match discover's actual reach: a direct child.
         raise SystemExit(
-            f"{charter_dir}: is not inside {root}; discover({root}) only "
-            f"ever walks its own children, so a job queued outside its "
-            f"root would report 'queued' and then be invisible to every "
-            f"later `status` or `board`")
+            f"{charter_dir}: is not a direct child of {root}; discover({root}) "
+            f"only ever walks its own immediate children, so a charter "
+            f"nested any deeper would report 'queued' and then be invisible "
+            f"to every later `status` or `board`")
 
     slug = charter_dir.name
     charter_file = charter_dir / "charter.md"

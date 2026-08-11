@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from forge.factory.board import render_board
+from forge.factory.machine import TransitionError
 from forge.factory.machine import abandon as abandon_job
 from forge.factory.machine import approve_release as approve_release_job
 from forge.factory.machine import approve_spec as approve_spec_job
@@ -77,8 +78,16 @@ def cmd_abandon(args: argparse.Namespace) -> None:
 def cmd_approve(args: argparse.Namespace) -> None:
     state = _find(args.root, args.job)
     now = now_iso()
-    after = (approve_spec_job(state, by=args.by, now=now) if args.spec
-             else approve_release_job(state, by=args.by, now=now))
+    # machine.approve_spec/approve_release raise TransitionError -- a plain
+    # Exception, not SystemExit -- when the job isn't parked at the gate.
+    # Every other CLI-boundary refusal here is SystemExit with a full
+    # sentence (cmd_queue, cmd_abandon, parse_charter); the message is
+    # already one, so only the exception type changes at this boundary.
+    try:
+        after = (approve_spec_job(state, by=args.by, now=now) if args.spec
+                 else approve_release_job(state, by=args.by, now=now))
+    except TransitionError as exc:
+        raise SystemExit(str(exc)) from exc
     write_state(args.root / after.job, after)
     print(f"{after.job}: {after.status}")
 

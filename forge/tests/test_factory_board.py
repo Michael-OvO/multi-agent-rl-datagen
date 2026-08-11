@@ -164,3 +164,22 @@ def test_an_empty_queue_explains_itself_instead_of_a_bare_header():
         "render_board([]) must explain the empty grid, the way "
         "cli.cmd_status does for an empty root, rather than leaving a "
         "reader staring at a header row and nothing else")
+
+
+def test_the_empty_state_sentence_is_not_painted_at_muted_contrast():
+    # db72396 reused .no-action (var(--muted), 3.41-3.50:1 -- DESIGN.md
+    # reserves --muted for de-emphasized labels like the em-dash placeholder
+    # in jobRowHtml) for the empty-queue explanatory sentence. That sentence
+    # is prose a reader must actually read, which DESIGN.md requires at
+    # 4.5:1 -- --ink-2 or an -ink colour, never --muted.
+    page = render_board([], generated=GENERATED)
+    assert '<td colspan="${cols}" class="no-action">' not in page, (
+        "the empty-state <td> must not share .no-action with the em-dash "
+        "placeholder in jobRowHtml -- that class is --muted, reserved for "
+        "de-emphasized labels, not prose a reader must read")
+    match = re.search(r'<td colspan="\$\{cols\}" class="([\w-]+)">', page)
+    assert match, "empty-state <td> not found"
+    rule = re.search(r"\." + re.escape(match.group(1)) + r"\s*\{[^}]*\}", page)
+    assert rule, f".{match.group(1)} rule not found in <style>"
+    assert "var(--ink-2)" in rule.group()
+    assert "var(--muted)" not in rule.group()

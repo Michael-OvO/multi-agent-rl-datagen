@@ -142,6 +142,20 @@ def test_approve_release_ships_a_ready_job_and_persists(tmp_path, capsys):
     assert store.read_state(d).status == "shipped"
 
 
+def test_approving_a_job_not_parked_at_the_spec_gate_refuses_cleanly(tmp_path):
+    # machine.approve_spec raises TransitionError, a plain Exception -- every
+    # other CLI-boundary refusal here is SystemExit with a full sentence
+    # (cmd_queue, cmd_abandon, parse_charter). Left uncaught, this would leak
+    # a raw traceback instead of the message the machine already wrote.
+    d = _charter_dir(tmp_path)
+    root = tmp_path / "genjobs"
+    main(["queue", str(d), "--root", str(root)])  # status is "queued", not parked
+
+    with pytest.raises(SystemExit, match="awaiting-spec-approval"):
+        main(["approve", "2026-08-10-hidden-knower", "--spec", "--by", "michael",
+              "--root", str(root)])
+
+
 def test_approve_requires_exactly_one_of_spec_or_release(tmp_path):
     d = _charter_dir(tmp_path)
     root = tmp_path / "genjobs"

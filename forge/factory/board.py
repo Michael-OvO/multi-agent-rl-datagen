@@ -324,6 +324,7 @@ all three theme scopes -- are pinned in forge/tests/test_factory_board.py.
   }}
   .cmd-row button {{ padding: 3px 10px; font-size: 11.5px; }}
   .no-action {{ color: var(--muted); }}
+  .empty-state {{ color: var(--ink-2); }}
 
   .foot-note {{ color: var(--muted); font-size: 12px; margin: 14px 0 0; max-width: 78ch; }}
 
@@ -480,8 +481,11 @@ function renderBody(rows, lastStage) {{
   if (!rows.length) {{
     // The same "no jobs" wording cli.cmd_status uses for an empty root --
     // a bare header row with nothing under it reads as broken, not empty.
+    // This is prose a reader must read, not the em-dash placeholder
+    // jobRowHtml paints at --muted, so it gets its own class at --ink-2
+    // (DESIGN.md requires 4.5:1 for prose; --muted is 3.41-3.50:1).
     const cols = 6 + lastStage;
-    $("#board-body").innerHTML = `<tr><td colspan="${{cols}}" class="no-action">`
+    $("#board-body").innerHTML = `<tr><td colspan="${{cols}}" class="empty-state">`
       + `no jobs queued yet -- run `
       + `<code>python -m forge.factory.cli queue &lt;charter-dir&gt;</code> to add one</td></tr>`;
     return;
