@@ -70,7 +70,14 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 def cmd_abandon(args: argparse.Namespace) -> None:
     state = _find(args.root, args.job)
-    after = abandon_job(state, now=now_iso())
+    # machine.abandon raises TransitionError -- a plain Exception, not SystemExit
+    # -- when the job's status is "shipped". Every other CLI-boundary refusal here
+    # is SystemExit with a full sentence (cmd_queue, cmd_approve, parse_charter);
+    # the message is already one, so only the exception type changes at this boundary.
+    try:
+        after = abandon_job(state, now=now_iso())
+    except TransitionError as exc:
+        raise SystemExit(str(exc)) from exc
     write_state(args.root / after.job, after)
     print(f"{after.job}: {after.status}")
 
@@ -81,7 +88,7 @@ def cmd_approve(args: argparse.Namespace) -> None:
     # machine.approve_spec/approve_release raise TransitionError -- a plain
     # Exception, not SystemExit -- when the job isn't parked at the gate.
     # Every other CLI-boundary refusal here is SystemExit with a full
-    # sentence (cmd_queue, cmd_abandon, parse_charter); the message is
+    # sentence (cmd_queue, cmd_abandon, parse_charter). The message is
     # already one, so only the exception type changes at this boundary.
     try:
         after = (approve_spec_job(state, by=args.by, now=now) if args.spec

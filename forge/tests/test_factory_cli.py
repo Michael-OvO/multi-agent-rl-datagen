@@ -166,3 +166,22 @@ def test_approve_requires_exactly_one_of_spec_or_release(tmp_path):
     with pytest.raises(SystemExit):
         main(["approve", "2026-08-10-hidden-knower", "--spec", "--release",
               "--by", "michael", "--root", str(root)])
+
+
+def test_abandoning_a_shipped_job_refuses_cleanly(tmp_path):
+    # machine.abandon raises TransitionError, a plain Exception -- every
+    # other CLI-boundary refusal here is SystemExit with a full sentence
+    # (cmd_queue, cmd_approve, parse_charter). Left uncaught, this would leak
+    # a raw traceback instead of the message the machine already wrote.
+    d = _charter_dir(tmp_path)
+    root = tmp_path / "genjobs"
+    main(["queue", str(d), "--root", str(root)])  # status is "queued"
+
+    # Modify the state to be "shipped" to test the refusal
+    state_path = d / "state.json"
+    state_dict = json.loads(state_path.read_text())
+    state_dict["status"] = "shipped"
+    state_path.write_text(json.dumps(state_dict))
+
+    with pytest.raises(SystemExit, match="shipped"):
+        main(["abandon", "2026-08-10-hidden-knower", "--root", str(root)])
