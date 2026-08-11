@@ -69,6 +69,33 @@ def write_state(job_path: Path, state: JobState) -> None:
     os.replace(tmp, target)
 
 
+def latest_check(root: Path, state: JobState) -> dict | None:
+    """The most recent stage-gate verdict recorded for this job, verbatim.
+
+    "Most recent" means the newest attempt (list order -- attempts are
+    appended chronologically) that actually completed a check, which is not
+    necessarily the job's current cursor stage: a job mid-attempt on stage 4
+    still reports what stage 3's gate found. Resolved as `root / state.job /
+    attempt.check` -- safe because `read_state` now asserts a job's
+    directory name matches its own `job` field (the fix for the
+    queued-into-invisibility bug), so no caller needs to carry a stored path
+    alongside the state.
+
+    Returns None when no attempt has completed a check yet -- a fresh or
+    still-running job has nothing to report, and that is a different fact
+    from "reported and found nothing wrong" (see board._quality_headline).
+    """
+    checked = [a for a in state.attempts if a.check is not None]
+    if not checked:
+        return None
+    check_path = checked[-1].check
+    assert check_path is not None  # narrowed by the filter above; pyright
+    # can't see across the list comprehension boundary to know every
+    # element's `check` survived the `is not None` filter.
+    path = root / state.job / check_path
+    return json.loads(path.read_text())
+
+
 def discover(root: Path) -> list[JobState]:
     """Every job under `root`, by name. Directories without a state.json are
     not jobs -- a charter directory that was never queued lives here too."""

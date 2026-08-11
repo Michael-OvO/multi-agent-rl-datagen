@@ -8,15 +8,19 @@ is a job the orchestrator cannot resume and a board that renders nonsense.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from forge.factory.store import (
     discover,
+    latest_check,
     queue_job,
     read_state,
     write_state,
 )
+
+FIXTURES = Path(__file__).parent / "fixtures" / "factory" / "genjobs"
 
 CHARTER = """---
 status: ready
@@ -169,3 +173,28 @@ def test_read_state_refuses_a_directory_name_that_disagrees_with_its_job_field(t
     job = _seed(tmp_path, "2026-08-10-actual-dir", job="2026-08-10-wrong-name")
     with pytest.raises(SystemExit, match="2026-08-10-actual-dir.*2026-08-10-wrong-name|2026-08-10-wrong-name.*2026-08-10-actual-dir"):
         read_state(job)
+
+
+def test_latest_check_reads_the_newest_completed_attempts_verdict():
+    # 2026-08-04-gate-failed has two stage-7 attempts, both with a check;
+    # the newest (attempt 2) is the one that should come back, not the first.
+    root = FIXTURES
+    state = read_state(root / "2026-08-04-gate-failed")
+    check = latest_check(root, state)
+    assert check["stage"] == 7
+    assert check["failures"] == [
+        "2 critical mutants survived: swap-role-outputs, drop-final-write"]
+
+
+def test_latest_check_is_none_before_any_attempt_completes(tmp_path):
+    job = _seed(tmp_path, "2026-08-10-fresh")
+    state = read_state(job)
+    assert latest_check(tmp_path, state) is None
+
+
+def test_latest_check_on_a_passing_job_carries_no_failures():
+    root = FIXTURES
+    state = read_state(root / "2026-08-06-awaiting-release")
+    check = latest_check(root, state)
+    assert check["passed"] is True
+    assert check["failures"] == []

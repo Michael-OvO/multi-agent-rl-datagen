@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import html
 import json
+from pathlib import Path
 
 from forge.factory.state import LAST_STAGE, JobState
+from forge.factory.store import latest_check
 
 #: The stage states the grid can show, and the legend word for each. `pending`
 #: covers both "not started" and "never reached": the legend names it
@@ -63,7 +65,30 @@ def stage_cell(state: JobState, stage: int) -> str:
     return "failed"
 
 
-def _job_row(state: JobState) -> dict:
+def _quality_headline(check: dict | None) -> str | None:
+    """The worst unresolved indicator, named -- never a computed score.
+
+    A failing check's own `failures` list is already the most legible
+    statement of what is wrong (every Task-5 fixture's check.json carries
+    one); showing it verbatim is the whole function. The `quality` sub-dict
+    a check may also carry (mutants_killed, ambiguity_findings, ...) has no
+    common scale across stages, so ranking it into a single "worst" number
+    would be exactly the composite this design forbids -- it is deliberately
+    never read here.
+
+    None in, None out: "no completed check yet" is a fact the caller must
+    render differently from "checked and found nothing wrong" -- collapsing
+    them would repeat the mistake the stage grid's own absence rule
+    (STAGE_STATES's "-- not run") already exists to prevent.
+    """
+    if check is None:
+        return None
+    if check["failures"]:
+        return "; ".join(check["failures"])
+    return f"no open findings at stage {check['stage']}"
+
+
+def _job_row(state: JobState, root: Path | None) -> dict:
     """One row's data, already decided -- the template only formats it.
 
     Two fields go beyond the bare cell verdict: `cap` and `attempt_counts`.
@@ -92,6 +117,8 @@ def _job_row(state: JobState) -> dict:
             max((a.attempt for a in state.attempts if a.stage == n), default=0)
             for n in range(1, LAST_STAGE + 1)
         ],
+        "quality": _quality_headline(
+            latest_check(root, state) if root is not None else None),
         "command": (
             "python -m forge.factory.cli "
             + HUMAN_GATES[state.status].format(job=state.job)
@@ -101,9 +128,9 @@ def _job_row(state: JobState) -> dict:
 
 
 def render_board(states: list[JobState], *, generated: str,
-                 refresh_seconds: int = 5) -> str:
+                 refresh_seconds: int = 5, root: Path | None = None) -> str:
     """The complete page. `generated` is rendered, always, so staleness shows."""
-    rows = [_job_row(s) for s in states]
+    rows = [_job_row(s, root) for s in states]
     data = json.dumps({"generated": generated, "rows": rows}, indent=1)
     # The implementer writes _TEMPLATE below: a full <!doctype html> document
     # carrying the committed tokens in all three theme scopes, the badge()
@@ -325,6 +352,7 @@ all three theme scopes -- are pinned in forge/tests/test_factory_board.py.
   .cmd-row button {{ padding: 3px 10px; font-size: 11.5px; }}
   .no-action {{ color: var(--muted); }}
   .empty-state {{ color: var(--ink-2); }}
+  .quality {{ color: var(--ink-2); }}
 
   .foot-note {{ color: var(--muted); font-size: 12px; margin: 14px 0 0; max-width: 78ch; }}
 
@@ -437,7 +465,7 @@ function renderHead(lastStage) {{
   const stageHeads = [];
   for (let n = 1; n <= lastStage; n++) stageHeads.push(`<th class="num">${{n}}</th>`);
   head.innerHTML = `<th>job</th><th>status</th><th>stage</th><th>updated</th>`
-    + `<th class="num">spend</th>${{stageHeads.join("")}}<th>if a human is next</th>`;
+    + `<th class="num">spend</th>${{stageHeads.join("")}}<th>quality</th><th>if a human is next</th>`;
 }}
 
 function formatTokens(n) {{
@@ -473,6 +501,7 @@ function jobRowHtml(row, lastStage) {{
     + `<td class="updated">${{esc(row.updated)}}</td>`
     + `<td class="num spend">${{formatTokens(row.spend)}}<span class="of"> / ${{formatTokens(row.budget)}}</span></td>`
     + cells.join("")
+    + `<td class="quality">${{row.quality ? esc(row.quality) : '<span class="no-action">—</span>'}}</td>`
     + `<td>${{action}}</td>`
     + `</tr>`;
 }}
@@ -484,7 +513,7 @@ function renderBody(rows, lastStage) {{
     // This is prose a reader must read, not the em-dash placeholder
     // jobRowHtml paints at --muted, so it gets its own class at --ink-2
     // (DESIGN.md requires 4.5:1 for prose; --muted is 3.41-3.50:1).
-    const cols = 6 + lastStage;
+    const cols = 7 + lastStage;
     $("#board-body").innerHTML = `<tr><td colspan="${{cols}}" class="empty-state">`
       + `no jobs queued yet -- run `
       + `<code>python -m forge.factory.cli queue &lt;charter-dir&gt;</code> to add one</td></tr>`;

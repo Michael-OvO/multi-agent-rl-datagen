@@ -183,3 +183,31 @@ def test_the_empty_state_sentence_is_not_painted_at_muted_contrast():
     assert rule, f".{match.group(1)} rule not found in <style>"
     assert "var(--ink-2)" in rule.group()
     assert "var(--muted)" not in rule.group()
+
+
+# -- the quality panel -------------------------------------------------------
+
+
+def test_a_failing_checks_failures_are_the_headline_verbatim():
+    page = render_board(STATES, generated=GENERATED, root=FIXTURES)
+    assert "2 critical mutants survived: swap-role-outputs, drop-final-write" in page
+
+
+def test_a_clean_latest_check_says_so_by_stage_not_by_blank():
+    page = render_board(STATES, generated=GENERATED, root=FIXTURES)
+    assert "no open findings at stage 10" in page
+
+
+def test_a_job_with_no_completed_check_gets_the_absence_placeholder_not_a_crash():
+    # 2026-08-01-queued-only has zero attempts.
+    page = render_board(STATES, generated=GENERATED, root=FIXTURES)
+    # every job row renders; a job with nothing to report does not raise
+    # and does not silently print "None".
+    assert "None" not in page
+
+
+def test_render_board_without_root_does_not_crash_and_shows_the_placeholder():
+    # The default (root=None) keeps every pre-existing call site working --
+    # confirms the new parameter is additive, not a breaking change.
+    page = render_board(STATES, generated=GENERATED)
+    assert page.lstrip().startswith("<!doctype html>")

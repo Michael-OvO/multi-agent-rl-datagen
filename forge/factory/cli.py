@@ -104,7 +104,7 @@ def cmd_board(args: argparse.Namespace) -> None:
     args.root.mkdir(parents=True, exist_ok=True)
     out = args.root / "board.html"
     out.write_text(render_board(states, generated=now_iso(),
-                                refresh_seconds=args.refresh))
+                                refresh_seconds=args.refresh, root=args.root))
     print(f"wrote {out} ({len(states)} jobs)")
 
 
