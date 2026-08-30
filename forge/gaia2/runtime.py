@@ -264,12 +264,30 @@ def _budget_line(world) -> str:
             "world ends; spend waiting deliberately.")
 
 
+def _clock_facts(world) -> dict:
+    """The world's clock at this instant, when it keeps one.
+
+    Duck-typed like the rest of the world interface: a substrate that
+    exposes no clock contributes no fields and the row is still written.
+    """
+    facts = getattr(world, "clock_facts", None)
+    return facts() if callable(facts) else {}
+
+
 def _deliver(world, log: EpisodeLog, msgs: list[Msg], transcript: list[dict]) -> bool:
-    """Append the world's messages to the Main's transcript. True on stop."""
+    """Append the world's messages to the Main's transcript. True on stop.
+
+    A stop row carries the world's own reason and its clock. Measured
+    2026-08-29 across `sweep/gaia2_credit.json` and `sweep/gaia2_v3_credit.json`:
+    201 of 249 soft-judged rollouts ended at `ENV_STOP` rather than at an
+    answer, and every one of those rows was a bare type-and-timestamp. The
+    reason was in hand the whole time -- the stop message reads "Environment
+    stopped with state <STATE>" -- and was being dropped here.
+    """
     stopped = False
     for m in msgs:
         if m.kind == "stop":
-            log.event(world, "stop")
+            log.event(world, "stop", reason=m.text, **_clock_facts(world))
             stopped = True
         elif m.kind == "user":
             log.user_turns += 1

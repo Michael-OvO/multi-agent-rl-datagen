@@ -716,3 +716,78 @@ def test_the_main_is_told_what_a_delegation_costs_in_time():
     open_prompt = _main_system(FakeWorld(), control_for(ROSTER),
                                {a: FakeWorld().catalog(a) for a in ROSTER})
     assert "30-60 seconds" not in open_prompt
+
+
+# -- the stop is the most common outcome, and it must say why ---------------
+
+
+def test_a_stop_event_records_the_world_s_own_reason():
+    # Measured 2026-08-29 over sweep/gaia2_credit.json and
+    # sweep/gaia2_v3_credit.json: 201 of 249 soft-judged rollouts ended at
+    # "(environment stopped)" rather than at an answer, and not one records
+    # why -- `log.event(world, "stop")` wrote a type and a timestamp and
+    # nothing else. The reason is already in our hands when we write that
+    # row: ARE's stop notification carries "Environment stopped with state
+    # <STATE>", and _deliver was dropping the text on the floor. Without it
+    # a clean end and a validation failure are the same row.
+    world = FakeWorld(drain_script=(
+        [Msg("stop", "Environment stopped with state FAILED")],))
+    log = EpisodeLog()
+
+    answer = run_main(FakeClient([]), world, "task", STAR_DOCS, log)
+
+    assert answer == "(environment stopped)"
+    stops = [e for e in log.events if e["type"] == "stop"]
+    assert len(stops) == 1
+    assert stops[0]["reason"] == "Environment stopped with state FAILED"
+
+
+def test_a_stop_event_records_the_world_clock_when_the_world_keeps_one():
+    # Whether the episode died against its horizon or long before it is the
+    # whole diagnosis, and the row cannot carry it without the clock: the
+    # same campaign shows stopped episodes ending at a median 313 simulated
+    # seconds while finished ones ran to 992.
+    class TimedWorld(FakeWorld):
+        def clock_facts(self):
+            return {"duration": 1000.0, "time_passed": 313.0, "remaining": 687.0}
+
+    world = TimedWorld(drain_script=(
+        [Msg("stop", "Environment stopped with state STOPPED")],))
+    log = EpisodeLog()
+
+    run_main(FakeClient([]), world, "task", STAR_DOCS, log)
+
+    stop = [e for e in log.events if e["type"] == "stop"][0]
+    assert stop["duration"] == 1000.0
+    assert stop["time_passed"] == 313.0
+    assert stop["remaining"] == 687.0
+
+
+def test_a_world_that_keeps_no_clock_still_logs_its_stop():
+    # The world is duck-typed on purpose (module docstring); a substrate that
+    # exposes no clock must still record the stop, not crash on the way out.
+    world = FakeWorld(drain_script=([Msg("stop", "done")],))
+    log = EpisodeLog()
+
+    run_main(FakeClient([]), world, "task", STAR_DOCS, log)
+
+    stop = [e for e in log.events if e["type"] == "stop"][0]
+    assert stop["reason"] == "done"
+    assert "duration" not in stop
+
+
+def test_the_one_real_world_implements_the_clock_contract():
+    # `forge/tests` cannot import are_world -- it needs `are.*`, which the
+    # pinned main environment deliberately does not carry (that module's
+    # docstring says why) -- so the duck-typed contract is guarded
+    # structurally instead. Without this, deleting AreWorld.clock_facts
+    # would silently return every stop row to being clockless and nothing
+    # in this suite would fail.
+    import ast
+
+    source = Path(__file__).parents[1] / "gaia2" / "are_world.py"
+    world = next(node for node in ast.walk(ast.parse(source.read_text()))
+                 if isinstance(node, ast.ClassDef) and node.name == "AreWorld")
+    methods = {n.name for n in world.body if isinstance(n, ast.FunctionDef)}
+    assert "clock_facts" in methods, \
+        "AreWorld must expose clock_facts(); runtime._clock_facts reads it"
