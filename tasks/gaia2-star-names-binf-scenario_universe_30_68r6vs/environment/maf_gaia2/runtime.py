@@ -62,7 +62,7 @@ DEFAULT_MODEL = "gpt-5.6-sol"
 #: Version every trajectory records when this contract shaped the policy.
 #: Prompt changes alter the experiment; an unversioned change would make old
 #: and new rollouts look comparable when they are not.
-OBJECTIVE_ACTION_CONTRACT_VERSION = "objective-actions-v2"
+OBJECTIVE_ACTION_CONTRACT_VERSION = "objective-actions-v3"
 
 #: Semantics shared by the in-process Main, every specialist, and the rendered
 #: Harbor instruction. These are deliberately domain-general: the incident
@@ -76,7 +76,10 @@ OBJECTIVE_ACTION_CONTRACT = """Objective action contract (literal rules, not sug
 - Use the transcript as an action ledger before every write: identify the obligation or trigger, verify it is currently due, and verify no successful write has already satisfied it. Never create an extra side effect to cover an ambiguous interpretation.
 - Fill only the fields the user specified. Leave every optional argument empty unless the user gave its value or a tool result supplies it. Do not infer a location, a tag, a description, a category or a note because it would be helpful; an unrequested field is a wrong field.
 - Reuse the user's own wording for any text you write - titles, subjects, names. Reorder or restyle nothing. If the user said "photoshoot with X", the title is "photoshoot with X", not "X photoshoot".
-- Report to the user in one short factual sentence naming what you did. Do not restate the details back, and do not add commentary; the report is a confirmation, not a summary."""
+- Report to the user in one short factual sentence naming what you did. Do not restate the details back, and do not add commentary; the report is a confirmation, not a summary.
+- Pass every value the user or a tool result already gave you through exactly as it was given. Do not append an email address to a name, a postcode to a street, or an honorific to a person; do not change its capitalisation; do not restyle a date or a time you were handed. "Home" is not "My home", and "2pm for two hours" is not "2:00 PM to 4:00 PM".
+- Never add yourself, and never add anyone the user did not name, to a recipient list, an attendee list or a group.
+- When you write a message on the user's behalf, put in it only what the user asked you to convey, phrased as they phrased it. No opening pleasantry beyond a greeting, no closing offer, no restatement of what you are about to do."""
 
 #: What the harness returns when the environment announced the episode's end
 #: before the Main did. Not a surrender -- the agent did not give up, the

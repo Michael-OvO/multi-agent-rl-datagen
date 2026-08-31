@@ -345,7 +345,7 @@ def test_every_agent_gets_the_same_objective_action_contract():
     assert "exactly once successfully" in OBJECTIVE_ACTION_CONTRACT
     assert "never repeat a successful write" in OBJECTIVE_ACTION_CONTRACT
     assert "BOOKED" not in OBJECTIVE_ACTION_CONTRACT
-    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v2"
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v3"
 
 
 def test_the_main_is_told_that_reporting_commits_the_turn():
@@ -817,4 +817,38 @@ def test_the_contract_forbids_embellishing_a_tool_call_s_arguments():
         "the contract never tells the Main to mirror rather than paraphrase"
     # Versioned because a prompt change re-prices every comparison: v6 and
     # anything after it must not read as the same experiment.
-    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v2"
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v3"
+
+
+def test_the_contract_pins_values_the_user_or_a_tool_already_gave():
+    # The v6 rejection surface, field by field across all 32 distinct cases:
+    # 28 prose, 12 structured values, 4 invented-empty, 2 capitalisation, 2
+    # over-qualified. v2 covered the invented-empty four. These are the rest
+    # of the structured ones, each from a measured case:
+    #   u21_x1l1om  attendees   oracle ['Luis Pimentel']
+    #                           agent  ['Luis Pimentel <lpimentel@bistroporto.com>']
+    #   u21_kgqyjr  end_location oracle 'Malmohusvagen 34, Malmo'
+    #                           agent  'Malmohusvagen 34, 211 18 Malmo'  (postcode added)
+    #   u24_tmxihx  start_location oracle 'Home'   agent 'My home'
+    #   u24_4pjsme  location    oracle 'Local cafe'  agent 'local cafe'
+    #   u22_6wkrhc  user_ids    oracle two numbers; agent added the user's own
+    assert "exactly as it was given" in OBJECTIVE_ACTION_CONTRACT, \
+        "nothing tells the Main to pass a supplied value through unchanged"
+    assert "anyone the user did not name" in OBJECTIVE_ACTION_CONTRACT, \
+        "nothing forbids padding a recipient list or a group"
+
+
+def test_the_contract_bounds_what_a_message_body_may_contain():
+    # u24_4pjsme reply_to_email, the clearest measured case. Oracle body:
+    #   "I am free to meet you on October 19, 2024 at 2pm for two hours at
+    #    the local cafe; does this time work for you? ..."
+    # Agent body: a greeting, "I would be happy to discuss this with you",
+    # the same substance with 2pm-for-two-hours restyled to "2:00 PM to
+    # 4:00 PM", and "Best regards, Ursula". Semantically identical, rejected.
+    #
+    # Deliberately NOT a rule against greetings: 10 of the 15 oracle bodies
+    # measured DO greet. What separates them is length and restyling, so
+    # that is what the rule names.
+    assert "only what the user asked you to convey" in OBJECTIVE_ACTION_CONTRACT, \
+        "nothing bounds the body to the substance the user asked for"
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v3"
