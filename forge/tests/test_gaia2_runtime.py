@@ -345,7 +345,7 @@ def test_every_agent_gets_the_same_objective_action_contract():
     assert "exactly once successfully" in OBJECTIVE_ACTION_CONTRACT
     assert "never repeat a successful write" in OBJECTIVE_ACTION_CONTRACT
     assert "BOOKED" not in OBJECTIVE_ACTION_CONTRACT
-    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v1"
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v2"
 
 
 def test_the_main_is_told_that_reporting_commits_the_turn():
@@ -791,3 +791,30 @@ def test_the_one_real_world_implements_the_clock_contract():
     methods = {n.name for n in world.body if isinstance(n, ast.FunctionDef)}
     assert "clock_facts" in methods, \
         "AreWorld must expose clock_facts(); runtime._clock_facts reads it"
+
+
+def test_the_contract_forbids_embellishing_a_tool_call_s_arguments():
+    # Measured over the v6 campaign (2026-08-30, workers=1): the soft judge
+    # scored 0 of 107, and 93% of those failures name an oracle call the
+    # agent never made. It never made them because the scenario graph gates
+    # the environment's replies on the agent's earlier calls MATCHING the
+    # oracle -- adaptability scenarios schedule "Luisa replies you are
+    # mistaken" with deps=[OracleEvent]. In scenario_universe_21_44vlco the
+    # gate was one Calendar__add_calendar_event: the oracle carries
+    # title="Photoshoot with Sheryl's Sweets" and empty tag/description/
+    # location, the Main sent "Sheryl's Sweets Photoshoot" plus a tag, a
+    # description and a location it inferred, and the judge answered "tool
+    # judge reject". Luisa never replied, four downstream oracle events
+    # became unreachable, and the episode scored zero for work it was never
+    # given the chance to do.
+    #
+    # The contract already governs WHETHER to act. Nothing governed the
+    # shape of the arguments, so a helpful Main forfeited the episode by
+    # being helpful. This is the world's convention, not any task's answer.
+    assert "only the fields the user specified" in OBJECTIVE_ACTION_CONTRACT, \
+        "the contract never tells the Main to leave unspecified fields empty"
+    assert "user's own wording" in OBJECTIVE_ACTION_CONTRACT, \
+        "the contract never tells the Main to mirror rather than paraphrase"
+    # Versioned because a prompt change re-prices every comparison: v6 and
+    # anything after it must not read as the same experiment.
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v2"

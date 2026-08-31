@@ -62,7 +62,7 @@ DEFAULT_MODEL = "gpt-5.6-sol"
 #: Version every trajectory records when this contract shaped the policy.
 #: Prompt changes alter the experiment; an unversioned change would make old
 #: and new rollouts look comparable when they are not.
-OBJECTIVE_ACTION_CONTRACT_VERSION = "objective-actions-v1"
+OBJECTIVE_ACTION_CONTRACT_VERSION = "objective-actions-v2"
 
 #: Semantics shared by the in-process Main, every specialist, and the rendered
 #: Harbor instruction. These are deliberately domain-general: the incident
@@ -73,7 +73,10 @@ OBJECTIVE_ACTION_CONTRACT = """Objective action contract (literal rules, not sug
 - For monitoring, the state observed when an object is created or first inspected is the baseline. An "update" or "change" is a later observed transition away from that baseline, unless the user explicitly says the initial state also counts.
 - Complete each requested side effect exactly once successfully for each distinct obligation or observed trigger. Retry only after an explicit failed or rejected call; never repeat a successful write.
 - When one write already satisfies overlapping instructions, do not add another write merely to restate the same fact. Keep instructions separate only when the user explicitly requires separate actions, recipients, times, or repetitions.
-- Use the transcript as an action ledger before every write: identify the obligation or trigger, verify it is currently due, and verify no successful write has already satisfied it. Never create an extra side effect to cover an ambiguous interpretation."""
+- Use the transcript as an action ledger before every write: identify the obligation or trigger, verify it is currently due, and verify no successful write has already satisfied it. Never create an extra side effect to cover an ambiguous interpretation.
+- Fill only the fields the user specified. Leave every optional argument empty unless the user gave its value or a tool result supplies it. Do not infer a location, a tag, a description, a category or a note because it would be helpful; an unrequested field is a wrong field.
+- Reuse the user's own wording for any text you write - titles, subjects, names. Reorder or restyle nothing. If the user said "photoshoot with X", the title is "photoshoot with X", not "X photoshoot".
+- Report to the user in one short factual sentence naming what you did. Do not restate the details back, and do not add commentary; the report is a confirmation, not a summary."""
 
 #: What the harness returns when the environment announced the episode's end
 #: before the Main did. Not a surrender -- the agent did not give up, the
