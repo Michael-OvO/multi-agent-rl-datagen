@@ -1806,6 +1806,9 @@ def test_the_tasks_table_names_what_a_task_is_and_who_it_may_use(viewer_html):
         assert f"<th>{col}</th>" in body, col
     assert "family" in body and "verdictBadge(" not in body, (
         "the runs cell is a count, not a badge; a substrate is a word, not a colour")
+    assert 'wireSearch(fbar, trs, "tasks")' in body, (
+        "the tasks table shares the search helper rather than copying the filter block")
+    assert "function wireSearch(fbar, trs, noun)" in source
 
 
 def test_a_task_detail_renders_its_instruction_as_prose_and_its_runs(viewer_html):
@@ -1974,6 +1977,14 @@ function renderTasks(content) {
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
   trs.forEach(tr => tr.onclick = () => openDetail(Number(tr.dataset.i)));
+  wireSearch(fbar, trs, "tasks");
+  content.appendChild(twrap);
+}
+
+/* One search box over one table: rows carry data-text, the count line says
+   how many survive. The runs and shipped-task tables predate this helper
+   and keep their inline copies; new tables use it. */
+function wireSearch(fbar, trs, noun) {
   const apply = () => {
     const q = $("input", fbar).value.toLowerCase();
     let shown = 0;
@@ -1983,11 +1994,10 @@ function renderTasks(content) {
       shown += hit;
     }
     $(".count", fbar).textContent =
-      shown === trs.length ? `all ${trs.length} tasks` : `${shown} of ${trs.length} tasks`;
+      shown === trs.length ? `all ${trs.length} ${noun}` : `${shown} of ${trs.length} ${noun}`;
   };
   fbar.addEventListener("input", apply);
   apply();
-  content.appendChild(twrap);
 }
 
 function renderTaskDetail(content, s) {
