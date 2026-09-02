@@ -880,3 +880,15 @@ def test_the_signal_row_leads_in_and_labels_every_chip_in_runs(viewer_html):
 
 def test_the_signal_lead_in_uses_the_credit_label_style(viewer_css):
     assert re.search(r"\.signals \.lab\s*\{[^}]*var\(--muted\)", viewer_css)
+
+
+# -- §9D: task detail, runs first ---------------------------------------------
+
+
+def test_a_task_detail_leads_with_its_runs_and_folds_the_instruction_open(viewer_html):
+    source = viewer_source(viewer_html)
+    body = re.search(r"function renderTaskDetail\(content, s\) \{(.*?)\n\}", source, re.S).group(1)
+    assert body.index("Harbor runs of this task") < body.index("mdLite("), "runs before the instruction"
+    assert 'inst.className = "drawer";' in body and "inst.open = true;" in body
+    assert "Instruction" in body and "what the Main is told" in body
+    assert 'panel.className = "verdict-panel";' in body

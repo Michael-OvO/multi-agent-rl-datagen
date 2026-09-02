@@ -1358,14 +1358,6 @@ function renderTaskDetail(content, s) {
   if (d.description)
     content.insertAdjacentHTML("beforeend", `<p class="lede">${esc(d.description)}</p>`);
 
-  const panel = document.createElement("div");
-  panel.className = "verdict-panel";
-  panel.innerHTML = d.instruction
-    ? `<div class="head">Instruction</div>${mdLite(d.instruction)}`
-    : `<div class="head">Instruction</div><div>This task directory has no
-       <span class="mono">instruction.md</span>.</div>`;
-  content.appendChild(panel);
-
   const runs = d.runs || [];
   content.insertAdjacentHTML("beforeend",
     `<div class="panel-title">Harbor runs of this task
@@ -1396,6 +1388,22 @@ function renderTaskDetail(content, s) {
         <i>family match</i> named this task's stem without its numbered
         suffix in its path, so it is listed under every task of that family.</p>`);
   }
+
+  /* The instruction is the one thing that defines a task, so it opens by
+     default and folds only if the reader folds it; the runs sit above it
+     because "what happened" is the question that brings a reader here. */
+  const inst = document.createElement("details");
+  inst.className = "drawer";
+  inst.open = true;
+  inst.innerHTML = `<summary><span class="panel-title">Instruction
+       <span class="sub">— what the Main is told</span></span></summary>`;
+  const panel = document.createElement("div");
+  panel.className = "verdict-panel";
+  panel.innerHTML = d.instruction
+    ? mdLite(d.instruction)
+    : `<div>This task directory has no <span class="mono">instruction.md</span>.</div>`;
+  inst.appendChild(panel);
+  content.appendChild(inst);
 
   content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>`);
   if ((d.files || []).length)
