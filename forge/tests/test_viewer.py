@@ -671,13 +671,12 @@ def test_the_run_bar_names_the_parse_only_when_the_run_carries_one(viewer_html):
     assert "d.judge_parse ? `<span>judge parse <b>" in body
 
 
-def test_a_stopped_episode_gets_one_credit_style_stop_line(viewer_html):
+def test_a_stopped_episode_gets_a_world_stopped_group_in_the_signals_row(viewer_html):
     body = _episode_fn(viewer_html)
     assert "if (wasStopped(d)) {" in body
-    assert 'line.className = "credit";' in body
+    assert 'class="grp" title="${esc(String(st.reason || ""))}"' in body
     assert "simulated seconds used" in body
     assert "no clock recorded for this run" in body
-    assert 'line.title = String(st.reason || "");' in body
 
 
 def test_an_index_stub_renders_a_summary_and_no_transcript(viewer_html):
@@ -892,3 +891,18 @@ def test_a_task_detail_leads_with_its_runs_and_folds_the_instruction_open(viewer
     assert 'inst.className = "drawer";' in body and "inst.open = true;" in body
     assert "Instruction" in body and "what the Main is told" in body
     assert 'panel.className = "verdict-panel";' in body
+
+
+# -- §9E: one signals row on an episode ---------------------------------------
+
+
+def test_the_episode_header_has_one_signals_row(viewer_html):
+    body = _episode_fn(viewer_html)
+    assert body.count('className = "credit"') == 1, "shaping signals and the stop facts share one row"
+    assert 'sig.className = "credit";' in body
+    assert body.count('<span class="grp"') >= 2
+    assert "if (groups) {" in body
+
+
+def test_signal_groups_lay_out_as_one_row(viewer_css):
+    assert re.search(r"\.credit \.grp\s*\{[^}]*inline-flex", viewer_css)

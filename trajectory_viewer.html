@@ -357,6 +357,10 @@ sweep row files, forge tasks.
     letter-spacing: 0.02em;
   }
   .credit b { color: var(--ink); font-weight: 650; }
+  .credit .grp {
+    display: inline-flex; flex-wrap: wrap; gap: 5px 12px; align-items: baseline;
+    padding-right: 6px;
+  }
 
   /* ---------- transcript: a timeline with a status rail ---------- */
   .transcript { margin-top: 20px; }
@@ -1582,13 +1586,13 @@ function renderEpisode(content, s) {
   }
   content.appendChild(panel);
 
-  /* Shaping signals sit beside the verdict, never instead of it: a partial
-     reward says how much of the gold work landed, the pivot says where the
-     run first went wrong. */
-  if (d.credit) {
-    const credit = document.createElement("div");
-    credit.className = "credit";
-    credit.innerHTML = `<span class="lab">shaping signals</span>
+  /* One signals row beside the verdict, never instead of it: the shaping
+     signals (how much of the gold work landed, where the run first went
+     wrong) and, when the world ended the run, its own account of the ending
+     -- as labelled groups on one line, so the header is three blocks. */
+  let groups = "";
+  if (d.credit)
+    groups += `<span class="grp"><span class="lab">shaping signals</span>
       <span>partial reward <b>${esc(String(d.credit.partial_reward))}</b></span>
       <span>coverage <b>${esc(String(d.credit.coverage))}</b></span>
       <span>fidelity <b>${esc(String(d.credit.fidelity))}</b> of
@@ -1598,29 +1602,23 @@ function renderEpisode(content, s) {
              (${esc(d.credit.pivot_kind)}) — frozen prefix above, trainable
              suffix below</span>`
         : `<span class="dim">no located fault — the failure is missing work,
-             not a wrong step</span>`}`;
-    content.appendChild(credit);
-  }
-
-  /* The world's own account of the ending, beside the verdict like the
-     shaping signals: how much of the horizon was spent, and the state the
-     environment stopped in. Absent when the agent answered. */
+             not a wrong step</span>`}</span>`;
   if (wasStopped(d)) {
     const st = lastStop(d);
-    const line = document.createElement("div");
-    line.className = "credit";
-    if (st) {
-      line.title = String(st.reason || "");
-      line.innerHTML = `<span class="lab">world stopped</span>
+    groups += st
+      ? `<span class="grp" title="${esc(String(st.reason || ""))}"><span class="lab">world stopped</span>
         <span><b>${esc(String(Math.round(st.time_passed)))}</b>${
           st.duration != null ? ` of <b>${esc(String(Math.round(st.duration)))}</b>` : ""}
           simulated seconds used</span>
-        <span>${esc(String(st.env_state || ""))}</span>`;
-    } else {
-      line.innerHTML = `<span class="lab">world stopped</span>
-        <span class="dim">no clock recorded for this run</span>`;
-    }
-    content.appendChild(line);
+        <span>${esc(String(st.env_state || ""))}</span></span>`
+      : `<span class="grp"><span class="lab">world stopped</span>
+        <span class="dim">no clock recorded for this run</span></span>`;
+  }
+  if (groups) {
+    const sig = document.createElement("div");
+    sig.className = "credit";
+    sig.innerHTML = groups;
+    content.appendChild(sig);
   }
 
   if ((d.blocked_reasons || []).length)
