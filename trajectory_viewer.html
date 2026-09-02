@@ -467,9 +467,12 @@ let sweepSel = 0;
 let issueFilter = null;    // null | "malformed" | "blocked" | "errors"
 let pendingQuery = null;   // a search string the next runs-table render adopts
 let savedScroll = 0;
+let fullLabel = null;      // the campaign whose transcripts the snapshot embeds
+let campaignSel = null;    // null until first render, then a label or "*" for all
 
 function detect(data) {
   if (data && data.kind === "gaia2-episode") return "episode";
+  if (data && data.kind === "forge-task") return "task";
   if (data && Array.isArray(data.ledger)) return "breakdown";
   if (Array.isArray(data) && data.length && typeof data[0] === "object") return "sweep";
   if (data && Array.isArray(data.rows) && data.rows.length
@@ -485,7 +488,7 @@ function addSession(name, path, data) {
 }
 
 function sortSessions() {
-  const order = {episode: 0, breakdown: 1, sweep: 2, raw: 3};
+  const order = {episode: 0, task: 1, breakdown: 2, sweep: 3, raw: 4};
   sessions.sort((a, b) => (order[a.kind] - order[b.kind])
     || String(a.path).localeCompare(String(b.path)));
 }
@@ -1375,9 +1378,23 @@ function renderBreakdownDetail(content, s) {
   if (el) {
     let snap = null;
     try { snap = JSON.parse(el.textContent); } catch { snap = null; }
-    if (snap && Array.isArray(snap.files) && snap.files.length) {
-      for (const f of snap.files) addSession(f.path.split("/").pop(), f.path, f.data);
-      sourceLine = `snapshot of ${snap.generated}, ${snap.files.length} artifacts`;
+    const index = snap && Array.isArray(snap.index) ? snap.index : [];
+    const tasks = snap && Array.isArray(snap.tasks) ? snap.tasks : [];
+    const files = snap && Array.isArray(snap.files) ? snap.files : [];
+    if (index.length || tasks.length || files.length) {
+      /* Index first: a full trajectory in `files` carries the same path as
+         its index stub, and addSession keeps the later entry. */
+      for (const r of index) addSession(r.path.split("/").pop(), r.path, r);
+      for (const t of tasks) addSession(t.name, t.path, t);
+      for (const f of files) addSession(f.path.split("/").pop(), f.path, f.data);
+      fullLabel = snap.full_label || null;
+      const nLab = (snap.labels || []).length;
+      const nEv = files.filter(f => !(f.data && f.data.kind === "gaia2-episode")).length;
+      sourceLine = index.length || tasks.length
+        ? `snapshot of ${snap.generated} · ${index.length} episodes across ${nLab} campaign${
+            nLab === 1 ? "" : "s"} · ${tasks.length} tasks${
+            fullLabel ? ` · transcripts for ${fullLabel}` : ""} · ${nEv} evidence files`
+        : `snapshot of ${snap.generated}, ${files.length} artifacts`;
       sortSessions();
     }
   }

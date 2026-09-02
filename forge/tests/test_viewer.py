@@ -463,3 +463,37 @@ def test_no_status_class_paints_nothing(viewer_css):
     """A colour rule whose every match overrides it is dead weight."""
     assert not re.search(r"^\s*\.bad \{", viewer_css, re.M), (
         ".bad's colour was inert -- every match overrode it")
+
+
+# -- the snapshot carries an index of every episode and the task pool ---------
+
+
+def test_the_snapshot_loader_adds_index_then_tasks_then_files(viewer_html):
+    """A full trajectory in `files` must replace the stub with the same path,
+    and addSession keeps the LATER entry -- so the index goes in first."""
+    source = viewer_source(viewer_html)
+    loader = re.search(r"function loadSnapshot\(\) \{(.*?)\n\}\)\(\);", source, re.S)
+    assert loader, "the loadSnapshot IIFE moved; update this test's anchor"
+    body = loader.group(1)
+    assert "snap.index" in body and "snap.tasks" in body and "snap.files" in body
+    assert body.index("snap.index") < body.index("snap.tasks") < body.index("snap.files")
+    assert "fullLabel = snap.full_label" in body
+
+
+def test_the_source_line_names_episodes_campaigns_tasks_and_the_full_label(viewer_html):
+    source = viewer_source(viewer_html)
+    assert "episodes across" in source
+    assert "} tasks" in source
+    assert "transcripts for" in source
+
+
+def test_index_stubs_and_the_campaign_selection_are_page_state(viewer_html):
+    source = viewer_source(viewer_html)
+    assert "let fullLabel = null;" in source
+    assert "let campaignSel = null;" in source
+
+
+def test_task_records_are_their_own_session_kind(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'if (data && data.kind === "forge-task") return "task";' in source
+    assert "task: 1" in re.search(r"const order = \{(.*?)\};", source).group(1)
