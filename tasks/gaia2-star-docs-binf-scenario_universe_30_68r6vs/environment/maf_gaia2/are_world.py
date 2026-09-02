@@ -64,7 +64,9 @@ from are.simulation.validation.configs import (
     ScriptedGraphPerEventJudgeConfig,
     create_judge_engine,
 )
+from are.simulation.validation.utils.llm_utils import LLMChecker
 
+from forge.gaia2.judge_parse import patch_llm_checker
 from forge.gaia2.runtime import Msg, describe_tool
 
 #: Apps that are runtime plumbing, never a specialist role. Mirrors
@@ -254,6 +256,10 @@ def open_world(scenario_path: str | Path, judge_model: str | None = None) -> Are
     the official `preprocess_scenario`; by the time this returns, the
     environment thread is live and the first user turn is scheduled.
     """
+    # The one modification this repo makes to the benchmark's judge: read the
+    # checker's "[[true]]" the same as its "[[True]]". See judge_parse.py for
+    # the measurement that earned it; every verdict the checker gives is kept.
+    patch_llm_checker(LLMChecker)
     if judge_model is None:
         judge_config = ScriptedGraphPerEventJudgeConfig()
     else:

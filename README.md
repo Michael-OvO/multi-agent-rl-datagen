@@ -168,6 +168,21 @@ successes) and 20 to the scripted verifier (9 successes)**. The gap between thos
 two columns prices the judge and the scenarios together. It is not evidence about
 either one alone.
 
+**The soft judge's zero was a parse defect, not a verdict.** Measured
+2026-08-31 by calling Gaia2's own soft checkers directly on the v6 rejections:
+the checker model answers `Evaluation: [[true]]`, lowercase; the judge reads its
+answer with `"[[True]]" in response`, case-sensitively; no sentinel matches, the
+checker returns None, and `SoftToolJudge.compare` records that None as a
+rejection. The model said pass and the judge wrote fail. Of 30 distinct v6
+rejections replayed, 24 were this; the soft judge's 0 of 492 across five
+campaigns is this. `forge/gaia2/judge_parse.py` reads the sentinel without
+regard to case and changes nothing else -- not the oracle, the matching, the
+hard checks, the checker prompts, or any verdict a checker gave. It is the one
+modification this repo makes to the benchmark's judge; every trajectory stamps
+`judge_parse` so no rollout graded before it can be read against one graded
+after it. Every Gaia2 soft-judge number above predates the fix and is not a
+statement about the agent.
+
 **Where the episodes actually die** is the useful signal so far, and it is
 diagnostic rather than about coordination (`sweep/gaia2_credit.json` stamps a
 pivot on every row):

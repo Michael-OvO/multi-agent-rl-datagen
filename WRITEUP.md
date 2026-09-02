@@ -13,7 +13,10 @@ is named next to it. Where something is unmeasured or wrong, it says so.
 turns an agentic task database that was never meant for multi-agent work into
 multi-agent RL tasks, by **constraining the agent's access to the world and never
 touching the judge** — and it measures which of the tasks it produces are worth
-training on.
+training on. (One exception, disclosed: on Gaia2 the judge read its own checker's
+`[[true]]` as no answer and recorded no answer as failure; `forge/gaia2/judge_parse.py`
+reads it without regard to case and touches nothing else. README, "The soft
+judge's zero was a parse defect".)
 
 The whole of it is four moves. Only one is construction:
 

@@ -44,7 +44,8 @@ _APPWORLD = Path(__file__).parents[1] / "appworld"
 #: adapter over the official harness, and the miner (the package __init__
 #: imports it). render.py and structure.py stay home -- nothing in the
 #: container imports them.
-SIDECAR_GAIA2_MODULES = ("__init__.py", "mine.py", "runtime.py", "are_world.py")
+SIDECAR_GAIA2_MODULES = ("__init__.py", "mine.py", "runtime.py", "are_world.py",
+                         "judge_parse.py")
 
 #: What the sidecar imports from forge.appworld: the Gaia2 runtime is built
 #: on the AppWorld runtime's chat loop and constraint layer, so those travel

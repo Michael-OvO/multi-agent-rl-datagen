@@ -5,7 +5,9 @@
 A research forge that turns single-agent benchmark tasks (Gaia2, on Meta's
 Agents Research Environments) into multi-agent reinforcement-learning data: a
 Main coordinator delegating to app specialists under measured constraint
-knobs, judged by the benchmark's own unmodified verifier. The repo's culture
+knobs, judged by the benchmark's own verifier -- its ground truth, matching,
+hard checks and checker prompts unmodified; one defect in how it reads its
+own checker's answer is fixed and disclosed (`forge/gaia2/judge_parse.py`). The repo's culture
 is evidentiary — one file per claim, every number names the file that produced
 it, and the shipped write-up is a LaTeX report.
 
