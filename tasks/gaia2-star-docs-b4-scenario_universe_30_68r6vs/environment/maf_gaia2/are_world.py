@@ -64,7 +64,9 @@ from are.simulation.validation.configs import (
     ScriptedGraphPerEventJudgeConfig,
     create_judge_engine,
 )
+from are.simulation.validation.utils.llm_utils import LLMChecker
 
+from forge.gaia2.judge_parse import patch_llm_checker
 from forge.gaia2.runtime import Msg, describe_tool
 
 #: Apps that are runtime plumbing, never a specialist role. Mirrors
@@ -210,6 +212,33 @@ class AreWorld:
             "exception": None if result.exception is None else repr(result.exception),
         }
 
+    def clock_facts(self) -> dict:
+        """The world's clock and state, stamped on every stop row.
+
+        Recorded rather than assumed, because the horizon is not the wall
+        the name suggests. `Environment._time_based_loop` advances the
+        simulated clock on a *real* timer in a background thread -- one
+        `tick()`, one `time.sleep(1)`, then `time_increment_in_seconds - 1`
+        added -- so the 1000-simulated-second horizon every scenario carries
+        is spent in real time whether or not the agent is doing anything.
+        Every second a model spends thinking, and every second of 429
+        backoff, comes out of it. That makes `time_passed` at the stop the
+        difference between an episode that ran out of task and one that ran
+        out of clock while queued, and the two were previously the same row.
+
+        `remaining` is None rather than `inf` because the trajectory is
+        written as JSON, which has no infinity -- `remaining()` is infinite
+        only for a world that declares no duration.
+        """
+        remaining = self.remaining()
+        state = getattr(self.env, "state", None)
+        return {
+            "duration": getattr(self.env, "duration", None),
+            "time_passed": round(float(self.env.time_manager.time_passed()), 1),
+            "remaining": None if remaining == float("inf") else round(remaining, 1),
+            "env_state": str(getattr(state, "value", state)),
+        }
+
     def stop(self) -> None:
         self.env.stop()
 
@@ -227,6 +256,10 @@ def open_world(scenario_path: str | Path, judge_model: str | None = None) -> Are
     the official `preprocess_scenario`; by the time this returns, the
     environment thread is live and the first user turn is scheduled.
     """
+    # The one modification this repo makes to the benchmark's judge: read the
+    # checker's "[[true]]" the same as its "[[True]]". See judge_parse.py for
+    # the measurement that earned it; every verdict the checker gives is kept.
+    patch_llm_checker(LLMChecker)
     if judge_model is None:
         judge_config = ScriptedGraphPerEventJudgeConfig()
     else:

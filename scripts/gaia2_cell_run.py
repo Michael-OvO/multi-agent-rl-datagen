@@ -27,6 +27,7 @@ import json
 import time
 from pathlib import Path
 
+from forge.gaia2.judge_parse import JUDGE_PARSE_VERSION
 from forge.gaia2.mine import admit
 from scripts._env import require_api_key
 
@@ -162,6 +163,7 @@ def main(argv: list[str] | None = None) -> None:
         "sub_model": args.sub_model or main_model,
         "answer": answer,
         "judge": args.judge_model or "scripted",
+        "judge_parse": JUDGE_PARSE_VERSION,
         "label": args.label,
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)),
         "verdict": verdict,

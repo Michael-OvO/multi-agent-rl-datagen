@@ -15,6 +15,7 @@ to for an entire sweep campaign and never written anywhere.
 """
 
 import json
+from pathlib import Path
 
 from pytest import approx, raises
 
@@ -28,6 +29,8 @@ from forge.gaia2.runtime import (
     run_main,
     run_specialist,
 )
+
+_FIXTURES_GAIA2 = Path(__file__).parent / "fixtures" / "gaia2"
 
 ROSTER = ("Contacts", "Cabs")
 
@@ -342,7 +345,7 @@ def test_every_agent_gets_the_same_objective_action_contract():
     assert "exactly once successfully" in OBJECTIVE_ACTION_CONTRACT
     assert "never repeat a successful write" in OBJECTIVE_ACTION_CONTRACT
     assert "BOOKED" not in OBJECTIVE_ACTION_CONTRACT
-    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v1"
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v3"
 
 
 def test_the_main_is_told_that_reporting_commits_the_turn():
@@ -592,3 +595,260 @@ def test_the_trajectory_serializes_every_event_in_order():
     assert serialized["delegations"] == 1
     assert serialized["objective_action_contract"] == \
         OBJECTIVE_ACTION_CONTRACT_VERSION
+
+
+def _outage_corpus():
+    corpus = json.loads(
+        (_FIXTURES_GAIA2 / "outage_corpus.json").read_text())
+    return corpus["fabrications"], corpus["honest"]
+
+
+def test_the_outage_detector_hears_every_corpus_fabrication():
+    # The corpus is fixtures/gaia2/outage_corpus.json: every zero-call FINAL
+    # from the paid campaigns that fabricates an infrastructure outage,
+    # verbatim. The v5 miss was consequential -- the economy arm failed
+    # *because* of a fabricated outage while recording false_outages: 0.
+    # Triage for new wordings happens in the evidence files: each campaign's
+    # *_credit.json lists the zero-call reports the detector did not flag;
+    # new fabrications get appended to the corpus, and this test forces the
+    # matcher to keep up.
+    fabrications, _ = _outage_corpus()
+    assert len(fabrications) >= 17, "corpus shrank?"
+    for final in fabrications:
+        client = FakeClient(
+            main_replies=[],
+            specialist_replies=[f"FINAL: {final}",
+                                'CALL Contacts__lookup :: {"name": "Kai"}',
+                                "FINAL: 12 Rose Lane"])
+        log = EpisodeLog()
+        report = run_specialist(client, FakeWorld(), "Contacts", "find Kai",
+                                log)
+        assert log.false_outages == 1, f"missed fabrication: {final[:60]}"
+        assert report == "12 Rose Lane"
+
+
+def test_honest_corpus_wordings_stay_unflagged():
+    # The other half of the same corpus, and the reason the detector cannot
+    # simply get greedier: these are true statements about missing data or
+    # capability, which the prompt explicitly asks for. Flagging them would
+    # reject honesty and demand the specialist fabricate an attempt.
+    _, honest = _outage_corpus()
+    assert len(honest) >= 13, "corpus shrank?"
+    for final in honest:
+        client = FakeClient(main_replies=[],
+                            specialist_replies=[f"FINAL: {final}"])
+        log = EpisodeLog()
+        report = run_specialist(client, FakeWorld(), "Contacts", "check", log)
+        assert log.false_outages == 0, f"honest report flagged: {final[:60]}"
+        assert report == final
+
+
+def test_no_prompt_advertises_a_token_its_own_guard_rejects():
+    # The class-guard for prompt/guard contradictions. The Main's verb menu
+    # taught `DONE :: ... or 'completed' if the task was an action`, and the
+    # thin-report guard then rejected exactly that token -- a fixed
+    # one-turn tax on 13 of 20 v4 episodes and 9 of 12 v5 episodes, paid
+    # for following the instructions verbatim. A prompt and a guard written
+    # by hand in two places will drift again; this pins the whole class:
+    # nothing a prompt displays as an acceptable output may draw a
+    # correction from the runtime's own validators.
+    from forge.gaia2.runtime import _THIN_REPORTS, _main_system, _specialist_system
+
+    world = FakeWorld()
+    prompts = {
+        "main": _main_system(world, STAR_DOCS, None),
+        "main-open": _main_system(world, control_for(ROSTER),
+                                  {a: world.catalog(a) for a in ROSTER}),
+        "specialist": _specialist_system(world, ("Contacts",)),
+    }
+    for name, prompt in prompts.items():
+        for token in _THIN_REPORTS:
+            if not token:
+                continue
+            for quoted in (f"'{token}'", f'"{token}"'):
+                assert quoted not in prompt, (
+                    f"the {name} prompt advertises {quoted} as acceptable "
+                    f"output, but _THIN_REPORTS rejects it -- the model pays "
+                    f"a correction turn for obeying the prompt"
+                )
+
+
+def test_the_zero_call_census_separates_flagged_from_unflagged():
+    # The triage feed. Every campaign's credit evidence lists the zero-call
+    # reports the detector did NOT flag, so a novel fabrication wording
+    # surfaces in the next seed's evidence file instead of waiting for a
+    # third review round to find it. Flagged ones are counted, not listed --
+    # they are already handled.
+    from forge.gaia2.runtime import zero_call_census
+
+    events = [
+        {"type": "delegation", "specialist": "Messages",
+         "calls": [{"tool": None, "args": None, "status": "false-outage"}],
+         "report": "no tool-call execution opportunity was available in this run"},
+        {"type": "delegation", "specialist": "Contacts",
+         "calls": [],
+         "report": "I cannot determine her address from Contacts."},
+        {"type": "delegation", "specialist": "Cabs",
+         "calls": [{"tool": "Cabs__order_ride", "args": {}, "status": "ok"}],
+         "report": "ordered the 12:45 cab"},
+        {"type": "main", "content": "DONE :: done it"},
+    ]
+    flagged, unflagged = zero_call_census(events)
+    assert flagged == 1
+    assert unflagged == ["I cannot determine her address from Contacts."]
+
+
+def test_the_main_is_told_what_a_delegation_costs_in_time():
+    # The one replicated constraint effect in v4 and v5: context and economy
+    # both ordered a correct cab ~60-75 seconds late, because after observing
+    # three minutes of silence they spent one more delegation re-verifying
+    # the silence. A delegation round-trip consumes tens of simulated seconds
+    # while both models think -- and no prompt ever said so. The agent
+    # cannot budget a cost it was never told exists.
+    from forge.gaia2.runtime import _main_system
+
+    constrained = _main_system(FakeWorld(), STAR_DOCS, None)
+    assert "30-60 seconds" in constrained, \
+        "the Main prompt never states the time cost of a delegation"
+    assert "already observed" in constrained, \
+        "the Main prompt never warns against re-verifying observed silence"
+    # The open control has no specialists, so the costing does not apply.
+    open_prompt = _main_system(FakeWorld(), control_for(ROSTER),
+                               {a: FakeWorld().catalog(a) for a in ROSTER})
+    assert "30-60 seconds" not in open_prompt
+
+
+# -- the stop is the most common outcome, and it must say why ---------------
+
+
+def test_a_stop_event_records_the_world_s_own_reason():
+    # Measured 2026-08-29 over sweep/gaia2_credit.json and
+    # sweep/gaia2_v3_credit.json: 201 of 249 soft-judged rollouts ended at
+    # "(environment stopped)" rather than at an answer, and not one records
+    # why -- `log.event(world, "stop")` wrote a type and a timestamp and
+    # nothing else. The reason is already in our hands when we write that
+    # row: ARE's stop notification carries "Environment stopped with state
+    # <STATE>", and _deliver was dropping the text on the floor. Without it
+    # a clean end and a validation failure are the same row.
+    world = FakeWorld(drain_script=(
+        [Msg("stop", "Environment stopped with state FAILED")],))
+    log = EpisodeLog()
+
+    answer = run_main(FakeClient([]), world, "task", STAR_DOCS, log)
+
+    assert answer == "(environment stopped)"
+    stops = [e for e in log.events if e["type"] == "stop"]
+    assert len(stops) == 1
+    assert stops[0]["reason"] == "Environment stopped with state FAILED"
+
+
+def test_a_stop_event_records_the_world_clock_when_the_world_keeps_one():
+    # Whether the episode died against its horizon or long before it is the
+    # whole diagnosis, and the row cannot carry it without the clock: the
+    # same campaign shows stopped episodes ending at a median 313 simulated
+    # seconds while finished ones ran to 992.
+    class TimedWorld(FakeWorld):
+        def clock_facts(self):
+            return {"duration": 1000.0, "time_passed": 313.0, "remaining": 687.0}
+
+    world = TimedWorld(drain_script=(
+        [Msg("stop", "Environment stopped with state STOPPED")],))
+    log = EpisodeLog()
+
+    run_main(FakeClient([]), world, "task", STAR_DOCS, log)
+
+    stop = [e for e in log.events if e["type"] == "stop"][0]
+    assert stop["duration"] == 1000.0
+    assert stop["time_passed"] == 313.0
+    assert stop["remaining"] == 687.0
+
+
+def test_a_world_that_keeps_no_clock_still_logs_its_stop():
+    # The world is duck-typed on purpose (module docstring); a substrate that
+    # exposes no clock must still record the stop, not crash on the way out.
+    world = FakeWorld(drain_script=([Msg("stop", "done")],))
+    log = EpisodeLog()
+
+    run_main(FakeClient([]), world, "task", STAR_DOCS, log)
+
+    stop = [e for e in log.events if e["type"] == "stop"][0]
+    assert stop["reason"] == "done"
+    assert "duration" not in stop
+
+
+def test_the_one_real_world_implements_the_clock_contract():
+    # `forge/tests` cannot import are_world -- it needs `are.*`, which the
+    # pinned main environment deliberately does not carry (that module's
+    # docstring says why) -- so the duck-typed contract is guarded
+    # structurally instead. Without this, deleting AreWorld.clock_facts
+    # would silently return every stop row to being clockless and nothing
+    # in this suite would fail.
+    import ast
+
+    source = Path(__file__).parents[1] / "gaia2" / "are_world.py"
+    world = next(node for node in ast.walk(ast.parse(source.read_text()))
+                 if isinstance(node, ast.ClassDef) and node.name == "AreWorld")
+    methods = {n.name for n in world.body if isinstance(n, ast.FunctionDef)}
+    assert "clock_facts" in methods, \
+        "AreWorld must expose clock_facts(); runtime._clock_facts reads it"
+
+
+def test_the_contract_forbids_embellishing_a_tool_call_s_arguments():
+    # Measured over the v6 campaign (2026-08-30, workers=1): the soft judge
+    # scored 0 of 107, and 93% of those failures name an oracle call the
+    # agent never made. It never made them because the scenario graph gates
+    # the environment's replies on the agent's earlier calls MATCHING the
+    # oracle -- adaptability scenarios schedule "Luisa replies you are
+    # mistaken" with deps=[OracleEvent]. In scenario_universe_21_44vlco the
+    # gate was one Calendar__add_calendar_event: the oracle carries
+    # title="Photoshoot with Sheryl's Sweets" and empty tag/description/
+    # location, the Main sent "Sheryl's Sweets Photoshoot" plus a tag, a
+    # description and a location it inferred, and the judge answered "tool
+    # judge reject". Luisa never replied, four downstream oracle events
+    # became unreachable, and the episode scored zero for work it was never
+    # given the chance to do.
+    #
+    # The contract already governs WHETHER to act. Nothing governed the
+    # shape of the arguments, so a helpful Main forfeited the episode by
+    # being helpful. This is the world's convention, not any task's answer.
+    assert "only the fields the user specified" in OBJECTIVE_ACTION_CONTRACT, \
+        "the contract never tells the Main to leave unspecified fields empty"
+    assert "user's own wording" in OBJECTIVE_ACTION_CONTRACT, \
+        "the contract never tells the Main to mirror rather than paraphrase"
+    # Versioned because a prompt change re-prices every comparison: v6 and
+    # anything after it must not read as the same experiment.
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v3"
+
+
+def test_the_contract_pins_values_the_user_or_a_tool_already_gave():
+    # The v6 rejection surface, field by field across all 32 distinct cases:
+    # 28 prose, 12 structured values, 4 invented-empty, 2 capitalisation, 2
+    # over-qualified. v2 covered the invented-empty four. These are the rest
+    # of the structured ones, each from a measured case:
+    #   u21_x1l1om  attendees   oracle ['Luis Pimentel']
+    #                           agent  ['Luis Pimentel <lpimentel@bistroporto.com>']
+    #   u21_kgqyjr  end_location oracle 'Malmohusvagen 34, Malmo'
+    #                           agent  'Malmohusvagen 34, 211 18 Malmo'  (postcode added)
+    #   u24_tmxihx  start_location oracle 'Home'   agent 'My home'
+    #   u24_4pjsme  location    oracle 'Local cafe'  agent 'local cafe'
+    #   u22_6wkrhc  user_ids    oracle two numbers; agent added the user's own
+    assert "exactly as it was given" in OBJECTIVE_ACTION_CONTRACT, \
+        "nothing tells the Main to pass a supplied value through unchanged"
+    assert "anyone the user did not name" in OBJECTIVE_ACTION_CONTRACT, \
+        "nothing forbids padding a recipient list or a group"
+
+
+def test_the_contract_bounds_what_a_message_body_may_contain():
+    # u24_4pjsme reply_to_email, the clearest measured case. Oracle body:
+    #   "I am free to meet you on October 19, 2024 at 2pm for two hours at
+    #    the local cafe; does this time work for you? ..."
+    # Agent body: a greeting, "I would be happy to discuss this with you",
+    # the same substance with 2pm-for-two-hours restyled to "2:00 PM to
+    # 4:00 PM", and "Best regards, Ursula". Semantically identical, rejected.
+    #
+    # Deliberately NOT a rule against greetings: 10 of the 15 oracle bodies
+    # measured DO greet. What separates them is length and restyling, so
+    # that is what the rule names.
+    assert "only what the user asked you to convey" in OBJECTIVE_ACTION_CONTRACT, \
+        "nothing bounds the body to the substance the user asked for"
+    assert OBJECTIVE_ACTION_CONTRACT_VERSION == "objective-actions-v3"

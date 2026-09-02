@@ -1,0 +1,150 @@
+{
+ "kind": "gaia2-episode",
+ "scenario_id": "scenario_universe_29_23k4gf",
+ "category": "adaptability",
+ "ability": "context-transfer",
+ "config": "star-docs-binf",
+ "roster": [
+  "Cabs",
+  "Calendar",
+  "Contacts",
+  "InternalContacts",
+  "Messages"
+ ],
+ "conditioned_env_events": 1,
+ "delegation_target_heuristic": 5,
+ "main_model": "gpt-5.6-sol",
+ "sub_model": "gpt-5.6-sol",
+ "answer": "(environment stopped)",
+ "judge": "gpt-5.6-sol",
+ "label": "v6",
+ "started_at": "2026-08-30 23:21:25",
+ "verdict": {
+  "success": false,
+  "rationale": "Failure: Agent did not perform the following oracle tool call:\ntool name: AgentUserInterface__send_message_to_user\ntool args:\n-content: I have booked your cab ride.\n\nList of matching attempts:\n-Failure matching agent event (ID: Event-USER-7a72f443-93a5-4d3b-8b78-65fcc914cc1c) with oracle event (ID: OracleEvent-AGENT-27ab5ff1-cb0a-4fd7-b78c-df6fa5c711c3), reason: already matched\n-Failure matching agent event (ID: AGENT-Cabs.order_ride-15743be7-33b7-47ca-a7a7-4957af763b9b) with oracle event (ID: OracleEvent-AGENT-27ab5ff1-cb0a-4fd7-b78c-df6fa5c711c3), reason: already matched\n-Failure matching agent event (ID: AGENT-AgentUserInterface.send_message_to_user-23335531-2474-47c7-9331-7394d8f2a307) with oracle event (ID: OracleEvent-AGENT-27ab5ff1-cb0a-4fd7-b78c-df6fa5c711c3), reason: tool judge reject",
+  "exception": null
+ },
+ "seconds": 23.0,
+ "objective_action_contract": "objective-actions-v1",
+ "events": [
+  {
+   "type": "user",
+   "sim_time": "2024-10-15 07:00:00",
+   "content": "Received at: 2024-10-15 07:00:00\nSender: User\nMessage: Book a cab for 8:30 AM today using the Default service. Pick-up is at my home address listed in my contacts, and drop-off is Plot No. 456, Sector 29, Vashi, Navi Mumbai. Let me know when you booked the cab. If the cab is delayed or gets canceled, send individual Messages messages to each attendee of the 9 AM Project Update today letting them know I\u2019ll be late and why. Let them know we\u2019ll push the call to 10 AM and keep it to an hour. If the cab is canceled, book another one for 9 AM instead. Update the calendar event to reflect the new time. Let me know if the initial cab is canceled.\nAlready read: True\nRead at: 2024-10-15 07:00:00"
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:02",
+   "content": "DELEGATE Contacts :: Get the current user's home address from their contact details. Return the exact address only."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:06",
+   "specialist": "Contacts",
+   "brief": "Get the current user's home address from their contact details. Return the exact address only.",
+   "report": "14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050",
+   "calls": [
+    {
+     "tool": "Contacts__get_current_user_details",
+     "args": {},
+     "status": "ok",
+     "result": "\"\\nContact ID: 6ef938f81dc4451ba25ff529ff698a7c\\nFirst Name: Rohan\\nLast Name: Kumar\\nGender: Gender.MALE\\nAge: 41\\nNationality: Indian\\nCity Living: Mumbai\\nCountry: India\\nStatus: Status.EMPLOYED\\nJob: Prison Reform Advocate\\nDescription: Rohan Kumar is a 41-year-old Indian man who has overcome incredible odds to become a successful advocate for prison reform.\\nPhone: +919876543510\\nEmail: rohankumar.advocate@gaia2mail.com\\nIs User: True\\nAddress: 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\\n\""
+    },
+    {
+     "tool": null,
+     "args": null,
+     "status": "malformed",
+     "raw": "14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050"
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:08",
+   "content": "DELEGATE Cabs :: Order a Default-service cab from \"14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\" to \"Plot No. 456, Sector 29, Vashi, Navi Mumbai\" for 2024-10-15 08:30:00. Return complete booking details and status."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:14",
+   "specialist": "Cabs",
+   "brief": "Order a Default-service cab from \"14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\" to \"Plot No. 456, Sector 29, Vashi, Navi Mumbai\" for 2024-10-15 08:30:00. Return complete booking details and status.",
+   "report": "Cab booked\u2014Ride ID: 48ba3766f7905dc2bab856b0bd43ae91; status: BOOKED; service: Default; scheduled: 2024-10-15 08:30:00; pickup: 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050; destination: Plot No. 456, Sector 29, Vashi, Navi Mumbai; distance: 19.336798533131827 km; price: $19.34; duration: 0.44877877691032614 min; timestamp: 1728981000.0; latest delay: 0.0 min.",
+   "calls": [
+    {
+     "tool": "Cabs__order_ride",
+     "args": {
+      "start_location": "14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050",
+      "end_location": "Plot No. 456, Sector 29, Vashi, Navi Mumbai",
+      "service_type": "Default",
+      "ride_time": "2024-10-15 08:30:00"
+     },
+     "status": "ok",
+     "result": "\"\\n        Ride ID: 48ba3766f7905dc2bab856b0bd43ae91\\n        Status: BOOKED\\n        Service Type: Default\\n        Start Location: 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\\n        End Location: Plot No. 456, Sector 29, Vashi, Navi Mumbai\\n        Distance: 19.336798533131827 kms\\n        Price: $19.34\\n        Duration: 0.44877877691032614 mins\\n        Timestamp: 1728981000.0\\n        Delay: 0.1 mins\\n        \""
+    },
+    {
+     "tool": "Cabs__get_current_ride_status",
+     "args": {},
+     "status": "ok",
+     "result": "\"\\n        Ride ID: 48ba3766f7905dc2bab856b0bd43ae91\\n        Status: BOOKED\\n        Service Type: Default\\n        Start Location: 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050\\n        End Location: Plot No. 456, Sector 29, Vashi, Navi Mumbai\\n        Distance: 19.336798533131827 kms\\n        Price: $19.34\\n        Duration: 0.44877877691032614 mins\\n        Timestamp: 1728981000.0\\n        Delay: 0.0 mins\\n        \""
+    }
+   ]
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:17",
+   "content": "USER :: I booked Default cab 48ba3766f7905dc2bab856b0bd43ae91 for 8:30 AM today, from 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050 to Plot No. 456, Sector 29, Vashi, Navi Mumbai; it is currently BOOKED with no delay."
+  },
+  {
+   "type": "send_user",
+   "sim_time": "2024-10-15 07:00:17",
+   "content": "I booked Default cab 48ba3766f7905dc2bab856b0bd43ae91 for 8:30 AM today, from 14, Sahyadri Apartments, Bandra West, Mumbai, Maharashtra 400050 to Plot No. 456, Sector 29, Vashi, Navi Mumbai; it is currently BOOKED with no delay."
+  },
+  {
+   "type": "main",
+   "sim_time": "2024-10-15 07:00:18",
+   "content": "DELEGATE Calendar :: Find today's 9:00 AM \"Project Update\" calendar event. Return its event ID, exact start/end times, and full attendee names; do not modify it."
+  },
+  {
+   "type": "delegation",
+   "sim_time": "2024-10-15 07:00:18",
+   "specialist": "Calendar",
+   "brief": "Find today's 9:00 AM \"Project Update\" calendar event. Return its event ID, exact start/end times, and full attendee names; do not modify it.",
+   "report": "Event ID: beb5fcf7a2bf4be0909d6d50aefe5981; start: 2024-10-15 09:00:00+00:00; end: 2024-10-15 11:00:00+00:00; attendees: Rohan Kumar, Kaitlyn Nguyen, Kaida Jensen.",
+   "calls": [
+    {
+     "tool": "Calendar__get_calendar_events_from_to",
+     "args": {
+      "start_datetime": "2024-10-15 09:00:00",
+      "end_datetime": "2024-10-15 09:00:01",
+      "offset": 0,
+      "limit": 10
+     },
+     "status": "ok",
+     "result": "{\n \"events\": [\n  \"EventID: beb5fcf7a2bf4be0909d6d50aefe5981\\nTitle: Project Update\\nStart: 2024-10-15 09:00:00+00:00\\nEnd: 2024-10-15 11:00:00+00:00\\nTag: Work\\nDescription: Update meeting with team on project progress.\\nLocation: Zoom Meeting\\nAttendees: Rohan Kumar, Kaitlyn Nguyen, Kaida Jensen\"\n ],\n \"range\": [\n  0,\n  1\n ],\n \"total\": 1\n}"
+    }
+   ]
+  },
+  {
+   "type": "stop",
+   "sim_time": "2024-10-15 07:00:18",
+   "reason": "Environment stopped with state EnvironmentState.STOPPED",
+   "duration": 1000,
+   "time_passed": 18.3,
+   "remaining": 981.7,
+   "env_state": "STOPPED"
+  }
+ ],
+ "delegations": 3,
+ "specialist_turns": 4,
+ "refusals": 0,
+ "blocked": 0,
+ "blocked_reasons": [],
+ "waits": 0,
+ "user_turns": 1,
+ "malformed": 1,
+ "false_outages": 0,
+ "delegation_target": null,
+ "delegations_over_target": 0,
+ "delegation_efficiency": null,
+ "delegation_economy_reward": null
+}

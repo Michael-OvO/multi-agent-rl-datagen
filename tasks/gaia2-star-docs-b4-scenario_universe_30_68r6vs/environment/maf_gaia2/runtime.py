@@ -62,7 +62,7 @@ DEFAULT_MODEL = "gpt-5.6-sol"
 #: Version every trajectory records when this contract shaped the policy.
 #: Prompt changes alter the experiment; an unversioned change would make old
 #: and new rollouts look comparable when they are not.
-OBJECTIVE_ACTION_CONTRACT_VERSION = "objective-actions-v1"
+OBJECTIVE_ACTION_CONTRACT_VERSION = "objective-actions-v3"
 
 #: Semantics shared by the in-process Main, every specialist, and the rendered
 #: Harbor instruction. These are deliberately domain-general: the incident
@@ -73,7 +73,13 @@ OBJECTIVE_ACTION_CONTRACT = """Objective action contract (literal rules, not sug
 - For monitoring, the state observed when an object is created or first inspected is the baseline. An "update" or "change" is a later observed transition away from that baseline, unless the user explicitly says the initial state also counts.
 - Complete each requested side effect exactly once successfully for each distinct obligation or observed trigger. Retry only after an explicit failed or rejected call; never repeat a successful write.
 - When one write already satisfies overlapping instructions, do not add another write merely to restate the same fact. Keep instructions separate only when the user explicitly requires separate actions, recipients, times, or repetitions.
-- Use the transcript as an action ledger before every write: identify the obligation or trigger, verify it is currently due, and verify no successful write has already satisfied it. Never create an extra side effect to cover an ambiguous interpretation."""
+- Use the transcript as an action ledger before every write: identify the obligation or trigger, verify it is currently due, and verify no successful write has already satisfied it. Never create an extra side effect to cover an ambiguous interpretation.
+- Fill only the fields the user specified. Leave every optional argument empty unless the user gave its value or a tool result supplies it. Do not infer a location, a tag, a description, a category or a note because it would be helpful; an unrequested field is a wrong field.
+- Reuse the user's own wording for any text you write - titles, subjects, names. Reorder or restyle nothing. If the user said "photoshoot with X", the title is "photoshoot with X", not "X photoshoot".
+- Report to the user in one short factual sentence naming what you did. Do not restate the details back, and do not add commentary; the report is a confirmation, not a summary.
+- Pass every value the user or a tool result already gave you through exactly as it was given. Do not append an email address to a name, a postcode to a street, or an honorific to a person; do not change its capitalisation; do not restyle a date or a time you were handed. "Home" is not "My home", and "2pm for two hours" is not "2:00 PM to 4:00 PM".
+- Never add yourself, and never add anyone the user did not name, to a recipient list, an attendee list or a group.
+- When you write a message on the user's behalf, put in it only what the user asked you to convey, phrased as they phrased it. No opening pleasantry beyond a greeting, no closing offer, no restatement of what you are about to do."""
 
 #: What the harness returns when the environment announced the episode's end
 #: before the Main did. Not a surrender -- the agent did not give up, the
@@ -264,12 +270,30 @@ def _budget_line(world) -> str:
             "world ends; spend waiting deliberately.")
 
 
+def _clock_facts(world) -> dict:
+    """The world's clock at this instant, when it keeps one.
+
+    Duck-typed like the rest of the world interface: a substrate that
+    exposes no clock contributes no fields and the row is still written.
+    """
+    facts = getattr(world, "clock_facts", None)
+    return facts() if callable(facts) else {}
+
+
 def _deliver(world, log: EpisodeLog, msgs: list[Msg], transcript: list[dict]) -> bool:
-    """Append the world's messages to the Main's transcript. True on stop."""
+    """Append the world's messages to the Main's transcript. True on stop.
+
+    A stop row carries the world's own reason and its clock. Measured
+    2026-08-29 across `sweep/gaia2_credit.json` and `sweep/gaia2_v3_credit.json`:
+    201 of 249 soft-judged rollouts ended at `ENV_STOP` rather than at an
+    answer, and every one of those rows was a bare type-and-timestamp. The
+    reason was in hand the whole time -- the stop message reads "Environment
+    stopped with state <STATE>" -- and was being dropped here.
+    """
     stopped = False
     for m in msgs:
         if m.kind == "stop":
-            log.event(world, "stop")
+            log.event(world, "stop", reason=m.text, **_clock_facts(world))
             stopped = True
         elif m.kind == "user":
             log.user_turns += 1
@@ -283,14 +307,116 @@ def _deliver(world, log: EpisodeLog, msgs: list[Msg], transcript: list[dict]) ->
 
 _CALL = re.compile(r"CALL\s+([A-Za-z0-9_]+)\s*(?:::\s*(.*))?$", re.S)
 
-#: A FINAL that blames infrastructure -- "tools unavailable", "no call could
-#: be executed" -- from a specialist that has executed nothing. The runtime
-#: can see both facts, so the claim is checkably false; honest inability
-#: ("I cannot know X from this app") deliberately does not match.
-_FALSE_OUTAGE = re.compile(
-    r"unavailable|not available in this (?:run|session)"
-    r"|could not be (?:executed|completed|made)"
-    r"|no .{0,32}tool call", re.I)
+# A FINAL that blames infrastructure -- "the interface is not exposed", "no
+# tool execution turn was available" -- from a specialist that has executed
+# nothing. The runtime can see both facts, so the claim is checkably false.
+#
+# The boundary this draws, learned from hand-sorting every zero-call report
+# across five campaigns: a fabrication denies the *execution machinery*
+# (tool calls, the interface, the turn, the window), usually scoped to this
+# run or session; honest inability states a *capability or data* limit
+# ("the Cabs tools cannot retrieve your saved home address",
+# "InternalContacts provides no lookup tools", "no recipient was provided").
+# Honest reports are what the prompt explicitly asks for and must never be
+# punished -- the first version's bare `unavailable` branch flagged a
+# truthful "delivery confirmation is unavailable" as an outage. The
+# subtlest pair: "tools do not expose <a data field>" is a true catalog
+# statement; "tools are not exposed" is a lie about the machinery -- which
+# is why the denial verbs match only their participle forms.
+
+#: The machinery being denied. Deliberately not bare "interface" or "tools":
+#: "the available interface only retrieves the current ride" and "the Cabs
+#: tools cannot retrieve X" are honest capability statements.
+_OUTAGE_MACHINERY = re.compile(
+    r"tool[- ]?(?:calls?|calling|execution|interface|results?)"
+    r"|execution (?:interface|turn|window)|interaction window"
+    r"|tools\b", re.I)
+
+#: Denial predicates, matched only in a short window AFTER the machinery
+#: term, so subject and denial must be about each other. Participle forms
+#: only ("not exposed", never "not expose"): the active voice takes a data
+#: object and is how honest catalog limits are phrased.
+_OUTAGE_DENIAL = re.compile(
+    r"unavailable|not (?:available|exposed|accessible|possible|permitted"
+    r"|completed)\b"
+    r"|did not (?:permit|accept|execute|return)"
+    r"|could not be (?:executed|completed|made|issued)"
+    r"|were not available|was not available|ended before", re.I)
+
+#: Fabrications that negate the machinery's existence up front: "no
+#: tool-call execution opportunity", "no call could be executed", "no
+#: callable Messages tool interface". `{0,3}` filler words tolerate an app
+#: name in between; the machinery nouns keep "no contacts tool is
+#: available" (a true statement from a specialist whose app has no such
+#: tool) out. A negated-machinery hit is not enough by itself -- it must be
+#: completed by a denial (`_OUTAGE_NEGATED_DENIAL` in the window after it),
+#: because "no Messages tool call can target the correct person" is the
+#: honest consequence of a missing recipient, not an execution claim.
+_OUTAGE_NEGATED = re.compile(
+    r"\bno (?:[\w()'’/]+[- ]){0,3}?(?:tool[- ]?(?:calls?|calling|execution"
+    r"|results?)|callable|executable)"
+    r"|\bno .{0,24}?calls? could\b", re.I)
+
+#: The completion that turns negated machinery into an outage claim: the
+#: thing that "was not available / could not be executed / was never
+#: provided" about this run. Participles only, as above.
+_OUTAGE_NEGATED_DENIAL = re.compile(
+    r"available|possible|executed|completed|made\b|issued|provided\b"
+    r"|accessible|exposed|permitted|opportunit|turn\b|window", re.I)
+
+#: Verb-complete fabrication shapes that need no second clause.
+_OUTAGE_VERBAL = re.compile(
+    r"cannot (?:execute|make|run|issue) .{0,24}?(?:tool[- ]?)?calls?"
+    r"|not expose[sd]? .{0,32}?tool"
+    r"|before any .{0,24}?(?:tool[- ]?)?call", re.I)
+
+#: How far past the machinery term a denial may sit and still be read as
+#: denying it.
+_OUTAGE_WINDOW = 56
+
+
+def zero_call_census(events: list[dict]) -> tuple[int, list[str]]:
+    """(flagged count, unflagged reports) over a trajectory's delegations.
+
+    The triage feed for the outage corpus. A delegation that executed
+    nothing and reported something is either a flagged fabrication (counted
+    -- the correction already handled it) or unflagged (listed verbatim, so
+    a novel fabrication wording surfaces in the campaign's credit evidence
+    for a human to move into fixtures/gaia2/outage_corpus.json). The
+    detector's blind spots become a number and a list in every seed's
+    evidence file, instead of a review finding three rounds later.
+    """
+    flagged = 0
+    unflagged: list[str] = []
+    for event in events:
+        if event.get("type") != "delegation":
+            continue
+        calls = event.get("calls") or []
+        executed = [c for c in calls
+                    if c.get("status") not in ("malformed", "false-outage")]
+        report = str(event.get("report") or "")
+        if executed or not report or report == "(no answer within turn limit)":
+            continue
+        if any(c.get("status") == "false-outage" for c in calls) \
+                or _is_false_outage(report):
+            flagged += 1
+        else:
+            unflagged.append(report)
+    return flagged, unflagged
+
+
+def _is_false_outage(report: str) -> bool:
+    """Whether a zero-call FINAL claims execution itself was impossible."""
+    if _OUTAGE_VERBAL.search(report):
+        return True
+    negated = _OUTAGE_NEGATED.search(report)
+    if negated and _OUTAGE_NEGATED_DENIAL.search(
+            report, negated.end(), negated.end() + _OUTAGE_WINDOW):
+        return True
+    for hit in _OUTAGE_MACHINERY.finditer(report):
+        if _OUTAGE_DENIAL.search(report, hit.end(), hit.end() + _OUTAGE_WINDOW):
+            return True
+    return False
 
 
 def describe_tool(tool) -> str:
@@ -471,7 +597,7 @@ def run_specialist(
             # privately and sometimes imagines calls that never ran). Reject
             # it once, inside the same delegation -- the Main's budget never
             # pays for a fabricated outage -- then accept whatever follows.
-            if executed == 0 and not outage_corrected and _FALSE_OUTAGE.search(report):
+            if executed == 0 and not outage_corrected and _is_false_outage(report):
                 outage_corrected = True
                 log.false_outages += 1
                 if calls_out is not None:
@@ -542,7 +668,7 @@ So:
   Jensen have been scheduled on Friday October 18, 2024", never "scheduled the \
   consultations as requested". Your report is compared against a reference \
   report of the same work, so a summary that omits the names does not match, \
-  and a bare "completed" or "done" is not a report at all.
+  and a bare one-word confirmation is not a report at all.
 - After you report, the world may move: replies, confirmations, or a new \
   request can arrive. If they do, keep working -- the episode is not over \
   until you are told it is or nothing more arrives.
@@ -599,6 +725,12 @@ different app, YOU must obtain that fact first and put it in the request.
 schedule anything for later -- the clock is YOURS (WAIT). Ask for one \
 specific action at a time, say exactly what output you need, and handle \
 timing yourself.
+- Delegating costs time: each request/report round-trip consumes roughly \
+30-60 seconds of world time while you both work. Budget for it. When a \
+deadline is near, act on what you already know -- re-verifying a silence \
+you have already observed spends the deadline to learn nothing. (Measured: \
+episodes ordered a correct cab a minute late, after exactly one redundant \
+recheck of an already-observed three-minute silence.)
 """
 
     return f"""You are the Main coordinator for a user's request, acting inside \
@@ -613,7 +745,8 @@ a simulated world with a clock. The current simulated time is \
     WAIT <seconds>                           let simulated time pass until the \
 next notification or the timeout
     USER :: <message>                        send the user a message
-    DONE :: <one-line answer, or 'completed' if the task was an action>
+    DONE :: <one line the user will read: what you did or found, with \
+names, times, and identifiers>
     FAIL :: <one-line reason>
 {body}
 Events in this world happen on the clock: replies, confirmations and follow-ups \

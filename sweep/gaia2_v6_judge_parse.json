@@ -1,0 +1,834 @@
+{
+  "note": "Every distinct (scenario, rejected tool) case from the v6 campaign's soft-judged rejections, replayed through Gaia2's own soft checkers twice: once under the stock LLMChecker parse (case-sensitive '[[True]]'/'[[False]]' substring match) and once under forge/gaia2/judge_parse.py (the same match without regard to case). Same agent args, same oracle args, same checker prompts, same judge model (gpt-5.6-sol). Nothing differs between the two columns but how the checker's answer is read. Measured 2026-08-31; produced by the replay script in this session's scratchpad, which reads trajectories on disk and costs judge-model calls only.",
+  "summary": {
+    "cases": 30,
+    "pass_under_stock_parse": 3,
+    "pass_under_case_insensitive_parse": 26,
+    "transitions": {
+      "reject-abstain -> pass": 23,
+      "reject-false -> reject-false": 3,
+      "pass -> pass": 3,
+      "reject-abstain -> reject-false": 1
+    },
+    "remaining_rejections": [
+      {
+        "scenario_id": "scenario_universe_21_44vlco",
+        "tool": "Calendar__add_calendar_event",
+        "checker": [
+          "event_checker"
+        ]
+      },
+      {
+        "scenario_id": "scenario_universe_24_cbhckm",
+        "tool": "EmailClientV2__send_email",
+        "checker": [
+          "email_checker"
+        ]
+      },
+      {
+        "scenario_id": "scenario_universe_28_cjvr3k",
+        "tool": "MessagingAppV2__send_message_to_group_conversation",
+        "checker": [
+          "tone_checker"
+        ]
+      },
+      {
+        "scenario_id": "scenario_universe_30_h2qroi",
+        "tool": "EmailClientV2__send_email",
+        "checker": [
+          "email_checker"
+        ]
+      }
+    ]
+  },
+  "rows": [
+    {
+      "scenario_id": "scenario_universe_21_44vlco",
+      "tool": "Calendar__add_calendar_event",
+      "stock_parse": {
+        "outcome": "reject-false",
+        "checkers": {
+          "event_checker": false
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "reject-false",
+        "checkers": {
+          "event_checker": false
+        }
+      },
+      "oracle_args": {
+        "title": "Photoshoot with Sheryl's Sweets"
+      },
+      "agent_args": {
+        "title": "Sheryl's Sweets Photoshoot"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_21_kgqyjr",
+      "tool": "CabApp__order_ride",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "cab_checker": null
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "cab_checker": true
+        }
+      },
+      "oracle_args": {
+        "start_location": "Home",
+        "end_location": "Malm\u00f6husv\u00e4gen 34, Malm\u00f6"
+      },
+      "agent_args": {
+        "start_location": "my home",
+        "end_location": "Malm\u00f6husv\u00e4gen 34, 211 18 Malm\u00f6"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_21_x1l1om",
+      "tool": "AgentUserInterface__send_message_to_user",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "sanity_checker": null,
+          "user_message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "sanity_checker": true,
+          "user_message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "I have created the event."
+      },
+      "agent_args": {
+        "content": "The \u201cBrand Partnership Meeting\u201d with Lu\u00eds Pimentel has been created for October 21, 2024, from 9:00 AM to 2:00"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_21_x1l1om",
+      "tool": "Calendar__add_calendar_event",
+      "stock_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "event_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "event_checker": true
+        }
+      },
+      "oracle_args": {
+        "title": "Brand Partnership Meeting",
+        "location": "Zoom Meeting"
+      },
+      "agent_args": {
+        "title": "Brand Partnership Meeting",
+        "location": "Zoom Meeting"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_22_6wkrhc",
+      "tool": "AgentUserInterface__send_message_to_user",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "sanity_checker": null,
+          "user_message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "sanity_checker": true,
+          "user_message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "Message sent successfully to the Messages group conversation."
+      },
+      "agent_args": {
+        "content": "Created the \u201cWine Tasting \u2013 October 16\u201d group (ID fbe04aabf88d7aef9f2963a9ff4d4815) with Lu\u00eds Marques and Jami"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_23_4l98uz",
+      "tool": "AgentUserInterface__send_message_to_user",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "sanity_checker": null,
+          "user_message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "sanity_checker": true,
+          "user_message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "The event has been updated and the taxi booked."
+      },
+      "agent_args": {
+        "content": "Updated \u201cDinner with Family\u201d for Thursday, October 17, 2024, 19:00\u201321:00, at Bohumil Nov\u00e1\u010dek\u2019s home, 14 Lidick"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_23_fzwgqh",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Translation Project Meeting",
+        "content": "Dear \u0160\u00e1rka,\n\nAre we still on for the Translation Project Meeting today?\n\nBest,\nMat\u011bj"
+      },
+      "agent_args": {
+        "subject": "Translation Project Meeting today",
+        "content": "Hi \u0160\u00e1rka, are we still on for the Translation Project Meeting today from 15:00 to 17:00?"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_23_ljnkla",
+      "tool": "AgentUserInterface__send_message_to_user",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "sanity_checker": null,
+          "user_message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "sanity_checker": true,
+          "user_message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "I have scheduled the lunch."
+      },
+      "agent_args": {
+        "content": "Scheduled a 1-hour lunch for Friday, October 18, 2024, from 12:30 PM to 1:30 PM with V\u011bra Nov\u00e1kov\u00e1, Zden\u011bk Nov"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_23_ljnkla",
+      "tool": "Calendar__add_calendar_event",
+      "stock_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "event_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "event_checker": true
+        }
+      },
+      "oracle_args": {
+        "title": "Lunch"
+      },
+      "agent_args": {
+        "title": "Lunch"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_23_qjkt81",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Movie Night on Friday?",
+        "content": "Hi \u0160\u00e1rka,\n\nWant to go see a movie with me this Friday at 18:00? Let me know!\n\nBest,\nMat\u011bj"
+      },
+      "agent_args": {
+        "subject": "Movie this Friday?",
+        "content": "Hi Eli\u0161ka,\n\nWould you like to go and see a movie with me this Friday, October 18, at 18:00?\n\nBest,\nMat\u011bj"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_24_4pjsme",
+      "tool": "Calendar__add_calendar_event",
+      "stock_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "event_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "event_checker": true
+        }
+      },
+      "oracle_args": {
+        "title": "Meeting about Ancient Diets",
+        "location": "Local caf\u00e9"
+      },
+      "agent_args": {
+        "title": "Meeting about Ancient Diets",
+        "location": "local caf\u00e9"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_24_4pjsme",
+      "tool": "EmailClientV2__reply_to_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "I am free to meet you on October 19, 2024 at 2pm for two hours at the local caf\u00e9; does this time work for you?"
+      },
+      "agent_args": {
+        "content": "Dear Aur\u00e9lie,\n\nI would be happy to discuss this with you. I am free to meet on October 19, 2024, from 2:00 PM "
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_24_cbhckm",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-false",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": false
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "reject-false",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": false
+        }
+      },
+      "oracle_args": {
+        "subject": "Delete events?",
+        "content": "Do you want to delete the Coffee Break event on Oct 19, 2024?"
+      },
+      "agent_args": {
+        "subject": "Delete events?",
+        "content": "Would you like to delete your coffee break event on October 17, 2024 from 12:00 PM to 1:00 PM?"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_24_tmxihx",
+      "tool": "CabApp__order_ride",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "cab_checker": null
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "cab_checker": true
+        }
+      },
+      "oracle_args": {
+        "start_location": "Home",
+        "end_location": "Rue de Lausanne 45, Geneva"
+      },
+      "agent_args": {
+        "start_location": "My home",
+        "end_location": "Rue de Lausanne 45, Geneva"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_25_b932pi",
+      "tool": "MessagingAppV2__send_message",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": null,
+          "message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": true,
+          "message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "I ordered for you a default ride to pick you up from your address to Tiensestraat 57, 3000 Leuven, Belgium for"
+      },
+      "agent_args": {
+        "content": "Hi Aur\u00e9lien, your default cab is booked for pickup at 08:50 today from Sint-Michielsstraat 6, 3000 Leuven, Bel"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_26_3n99me",
+      "tool": "MessagingAppV2__send_message_to_group_conversation",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": null,
+          "message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": true,
+          "message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "Hello everyone, would you like to join me to the Film Festival: International Films event tomorrow at 7 PM?"
+      },
+      "agent_args": {
+        "content": "Would you like to join me tomorrow, October 16, at 7:00 PM for the Film Festival: International Films event? P"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_26_7wzlha",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Invitation to a film showing",
+        "content": "Dear K\u00e5re, \n\nYou're invited to a film showing at my cousin's house on October 18th, 2024, from 5 pm to 9 pm. P"
+      },
+      "agent_args": {
+        "subject": "Film showing invitation \u2013 Friday, October 18",
+        "content": "Hi K\u00e5re,\n\nI\u2019d like to invite you to a film showing at my cousin \u00c5shild Nystad\u2019s house on Friday, October 18, 2"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_26_mr44js",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Fjordview Apartments Viewing",
+        "content": "Dear K\u00e5re,\n\nPlease confirm if the Fjordview Apartments property (\u00d8vre Slottsgate 14, 0157 Oslo) and the cab bo"
+      },
+      "agent_args": {
+        "subject": "Fjordview Apartments Viewing",
+        "content": "Hei K\u00e5re,\n\nI\u2019ve saved Fjordview Apartments at \u00d8vre Slottsgate 14, 0157 Oslo and booked a Default cab for Sunda"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_26_naxywx",
+      "tool": "MessagingAppV2__send_message",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": null,
+          "message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": true,
+          "message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "Could you add the apartment search that we discussed to my calendar, including the address."
+      },
+      "agent_args": {
+        "content": "Hi Kofi, please add the apartment search we discussed to my calendar, including the address: Fosswinckels gate"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_27_mlotos",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Invitation to Culture Exchange",
+        "content": "Dear Dewi Sutanto,\n\nI'm inviting you to a Culture Exchange event on 2024-10-22, 3PM-5PM, via Zoom Meeting. Ple"
+      },
+      "agent_args": {
+        "subject": "Invitation: Culture Exchange on October 22",
+        "content": "Hi Dewi,\n\nYou\u2019re invited to the Culture Exchange event on Tuesday, October 22, 2024, from 3:00 PM to 5:00 PM a"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_28_agbdf3",
+      "tool": "CabApp__order_ride",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "cab_checker": null
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "cab_checker": true
+        }
+      },
+      "oracle_args": {
+        "start_location": "Home",
+        "end_location": "Havnegade 8, 6700 Esbjerg, Esbjerg"
+      },
+      "agent_args": {
+        "start_location": "\u00d8sterbrogade 123, 2100 K\u00f8benhavn \u00d8, Denmark",
+        "end_location": "Havnegade 8, 6700 Esbjerg, Esbjerg"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_28_cjvr3k",
+      "tool": "MessagingAppV2__send_message_to_group_conversation",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": null,
+          "message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "reject-false",
+        "checkers": {
+          "placeholder_checker": true,
+          "tone_checker": false,
+          "message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "Hi All, I have create  this chat for discussions about the banking industry as we had discussed previously."
+      },
+      "agent_args": {
+        "content": "Hi All, I have create this chat for discussions about the banking industry as we had discussed previously."
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_28_s48dm9",
+      "tool": "AgentUserInterface__send_message_to_user",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "sanity_checker": null,
+          "user_message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "sanity_checker": true,
+          "user_message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "Consultations with Vigdis Rasmussen, Birgitta Kj\u00e6r, and Astrid Jensen have been scheduled on Friday October 18"
+      },
+      "agent_args": {
+        "content": "Consultations are scheduled for Friday, October 18, 2024, consecutively in the requested order: Vigdis Rasmuss"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_28_umdoef",
+      "tool": "CabApp__order_ride",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "cab_checker": null
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "cab_checker": true
+        }
+      },
+      "oracle_args": {
+        "start_location": "\u00d8sterbrogade 27, 3. tv, 2100 K\u00f8benhavn \u00d8, Denmark",
+        "end_location": "\u00d8stergade 14, Herning"
+      },
+      "agent_args": {
+        "start_location": "\u00d8sterbrogade 27, 3. tv, 2100 K\u00f8benhavn \u00d8, Denmark",
+        "end_location": "Herning Hytte, \u00d8stergade 14, 7400 Herning, Denmark"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_28_umdoef",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Property Review",
+        "content": "I have saved the cheapest furnished and unfurnished properties available, and booked a premium cab tomorrow at"
+      },
+      "agent_args": {
+        "subject": "Saved properties and premium car for tomorrow",
+        "content": "Hi Astrid,\n\nI\u2019ve saved the two cheapest properties: furnished Herning Hytte at \u00d8stergade 14, Herning (\u20ac800), a"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_28_znpabl",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Confirm Apartment Viewing Time",
+        "content": "Dear Nonglak,\n\nPlease confirm if 3 PM this Friday works for you to view the apartment at \u00d8stergade 14, Herning"
+      },
+      "agent_args": {
+        "subject": "Apartment viewing at Herning Hytte",
+        "content": "Dear Nonglak Srisawat,\n\nCould you please confirm whether Friday, October 18, 2024 at 3:00 PM works for you to "
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_29_23k4gf",
+      "tool": "AgentUserInterface__send_message_to_user",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "sanity_checker": null,
+          "user_message_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "sanity_checker": true,
+          "user_message_checker": true
+        }
+      },
+      "oracle_args": {
+        "content": "I have booked your cab ride."
+      },
+      "agent_args": {
+        "content": "Booked the Default cab for 8:30 AM today (October 15) from 14, Sahyadri Apartments, Bandra West, Mumbai to Plo"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_29_9r7j19",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": true
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": true
+        }
+      },
+      "oracle_args": {
+        "subject": "Confirming Your Arrival Date",
+        "content": "Hi Ryder,\n\nCan you please confirm your arrival date?\n\nThanks, \nRohan"
+      },
+      "agent_args": {
+        "subject": "Confirming Your Arrival Date",
+        "content": "Hi Ryder,\n\nCould you please confirm the date of your arrival in Mumbai? I currently understand that you are ar"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_30_h2qroi",
+      "tool": "EmailClientV2__send_email",
+      "stock_parse": {
+        "outcome": "reject-false",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": null,
+          "tone_checker": null,
+          "email_checker": false
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "reject-false",
+        "checkers": {
+          "placeholder_checker": true,
+          "signature_checker": true,
+          "tone_checker": true,
+          "email_checker": false
+        }
+      },
+      "oracle_args": {
+        "subject": "New Web Design Project",
+        "content": "Dear Astrid,\n\nAre you available tomorrow at 9AM-10AM for me to visit you at your home to discuss a new web des"
+      },
+      "agent_args": {
+        "subject": "Web Design Project \u2014 availability tomorrow at 9am",
+        "content": "Hi Astrid,\n\nAre you available tomorrow, Wednesday 16 October, at 9:00am for me to visit you at your home at 14"
+      }
+    },
+    {
+      "scenario_id": "scenario_universe_30_njjsj6",
+      "tool": "CabApp__order_ride",
+      "stock_parse": {
+        "outcome": "reject-abstain",
+        "checkers": {
+          "cab_checker": null
+        }
+      },
+      "case_insensitive_parse": {
+        "outcome": "pass",
+        "checkers": {
+          "cab_checker": true
+        }
+      },
+      "oracle_args": {
+        "start_location": "Home",
+        "end_location": "10 Downing St, London"
+      },
+      "agent_args": {
+        "start_location": "34, Storey's Way, Cambridge CB3 0DT",
+        "end_location": "London Luxe, 10 Downing St, London"
+      }
+    }
+  ]
+}
