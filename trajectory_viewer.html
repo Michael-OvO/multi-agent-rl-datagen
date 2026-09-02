@@ -793,7 +793,20 @@ function backline(content, label) {
 /* ================= §1 Runs ================= */
 
 function renderRuns(content) {
-  const eps = byKind("episode");
+  const all = byKind("episode");
+  /* Campaigns, newest first by their latest start. The page opens on the
+     campaign whose transcripts it carries; "all campaigns" is a choice. */
+  const latest = new Map();
+  for (const s of all) {
+    const l = s.data.label || "(unlabelled)";
+    const t = String(s.data.started_at || "");
+    if (!latest.has(l) || t > latest.get(l)) latest.set(l, t);
+  }
+  const labels = [...latest.keys()].sort((a, b) => latest.get(b).localeCompare(latest.get(a)));
+  if (campaignSel === null) campaignSel = fullLabel || labels[0] || "*";
+  if (campaignSel !== "*" && !latest.has(campaignSel)) campaignSel = labels[0] || "*";
+  const eps = campaignSel === "*" ? all
+    : all.filter(s => (s.data.label || "(unlabelled)") === campaignSel);
   if (!eps.length) {
     content.innerHTML = `<p class="lede">No episode trajectories are loaded.
       They are written to <span class="mono">output/rollouts/</span> by
@@ -879,7 +892,12 @@ function renderRuns(content) {
        <span class="sub">— newest first; click a row for its transcript</span></div>`);
   const fbar = document.createElement("div");
   fbar.className = "filterline";
-  fbar.innerHTML = `<span>restrict to
+  fbar.innerHTML = `<span>campaign
+      <select id="campaignpick" aria-label="campaign">${
+        labels.map(l => `<option value="${esc(l)}"${l === campaignSel ? " selected" : ""}>${
+          esc(l)}</option>`).join("")}<option value="*"${
+        campaignSel === "*" ? " selected" : ""}>all campaigns</option></select></span>
+    <span>restrict to
       <input type="search" placeholder="any text" aria-label="filter runs"></span>
     <select data-f="verdict" aria-label="verdict"><option value="">any verdict</option>
       <option value="ok">success</option><option value="bad">failure</option></select>
@@ -889,6 +907,12 @@ function renderRuns(content) {
       judges.map(j => `<option>${esc(j)}</option>`).join("")}</select>
     <span class="count"></span>`;
   content.appendChild(fbar);
+  /* The picker changes what the whole view computes from, so it re-renders
+     rather than filtering rows; the search box and the dropdowns still
+     compose on top of whichever campaign is chosen. */
+  $("#campaignpick", fbar).addEventListener("change", e => {
+    campaignSel = e.target.value; issueFilter = null; pendingQuery = null; render();
+  });
 
   const hasLabels = eps.some(s => s.data.label);
   const newestFirst = [...eps].sort((a, b) =>

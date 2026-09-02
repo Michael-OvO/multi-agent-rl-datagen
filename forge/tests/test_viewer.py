@@ -497,3 +497,20 @@ def test_task_records_are_their_own_session_kind(viewer_html):
     source = viewer_source(viewer_html)
     assert 'if (data && data.kind === "forge-task") return "task";' in source
     assert "task: 1" in re.search(r"const order = \{(.*?)\};", source).group(1)
+
+
+# -- readable across campaigns: one at a time by default ----------------------
+
+
+def test_the_runs_view_offers_a_campaign_picker_in_the_filter_line(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'id="campaignpick"' in source
+    assert "all campaigns" in source
+    header = re.search(r"<header>(.*?)</header>", viewer_html, re.S).group(1)
+    assert "campaignpick" not in header
+
+
+def test_the_picker_defaults_to_the_embedded_campaign(viewer_html):
+    source = viewer_source(viewer_html)
+    assert "campaignSel = fullLabel" in source
+    assert 'campaignSel === "*"' in source
