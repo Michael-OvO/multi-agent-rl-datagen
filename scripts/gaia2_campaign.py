@@ -27,6 +27,7 @@ from pathlib import Path
 from forge.abilities import Ability, config_for
 from forge.appworld.partition import control_for
 from forge.gaia2.mine import admit
+from scripts.embed_logs import try_refresh
 
 ROOT = Path(__file__).resolve().parents[1]
 GAIA2_PY = ROOT / ".venv-gaia2" / "bin" / "python"
@@ -159,6 +160,9 @@ def main() -> None:
             print(f"[{done}/{len(jobs)}] {sid} {label}: "
                   f"{'ERROR rc=' + str(code) if code else verdict}", flush=True)
     print(f"campaign complete: {done} ran, {failed} errored")
+    # The page follows the results without anyone remembering embed_logs.
+    # A refresh failure is reported, never raised: the rollouts are on disk.
+    try_refresh(args.label)
 
 
 if __name__ == "__main__":
