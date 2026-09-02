@@ -791,3 +791,39 @@ def test_md_lite_folds_an_indented_continuation_into_its_bullet(viewer_html):
         "the open list")
     assert body.index(r"/^\s+\S/.test(raw)") < body.index("if (list) flush();"), (
         "the continuation check must run before the list-closing branch")
+
+
+# -- §9A: the Runs tab reads as one thing -------------------------------------
+
+
+def _runs_fn(viewer_html: str) -> str:
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderRuns\(content\) \{(.*?)\n\}\n", source, re.S)
+    assert fn, "renderRuns moved"
+    return fn.group(1)
+
+
+def test_the_runs_tab_says_what_its_grid_answers(viewer_html):
+    body = _runs_fn(viewer_html)
+    lede = body.index('<p class="lede">Every verdict for the chosen campaign')
+    assert "whether a knob bit against the control" in body
+    assert lede < body.index('id="campaignpick"') < body.index("-- Table 1: the verdict matrix --"), (
+        "lede, then the picker on its own line, then the grid")
+
+
+def test_the_run_list_is_a_drawer_under_the_grid(viewer_html):
+    source = viewer_source(viewer_html)
+    body = _runs_fn(viewer_html)
+    assert "let runsDrawerOpen = false;" in source
+    assert 'drawer.className = "drawer";' in body
+    assert "drawer.open = runsDrawerOpen || !!issueFilter || !!pendingQuery;" in body
+    assert "drawer.appendChild(fbar);" in body and "drawer.appendChild(twrap);" in body
+    assert "content.appendChild(twrap);" not in body
+    assert 'drawer.addEventListener("toggle"' in body
+
+
+def test_the_drawer_summary_hides_the_native_marker_with_the_palette_s_muted(viewer_css):
+    assert re.search(r"details\.drawer > summary\s*\{[^}]*list-style: none", viewer_css)
+    assert re.search(r"details\.drawer > summary::-webkit-details-marker\s*\{[^}]*display: none", viewer_css)
+    assert re.search(r"details\.drawer > summary::before\s*\{[^}]*var\(--muted\)", viewer_css)
+    assert "details.drawer[open] > summary::before" in viewer_css

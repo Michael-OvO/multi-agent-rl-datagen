@@ -215,6 +215,15 @@ sweep row files, forge tasks.
     margin: 28px 0 9px; letter-spacing: -0.01em;
   }
   .panel-title .sub { font-weight: 400; color: var(--ink-2); font-size: 12.5px; }
+  /* A drawer: the page's disclosure component wearing a panel title. The
+     native marker is hidden and a quiet glyph in --muted stands in, so the
+     summary reads like the titles above it and still says it opens. */
+  details.drawer { margin-top: 28px; }
+  details.drawer > summary { list-style: none; cursor: pointer; width: fit-content; }
+  details.drawer > summary::-webkit-details-marker { display: none; }
+  details.drawer > summary::before { content: "▸"; color: var(--muted); margin-right: 7px; }
+  details.drawer[open] > summary::before { content: "▾"; }
+  details.drawer > summary .panel-title { display: inline; margin: 0; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
     margin: 0 0 10px; font-size: 12px; color: var(--ink-2);
@@ -478,6 +487,7 @@ let pendingQuery = null;   // a search string the next runs-table render adopts
 let savedScroll = 0;
 let fullLabel = null;      // the campaign whose transcripts the snapshot embeds
 let campaignSel = null;    // null until first render, then a label or "*" for all
+let runsDrawerOpen = false; // the reader's own toggle of the run list, kept across re-renders
 
 function detect(data) {
   if (data && data.kind === "gaia2-episode") return "episode";
@@ -882,7 +892,36 @@ function renderRuns(content) {
   }
   const scenarios = [...new Set(eps.map(s => s.data.scenario_id))];
 
-  content.insertAdjacentHTML("beforeend", `<h2 class="sec">Runs</h2>`);
+  content.insertAdjacentHTML("beforeend", `<h2 class="sec">Runs</h2>
+    <p class="lede">Every verdict for the chosen campaign, by scenario and configuration — read across a row to see whether a knob bit against the control. <b>${eps.length}</b> run${eps.length === 1 ? "" : "s"}; each is listed below.</p>`);
+
+  /* The picker governs the whole tab, so it sits on its own line above
+     everything it changes. 13 labels + "(unlabelled)" + "all campaigns"
+     read as 15 flat entries when 8 of them are one-run probes; group
+     instead of hiding anything. */
+  const campaignOptionFor = l => `<option value="${esc(l)}"${
+    l === campaignSel ? " selected" : ""}>${esc(l)}</option>`;
+  const campaignGroup = labels.filter(l => campaignCounts.get(l) >= CAMPAIGN_MIN_EPISODES);
+  const probeGroup = labels.filter(l => campaignCounts.get(l) < CAMPAIGN_MIN_EPISODES);
+  const pickbar = document.createElement("div");
+  pickbar.className = "filterline";
+  pickbar.innerHTML = `<span>campaign
+      <select id="campaignpick" aria-label="campaign">${
+        campaignGroup.length
+          ? `<optgroup label="campaigns">${campaignGroup.map(campaignOptionFor).join("")}</optgroup>`
+          : ""}${
+        probeGroup.length
+          ? `<optgroup label="probes">${probeGroup.map(campaignOptionFor).join("")}</optgroup>`
+          : ""}<option value="*"${
+        campaignSel === "*" ? " selected" : ""}>all campaigns</option></select></span>`;
+  content.appendChild(pickbar);
+  /* The picker changes what the whole view computes from, so it re-renders
+     rather than filtering rows; the search box and the dropdowns still
+     compose on top of whichever campaign is chosen. */
+  $("#campaignpick", pickbar).addEventListener("change", e => {
+    campaignSel = e.target.value; issueFilter = null; pendingQuery = null; render();
+  });
+
   const stats = runStats(eps);
   renderSignals(content, stats);
 
@@ -990,27 +1029,19 @@ function renderRuns(content) {
   const abilities = [...new Set(eps.map(s => s.data.ability || "control"))];
   const judges = [...new Set(eps.map(s => s.data.judge || "scripted"))];
 
-  content.insertAdjacentHTML("beforeend",
-    `<div class="panel-title">All runs
-       <span class="sub">— newest first; click a row for its transcript</span></div>`);
-  /* 13 labels + "(unlabelled)" + "all campaigns" read as 15 flat entries
-     when 8 of them are one-run probes; group instead of hiding anything. */
-  const campaignOptionFor = l => `<option value="${esc(l)}"${
-    l === campaignSel ? " selected" : ""}>${esc(l)}</option>`;
-  const campaignGroup = labels.filter(l => campaignCounts.get(l) >= CAMPAIGN_MIN_EPISODES);
-  const probeGroup = labels.filter(l => campaignCounts.get(l) < CAMPAIGN_MIN_EPISODES);
+  /* The list is the drawer under the grid: closed by default, opened by any
+     filter the reader sets (a chip, a grid count tag, a search), and by the
+     reader's own toggle, which runsDrawerOpen keeps across re-renders. */
+  const drawer = document.createElement("details");
+  drawer.className = "drawer";
+  drawer.open = runsDrawerOpen || !!issueFilter || !!pendingQuery;
+  drawer.innerHTML = `<summary><span class="panel-title">every run
+       <span class="sub">— newest first, filterable (${eps.length})</span></span></summary>`;
+  drawer.addEventListener("toggle", () => { runsDrawerOpen = drawer.open; });
+  content.appendChild(drawer);
   const fbar = document.createElement("div");
   fbar.className = "filterline";
-  fbar.innerHTML = `<span>campaign
-      <select id="campaignpick" aria-label="campaign">${
-        campaignGroup.length
-          ? `<optgroup label="campaigns">${campaignGroup.map(campaignOptionFor).join("")}</optgroup>`
-          : ""}${
-        probeGroup.length
-          ? `<optgroup label="probes">${probeGroup.map(campaignOptionFor).join("")}</optgroup>`
-          : ""}<option value="*"${
-        campaignSel === "*" ? " selected" : ""}>all campaigns</option></select></span>
-    <span>restrict to
+  fbar.innerHTML = `<span>restrict to
       <input type="search" placeholder="any text" aria-label="filter runs"></span>
     <select data-f="verdict" aria-label="verdict"><option value="">any verdict</option>
       <option value="ok">success</option><option value="bad">failure</option></select>
@@ -1019,13 +1050,7 @@ function renderRuns(content) {
     <select data-f="judge" aria-label="judge"><option value="">either judge</option>${
       judges.map(j => `<option>${esc(j)}</option>`).join("")}</select>
     <span class="count"></span>`;
-  content.appendChild(fbar);
-  /* The picker changes what the whole view computes from, so it re-renders
-     rather than filtering rows; the search box and the dropdowns still
-     compose on top of whichever campaign is chosen. */
-  $("#campaignpick", fbar).addEventListener("change", e => {
-    campaignSel = e.target.value; issueFilter = null; pendingQuery = null; render();
-  });
+  drawer.appendChild(fbar);
 
   const hasLabels = eps.some(s => s.data.label);
   const newestFirst = [...eps].sort((a, b) =>
@@ -1103,7 +1128,7 @@ function renderRuns(content) {
   };
   fbar.addEventListener("input", apply);
   apply();
-  content.appendChild(twrap);
+  drawer.appendChild(twrap);
 }
 
 /* ================= §2 Shipped-task runs ================= */
