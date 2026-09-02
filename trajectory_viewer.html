@@ -16,9 +16,9 @@ captions, footnote marks, one rationed accent, and a founding refusal of
 about a run could not be found at a glance. Of the three replacements
 weighed (a run-card grid, a master-detail split, an overview over tables),
 the overview-over-tables option was chosen.
-FIRST VIEWPORT: title, source line, three tabs (Runs, Shipped-task runs,
-Evidence files), the failure-signal chips, then the verdict grid. Primary
-action: any verdict badge or table row opens that run.
+FIRST VIEWPORT: title, source line, four tabs (Runs, Tasks, Shipped-task
+runs, Evidence files), the failure-signal chips, then the verdict grid.
+Primary action: any verdict badge or table row opens that run.
 NOT HERE, BY DECISION: stat tiles and a hero figure were built on
 2026-07-28 and removed the same day — they restated the tables. The
 File System Access folder connection is retired; no permission prompt
@@ -27,12 +27,15 @@ The system is documented in DESIGN.md, and the parts that are computable —
 every token in all three theme scopes, and the WCAG contrast of each status
 color on both of its grounds — are tested in forge/tests/test_viewer.py.
 
-Auto-loading: the page carries its data — a JSON snapshot of every log
-artifact sits in the #embedded-logs block, so opening the file is the whole
-workflow; refresh the snapshot with `uv run python -m scripts.embed_logs`.
+Auto-loading: the page carries its data — an index of every episode ever
+run, every task under tasks/ with its Harbor runs, every evidence file, and
+one campaign's transcripts sits in the #embedded-logs block, so opening the
+file is the whole workflow. The campaign, summary, and credit-probe
+producers refresh it when they finish; run
+`uv run python -m scripts.embed_logs` by hand to refresh without a run.
 Supplementary files can be dropped on the page or opened via the quiet
 "open files" link. Recognized shapes: gaia2 episodes, sidecar breakdowns,
-sweep row files.
+sweep row files, forge tasks.
 -->
 <style>
   /* Design tokens. The status palette is the dataviz reference instance:

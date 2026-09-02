@@ -181,10 +181,10 @@ surviving: **the loading model.** The page carries its own data. A JSON
 snapshot sits in the `#embedded-logs` block -- an index of every episode ever
 run, every task in the pool with its runs linked, every evidence file, and the
 full transcripts of the current campaign -- so opening the file *is* the
-workflow, and the producers refresh it when they finish. Files may also be dropped on the page or chosen
-through the "open files" picker. The File System Access folder connection was
-retired and must not come back — no permission prompt stands in front of the
-data.
+workflow, and the producers refresh it when they finish. Files may also be
+dropped on the page or chosen through the "open files" picker. The File
+System Access folder connection was retired and must not come back — no
+permission prompt stands in front of the data.
 
 **Key characteristics**
 - Status by three channels at once: colour, icon, word.
@@ -237,7 +237,8 @@ theme scopes, but nothing on the shipped page paints a bare warn mark: no rule
 reads `var(--warn)` and nothing calls `badge("warn", …)`. Warning reaches the
 reader as fill plus text instead — `--warn-tint` behind `--warn-ink` on the
 signal chips, and `--warn-ink` alone on the `.warn-text` counts (blocked,
-malformed, faulted, the pivot flag, the shipped-task failure count). That is
+malformed, faulted, the pivot flag, the shipped-task failure count, the
+runs table's `ended` cell). That is
 deliberate: the light value is sub-3:1, so warning is never asked to carry
 meaning as a mark on its own.
 
@@ -408,7 +409,10 @@ judge, and whichever signal chip is active.
 **Empty state** (`.abstract`) — when the snapshot is empty, one 66ch block that
 names the cause and the fix (`uv run python -m scripts.embed_logs`) and offers
 drag-and-drop. Each view has its own version for "loaded, but nothing of this
-kind".
+kind". The same class carries a second role: an index stub's episode view
+renders an `.abstract` block reading *"Transcript not in this copy"*, naming
+the campaign the page carries in full and inviting the reader to open or
+drop the file it names, which replaces the stub.
 
 **Motion** — one authored moment: `#content` settles on every navigation
 (`settle 0.22s cubic-bezier(0.16, 1, 0.3, 1)`, a fade from `translateY(4px)`),
