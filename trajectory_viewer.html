@@ -309,6 +309,12 @@ sweep row files.
   .verdict-panel .head {
     font-weight: 650; color: var(--ink); font-size: 13.5px; margin-bottom: 7px;
   }
+  /* mdLite's markup has no browser-default styling to fall back on inside
+     this panel; size it off the existing type scale instead of a new one. */
+  .verdict-panel h4 { font-size: 14px; font-weight: 650; color: var(--ink); margin: 14px 0 4px; }
+  .verdict-panel h5 { font-size: 13px; font-weight: 600; color: var(--ink); margin: 10px 0 3px; }
+  .verdict-panel p { margin: 6px 0; }
+  .verdict-panel ul { margin: 6px 0 6px 18px; padding: 0; }
   .verdict-panel .gold {
     margin: 8px 0 0; padding: 9px 12px; border-radius: 8px;
     background: var(--surface); border: 1px solid var(--hair);
@@ -510,7 +516,16 @@ async function addFiles(fileList) {
   const openPath = (detail !== null && sessions[detail]) ? sessions[detail].path : null;
   let added = 0;
   for (const f of [...fileList].filter(f => JSON_FILE.test(f.name))) {
-    const path = f.webkitRelativePath || f.name;
+    /* A plain multi-file pick and a folder drop both leave
+       webkitRelativePath empty, so a bare basename has to be resolved
+       against a known stub's path before addSession de-duplicates by exact
+       path -- otherwise it lands as a second session instead of replacing
+       the stub it names. Every breakdown shares the basename
+       breakdown.json, so an ambiguous match falls back to the bare name
+       rather than collapsing every breakdown onto one session. */
+    const base = f.webkitRelativePath || f.name;
+    const hits = sessions.filter(s => s.path.endsWith("/" + base));
+    const path = f.webkitRelativePath || (hits.length === 1 ? hits[0].path : base);
     let data;
     try { data = JSON.parse(await f.text()); } catch { continue; }
     const a = artifact(f.name, path, data);
@@ -719,6 +734,10 @@ function badge(kind, label) {
 const STOCK_PARSE = "stock";
 const parseLabel = d => d.judge_parse || STOCK_PARSE;
 
+/* The campaign picker's floor for its own "campaigns" group; a label with
+   fewer runs than this is a one-off probe, grouped under "probes" instead. */
+const CAMPAIGN_MIN_EPISODES = 10;
+
 function judgeLabel(judge) {
   return judge && judge !== "scripted" ? "soft judge" : "scripted judge";
 }
@@ -840,11 +859,12 @@ function renderRuns(content) {
   const all = byKind("episode");
   /* Campaigns, newest first by their latest start. The page opens on the
      campaign whose transcripts it carries; "all campaigns" is a choice. */
-  const latest = new Map();
+  const latest = new Map(), campaignCounts = new Map();
   for (const s of all) {
     const l = s.data.label || "(unlabelled)";
     const t = String(s.data.started_at || "");
     if (!latest.has(l) || t > latest.get(l)) latest.set(l, t);
+    campaignCounts.set(l, (campaignCounts.get(l) || 0) + 1);
   }
   const labels = [...latest.keys()].sort((a, b) => latest.get(b).localeCompare(latest.get(a)));
   if (campaignSel === null) campaignSel = fullLabel || labels[0] || "*";
@@ -970,12 +990,22 @@ function renderRuns(content) {
   content.insertAdjacentHTML("beforeend",
     `<div class="panel-title">All runs
        <span class="sub">— newest first; click a row for its transcript</span></div>`);
+  /* 13 labels + "(unlabelled)" + "all campaigns" read as 15 flat entries
+     when 8 of them are one-run probes; group instead of hiding anything. */
+  const campaignOptionFor = l => `<option value="${esc(l)}"${
+    l === campaignSel ? " selected" : ""}>${esc(l)}</option>`;
+  const campaignGroup = labels.filter(l => campaignCounts.get(l) >= CAMPAIGN_MIN_EPISODES);
+  const probeGroup = labels.filter(l => campaignCounts.get(l) < CAMPAIGN_MIN_EPISODES);
   const fbar = document.createElement("div");
   fbar.className = "filterline";
   fbar.innerHTML = `<span>campaign
       <select id="campaignpick" aria-label="campaign">${
-        labels.map(l => `<option value="${esc(l)}"${l === campaignSel ? " selected" : ""}>${
-          esc(l)}</option>`).join("")}<option value="*"${
+        campaignGroup.length
+          ? `<optgroup label="campaigns">${campaignGroup.map(campaignOptionFor).join("")}</optgroup>`
+          : ""}${
+        probeGroup.length
+          ? `<optgroup label="probes">${probeGroup.map(campaignOptionFor).join("")}</optgroup>`
+          : ""}<option value="*"${
         campaignSel === "*" ? " selected" : ""}>all campaigns</option></select></span>
     <span>restrict to
       <input type="search" placeholder="any text" aria-label="filter runs"></span>
@@ -1122,19 +1152,7 @@ function renderBreakdowns(content) {
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
   trs.forEach(tr => tr.onclick = () => openDetail(Number(tr.dataset.i)));
-  const apply = () => {
-    const q = $("input", fbar).value.toLowerCase();
-    let shown = 0;
-    for (const tr of trs) {
-      const hit = !q || tr.dataset.text.includes(q);
-      tr.style.display = hit ? "" : "none";
-      shown += hit;
-    }
-    $(".count", fbar).textContent =
-      shown === trs.length ? `all ${trs.length} runs` : `${shown} of ${trs.length} runs`;
-  };
-  fbar.addEventListener("input", apply);
-  apply();
+  wireSearch(fbar, trs, "runs");
   content.appendChild(twrap);
 }
 
@@ -1167,12 +1185,21 @@ function mdLite(text) {
     if (b) { if (para.length) { out.push(`<p>${para.join(" ")}</p>`); para = []; }
              (list = list || []).push(`<li>${inline(b[1])}</li>`); continue; }
     if (!line.trim()) { flush(); continue; }
+    if (list && /^\s+\S/.test(raw)) {
+      list[list.length - 1] = list[list.length - 1]
+        .replace(/<\/li>$/, " " + inline(line.trim()) + "</li>");
+      continue;
+    }
     if (list) flush();
     para.push(inline(line));
   }
   flush();
   return out.join("\n");
 }
+
+/* Display names for the three substrates; shared by renderTasks and
+   renderTaskDetail rather than duplicated in each. */
+const SUBSTRATE_NAMES = {appworld: "AppWorld", gaia2: "Gaia2", "parallel-scheduling": "parallel-scheduling"};
 
 function renderTasks(content) {
   const tasks = byKind("task");
@@ -1187,11 +1214,10 @@ function renderTasks(content) {
     const k = s.data.substrate || "other";
     bySub.set(k, (bySub.get(k) || 0) + 1);
   }
-  const NAMES = {appworld: "AppWorld", gaia2: "Gaia2", "parallel-scheduling": "parallel-scheduling"};
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Tasks</h2>
      <p class="lede"><b>${tasks.length}</b> task${tasks.length === 1 ? "" : "s"}: ${
-       [...bySub].map(([k, n]) => `${n} ${NAMES[k] || k}`).join(", ")}. Each is a
+       [...bySub].map(([k, n]) => `${n} ${SUBSTRATE_NAMES[k] || k}`).join(", ")}. Each is a
      directory under <span class="mono">tasks/</span> a container runs; its Harbor
      runs under <span class="mono">jobs/</span> are linked beneath it.</p>
      <div class="panel-title">The pool
@@ -1224,7 +1250,7 @@ function renderTasks(content) {
         data-text="${esc(JSON.stringify([d.name, d.substrate, d.config, d.target,
                         d.roster, d.contract_version, d.description]).toLowerCase())}">
         <td title="${esc(d.description || "")}">${esc(d.name)}</td>
-        <td>${dash(NAMES[d.substrate] || d.substrate)}</td>
+        <td>${dash(SUBSTRATE_NAMES[d.substrate] || d.substrate)}</td>
         <td>${dash(d.config)}</td>
         <td>${dash(d.target)}</td>
         <td class="mono sm">${(d.roster || []).length ? (d.roster || []).map(esc).join(", ") : `<span class="dim">—</span>`}</td>
@@ -1260,13 +1286,12 @@ function wireSearch(fbar, trs, noun) {
 function renderTaskDetail(content, s) {
   const d = s.data;
   backline(content, "back to the tasks");
-  const NAMES = {appworld: "AppWorld", gaia2: "Gaia2", "parallel-scheduling": "parallel-scheduling"};
   const dash = v => v == null || v === "" ? "—" : String(v);
   const bar = document.createElement("div");
   bar.className = "runbar";
   bar.innerHTML = `
     <h3><span>${esc(d.name)}</span>
-      <span class="tag">${esc(NAMES[d.substrate] || d.substrate || "task")}</span></h3>
+      <span class="tag">${esc(SUBSTRATE_NAMES[d.substrate] || d.substrate || "task")}</span></h3>
     <div class="facts">
       <span>configuration <b>${esc(dash(d.config))}</b></span>
       <span>target <b>${esc(dash(d.target))}</b></span>

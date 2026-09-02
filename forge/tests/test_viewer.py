@@ -459,6 +459,17 @@ def test_the_ledger_header_escapes_both_of_its_sums(viewer_html):
             f"this sum reaches innerHTML unescaped: {s}")
 
 
+def test_verdict_panel_headings_and_prose_are_sized_off_the_type_scale(viewer_css):
+    """No rule exists for `h4`/`h5`/`ul`/`li`/`p` in the stylesheet, so
+    browser defaults apply inside `.verdict-panel` and an instruction's
+    `<h5>` renders smaller than its own body text (I4). Scoped so nothing
+    else on the page changes, and using only existing tokens."""
+    assert re.search(r"\.verdict-panel h4\s*\{", viewer_css), (
+        ".verdict-panel needs a sized h4 rule")
+    assert re.search(r"\.verdict-panel h5\s*\{", viewer_css), (
+        ".verdict-panel needs a sized h5 rule")
+
+
 def test_no_status_class_paints_nothing(viewer_css):
     """A colour rule whose every match overrides it is dead weight."""
     assert not re.search(r"^\s*\.bad \{", viewer_css, re.M), (
@@ -481,10 +492,16 @@ def test_the_snapshot_loader_adds_index_then_tasks_then_files(viewer_html):
 
 
 def test_the_source_line_names_episodes_campaigns_tasks_and_the_full_label(viewer_html):
+    """Anchored inside loadSnapshot itself (I7): the embedded snapshot's
+    prose can contain these same substrings, so an unanchored search could
+    pass against transcript text rather than the source-line assembly."""
     source = viewer_source(viewer_html)
-    assert "episodes across" in source
-    assert "} tasks" in source
-    assert "transcripts for" in source
+    loader = re.search(r"function loadSnapshot\(\) \{(.*?)\n\}\)\(\);", source, re.S)
+    assert loader, "the loadSnapshot IIFE moved; update this test's anchor"
+    body = loader.group(1)
+    assert "episodes across" in body
+    assert "} tasks" in body
+    assert "transcripts for" in body
 
 
 def test_index_stubs_and_the_campaign_selection_are_page_state(viewer_html):
@@ -497,6 +514,48 @@ def test_task_records_are_their_own_session_kind(viewer_html):
     source = viewer_source(viewer_html)
     assert 'if (data && data.kind === "forge-task") return "task";' in source
     assert "task: 1" in re.search(r"const order = \{(.*?)\};", source).group(1)
+
+
+# -- a picked or dropped file replaces its index stub, not duplicates it -----
+
+
+def test_a_picked_file_resolves_against_a_known_stub_by_basename(viewer_html):
+    """`File.webkitRelativePath` is "" for a plain multi-file pick and for
+    `dataTransfer.files`, so a picked rollout must be resolved against a
+    known stub's path by basename before `addSession` de-duplicates by exact
+    `path` -- otherwise it lands as a second session instead of replacing
+    the stub (C1). Every breakdown shares the basename `breakdown.json`, so
+    the match must require exactly one hit."""
+    source = viewer_source(viewer_html)
+    fn = re.search(r"async function addFiles\(fileList\) \{(.*?)\n\}", source, re.S)
+    assert fn, "addFiles moved; update this test's anchor"
+    body = fn.group(1)
+    assert 's.path.endsWith("/" + base)' in body, (
+        "a picked basename must be resolved against known session paths")
+    assert "hits.length === 1" in body, (
+        "an ambiguous basename (e.g. every breakdown.json) must not resolve")
+
+
+def test_every_credit_field_the_viewer_reads_is_in_the_index_record(viewer_html):
+    """Builder and page must agree on the `credit` shape across languages.
+
+    A key the viewer reads via `d.credit.<key>` but `index_record` does not
+    copy into a stub renders as "undefined" -- exactly C2's bug, for whatever
+    key regresses next. Pins the two languages together by reading the
+    builder's own tuple rather than restating it here."""
+    source = viewer_source(viewer_html)
+    read_keys = set(re.findall(r"d\.credit\.([a-zA-Z_]+)", source))
+    assert read_keys, "no d.credit.<key> reads found; the anchor moved"
+    embed_src = (_ROOT / "scripts" / "embed_logs.py").read_text()
+    tup = re.search(
+        r'"credit":\s*\(\{k: credit\.get\(k\) for k in\s*\((.*?)\)\}',
+        embed_src, re.S)
+    assert tup, "index_record's credit tuple moved; update this test's anchor"
+    builder_keys = set(re.findall(r'"([a-zA-Z_]+)"', tup.group(1)))
+    missing = read_keys - builder_keys
+    assert not missing, (
+        f"the viewer reads d.credit.{missing} but embed_logs.py's "
+        "index_record never copies it into the stub")
 
 
 # -- readable across campaigns: one at a time by default ----------------------
@@ -514,6 +573,16 @@ def test_the_picker_defaults_to_the_embedded_campaign(viewer_html):
     source = viewer_source(viewer_html)
     assert "campaignSel = fullLabel" in source
     assert 'campaignSel === "*"' in source
+
+
+def test_the_picker_groups_campaigns_apart_from_one_run_probes(viewer_html):
+    """13 labels + '(unlabelled)' + 'all campaigns' as 15 flat entries is
+    unreadable when 8 of them are one-run probes; group with native
+    <optgroup> instead of hiding anything (picker ruling, option 1)."""
+    source = viewer_source(viewer_html)
+    assert "const CAMPAIGN_MIN_EPISODES = 10;" in source
+    assert '<optgroup label="campaigns">' in source
+    assert '<optgroup label="probes">' in source
 
 
 # -- which parse graded each verdict, and success by judge --------------------
@@ -666,8 +735,38 @@ def test_a_task_detail_renders_its_instruction_as_prose_and_its_runs(viewer_html
     assert "mdLite(" in body
     assert "family match" in body
     assert "verdictBadge(" in body, "each run's verdict is a badge"
-    assert "contract" in body and "d.contract_version" in body
+    assert 'contract <b class="mono">' in body and "d.contract_version" in body, (
+        "the bare word 'contract' also matches prose in a task's own "
+        "instruction text; anchor on the fact-line markup instead (I7)")
     assert "sessions.findIndex(" in body, "a run row opens its breakdown ledger by path"
+
+
+def test_render_breakdowns_shares_the_search_helper(viewer_html):
+    """renderBreakdowns' inline filter block had become a verbatim copy of
+    wireSearch; sharing it is the fix (Minor). renderRuns keeps its own
+    inline block -- it is genuinely different code and stays untouched."""
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderBreakdowns\(content\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderBreakdowns is missing"
+    body = fn.group(1)
+    assert 'wireSearch(fbar, trs, "runs")' in body
+    assert "fbar.addEventListener(\"input\", apply)" not in body, (
+        "the inline copy of wireSearch should be gone from renderBreakdowns")
+
+
+def test_substrate_names_is_defined_once_at_module_level(viewer_html):
+    """`NAMES` was defined identically inside both renderTasks and
+    renderTaskDetail; hoisted to one module-level SUBSTRATE_NAMES (Minor)."""
+    source = viewer_source(viewer_html)
+    assert source.count('const SUBSTRATE_NAMES = {appworld: "AppWorld", '
+                         'gaia2: "Gaia2", "parallel-scheduling": '
+                         '"parallel-scheduling"};') == 1
+    tasks_fn = re.search(r"function renderTasks\(content\) \{(.*?)\n\}", source, re.S).group(1)
+    detail_fn = re.search(r"function renderTaskDetail\(content, s\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "const NAMES = " not in tasks_fn
+    assert "const NAMES = " not in detail_fn
+    assert "SUBSTRATE_NAMES[d.substrate]" in tasks_fn
+    assert "SUBSTRATE_NAMES[d.substrate]" in detail_fn
 
 
 def test_md_lite_escapes_before_it_marks_up(viewer_html):
@@ -677,3 +776,18 @@ def test_md_lite_escapes_before_it_marks_up(viewer_html):
     body = fn.group(1)
     assert body.index("esc(") < body.index("<h4>")
     assert 'class="mono"' in body and "<b>" in body and "<ul>" in body
+
+
+def test_md_lite_folds_an_indented_continuation_into_its_bullet(viewer_html):
+    """A bullet's indented continuation line must extend the `<li>`, not
+    close the list and open an orphan paragraph carrying its raw indent
+    (I3) -- checked before `if (list) flush();` runs."""
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function mdLite\(text\) \{(.*?)\n\}", source, re.S)
+    assert fn, "mdLite is missing"
+    body = fn.group(1)
+    assert r"/^\s+\S/.test(raw)" in body, (
+        "mdLite must detect an indented continuation line before flushing "
+        "the open list")
+    assert body.index(r"/^\s+\S/.test(raw)") < body.index("if (list) flush();"), (
+        "the continuation check must run before the list-closing branch")
