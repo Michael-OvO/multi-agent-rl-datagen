@@ -345,9 +345,14 @@ still allowed and only lower the completion-gated auxiliary economy reward.
 
 Each run writes a full trajectory to `output/rollouts/`, judged by Gaia2's own
 write-action verifier (scripted by default; `--judge-model` runs the official
-soft judge). Open `trajectory_viewer.html`, click **choose repository folder**
-once, and select this repository; it then reads every current trajectory, sweep
-file and sidecar breakdown directly without rebuilding the page.
+soft judge). Open `trajectory_viewer.html`: it carries its own snapshot -- an
+index of every episode ever run, with verdict, judge, parse, stop facts and
+shaping signals; every task under `tasks/` with its Harbor runs linked; and
+the full transcripts of the current campaign -- and the campaign, summary and
+credit commands below refresh that snapshot themselves when they finish.
+Older campaigns' transcripts open through the page's **open files** picker.
+To refresh without a run: `uv run python -m scripts.embed_logs` (or
+`--label v6` for a chosen campaign).
 
 **The campaign** — the whole grid, then the two evidence files over it:
 

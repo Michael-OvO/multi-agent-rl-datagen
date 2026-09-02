@@ -178,8 +178,10 @@ nothing in this document should be read as reviving them.
 
 One thing from the earlier redesign survives unchanged and must keep
 surviving: **the loading model.** The page carries its own data. A JSON
-snapshot of every log artifact sits in the `#embedded-logs` block, so opening
-the file *is* the workflow. Files may also be dropped on the page or chosen
+snapshot sits in the `#embedded-logs` block -- an index of every episode ever
+run, every task in the pool with its runs linked, every evidence file, and the
+full transcripts of the current campaign -- so opening the file *is* the
+workflow, and the producers refresh it when they finish. Files may also be dropped on the page or chosen
 through the "open files" picker. The File System Access folder connection was
 retired and must not come back — no permission prompt stands in front of the
 data.
