@@ -855,3 +855,28 @@ def test_the_count_tag_opens_the_drawer_on_that_scenario(viewer_html):
 
 def test_the_runlab_rule_is_gone(viewer_css):
     assert ".runlab" not in viewer_css
+
+
+# -- §9C: signal chips count runs and say so ----------------------------------
+
+
+def test_run_stats_counts_runs_not_calls(viewer_html):
+    source = viewer_source(viewer_html)
+    body = re.search(r"function runStats\(eps\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "if (countMalformed(s.data)) malformed++;" in body
+    assert "if (s.data.blocked) blocked++;" in body
+    assert "if (countErrors(s.data)) errors++;" in body
+    assert "if (wasStopped(s.data)) stopped++;" in body
+
+
+def test_the_signal_row_leads_in_and_labels_every_chip_in_runs(viewer_html):
+    source = viewer_source(viewer_html)
+    body = re.search(r"function renderSignals\(content, stats\) \{(.*?)\n\}", source, re.S).group(1)
+    assert '<span class="lab">issues in this campaign</span>' in body
+    assert "with malformed line" in body and "with blocked call" in body
+    assert "with faulted tool call" in body and "stopped by the world" in body
+    assert "const runs = n =>" in body, "one helper pluralises 'run'"
+
+
+def test_the_signal_lead_in_uses_the_credit_label_style(viewer_css):
+    assert re.search(r"\.signals \.lab\s*\{[^}]*var\(--muted\)", viewer_css)

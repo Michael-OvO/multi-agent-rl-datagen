@@ -358,7 +358,10 @@ mark is. Being colourless is the point — a tag is a footnote, not a status.
 with a hairline border; `warn` and `fail` chips take their tint and `-ink` and
 drop the border. Active chips carry the shared focus outline (`.on`). Clicking
 a chip filters the runs table; clicking the "worst scenario" chip seeds the
-search box with that scenario instead.
+search box with that scenario instead. Every chip counts **runs** -- the unit
+a click filters to -- and the row opens with a `.lab` lead-in naming the
+campaign it describes; the per-call counts live in the runs table's issues
+column, where a reader can see which run they belong to.
 
 **Panel title + legend** — a 14px/650 line naming the table and a 12.5px `.sub`
 saying what a click does, then, for the verdict grid, a legend of dot + word

@@ -194,7 +194,11 @@ sweep row files, forge tasks.
     font-size: 11px; color: var(--ink-2); white-space: nowrap;
   }
 
-  .signals { display: flex; flex-wrap: wrap; gap: 9px; margin: 14px 0 0; }
+  .signals { display: flex; flex-wrap: wrap; gap: 9px; margin: 14px 0 0; align-items: center; }
+  .signals .lab {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    letter-spacing: 0.02em;
+  }
   .signal {
     font: inherit; font-size: 12px; cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
@@ -658,11 +662,13 @@ function endedCell(d) {
 }
 
 function runStats(eps) {
+  /* Every chip counts RUNS -- the unit a click filters the list to. The
+     per-call counters still feed the runs table's issues column. */
   let malformed = 0, blocked = 0, errors = 0, stopped = 0;
   for (const s of eps) {
-    malformed += countMalformed(s.data);
-    blocked += s.data.blocked || 0;
-    errors += countErrors(s.data);
+    if (countMalformed(s.data)) malformed++;
+    if (s.data.blocked) blocked++;
+    if (countErrors(s.data)) errors++;
     if (wasStopped(s.data)) stopped++;
   }
 
@@ -686,18 +692,19 @@ function renderSignals(content, stats) {
   /* Signals only appear when they have something to report: a row of zeros
      is noise that trains you to stop reading the row. */
   const signals = [];
+  const runs = n => `${n} run${n === 1 ? "" : "s"}`;
   if (stats.malformed)
     signals.push({key: "malformed", kind: "warn",
-                  label: `${stats.malformed} malformed protocol line${stats.malformed === 1 ? "" : "s"}`});
+                  label: `${runs(stats.malformed)} with malformed lines`});
   if (stats.blocked)
     signals.push({key: "blocked", kind: "warn",
-                  label: `${stats.blocked} blocked call${stats.blocked === 1 ? "" : "s"}`});
+                  label: `${runs(stats.blocked)} with blocked calls`});
   if (stats.errors)
     signals.push({key: "errors", kind: "warn",
-                  label: `${stats.errors} faulted tool call${stats.errors === 1 ? "" : "s"}`});
+                  label: `${runs(stats.errors)} with faulted tool calls`});
   if (stats.stopped)
     signals.push({key: "stopped", kind: "warn",
-                  label: `${stats.stopped} stopped by the world`});
+                  label: `${runs(stats.stopped)} stopped by the world`});
   if (stats.worst && stats.worst.passed < stats.worst.total)
     signals.push({key: "worst", kind: "fail",
                   label: `worst scenario ${shortScenario(stats.worst.scenario)} — ${
@@ -706,7 +713,8 @@ function renderSignals(content, stats) {
   if (!signals.length) return;
   const row = document.createElement("div");
   row.className = "signals";
-  row.innerHTML = signals.map(sig => `<button class="signal ${sig.kind}${
+  row.innerHTML = `<span class="lab">issues in this campaign</span>` +
+    signals.map(sig => `<button class="signal ${sig.kind}${
     issueFilter === sig.key ? " on" : ""}" data-issue="${esc(sig.key)}">
     <span class="ic" aria-hidden="true">${ICONS[sig.kind]}</span>${esc(sig.label)}</button>`).join("");
   row.querySelectorAll("[data-issue]").forEach(btn => {
