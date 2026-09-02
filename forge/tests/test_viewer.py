@@ -819,7 +819,11 @@ def test_the_run_list_is_a_drawer_under_the_grid(viewer_html):
     assert "drawer.open = runsDrawerOpen || !!issueFilter || !!pendingQuery;" in body
     assert "drawer.appendChild(fbar);" in body and "drawer.appendChild(twrap);" in body
     assert "content.appendChild(twrap);" not in body
-    assert 'drawer.addEventListener("toggle"' in body
+    # The reader's preference is read from the summary's click, never from
+    # `toggle`: a programmatic open fires `toggle` too and would latch it.
+    assert 'drawer.querySelector("summary").addEventListener("click"' in body
+    assert "runsDrawerOpen = !drawer.open;" in body
+    assert 'addEventListener("toggle"' not in body
 
 
 def test_the_drawer_summary_hides_the_native_marker_with_the_palette_s_muted(viewer_css):
