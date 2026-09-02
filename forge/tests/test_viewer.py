@@ -831,3 +831,27 @@ def test_the_drawer_summary_hides_the_native_marker_with_the_palette_s_muted(vie
     assert re.search(r"details\.drawer > summary::-webkit-details-marker\s*\{[^}]*display: none", viewer_css)
     assert re.search(r"details\.drawer > summary::before\s*\{[^}]*var\(--muted\)", viewer_css)
     assert "details.drawer[open] > summary::before" in viewer_css
+
+
+# -- §9B: one mark per cell ----------------------------------------------------
+
+
+def test_a_cell_with_many_runs_shows_one_mark_and_a_count(viewer_html):
+    source = viewer_source(viewer_html)
+    grid = re.search(
+        r"-- Table 1: the verdict matrix --\s*\*/(.*?)-- Table 2:", source, re.S).group(1)
+    assert "runs.length === 1" in grid
+    assert 'class="xref tag count"' in grid and "data-scenario=" in grid
+    assert "runs · ${passed} pass" in grid
+    assert "runlab" not in source, "the per-mark run labels are retired"
+    assert "A cell that holds more than one run shows its newest verdict and a count" in grid
+
+
+def test_the_count_tag_opens_the_drawer_on_that_scenario(viewer_html):
+    body = _runs_fn(viewer_html)
+    assert 'wrap.querySelectorAll("a[data-scenario]")' in body
+    assert "pendingQuery = shortScenario(a.dataset.scenario)" in body
+
+
+def test_the_runlab_rule_is_gone(viewer_css):
+    assert ".runlab" not in viewer_css

@@ -265,7 +265,6 @@ sweep row files, forge tasks.
   table.tab tr.click { cursor: pointer; }
   table.tab tbody tr:hover td { background: var(--wash); }
   table.tab .sortable { cursor: pointer; }
-  .runlab { color: var(--muted); font-size: 11px; }
   .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 84ch; }
 
   .mono, .call .sig, pre {
@@ -988,7 +987,10 @@ function renderRuns(content) {
             .sort((a, b) => String(a.data.started_at || "")
               .localeCompare(String(b.data.started_at || "")));
           if (!runs.length) return `<td class="wrapok"><span class="dim">—</span></td>`;
-          return `<td class="wrapok">${runs.map(s => {
+          /* One mark per cell. A cell holding several runs shows the newest
+             verdict and a colourless count that opens the run list on this
+             scenario: the annotation lands only where the exception is. */
+          const mark = s => {
             const okr = !!(s.data.verdict && s.data.verdict.success);
             const judge = s.data.judge || "scripted";
             const tag = judge !== majorityJudge
@@ -998,10 +1000,13 @@ function renderRuns(content) {
             return `<a class="xref" data-i="${sessions.indexOf(s)}"
               tabindex="0" role="button"
               title="${esc(String(s.data.answer ?? ""))}">${
-              badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${tag}${ptag}${
-              runs.length > 1 && s.data.label
-                ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
-          }).join('<span class="dim"> · </span>')}</td>`;
+              badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${tag}${ptag}</a>`;
+          };
+          if (runs.length === 1) return `<td class="wrapok">${mark(runs[0])}</td>`;
+          const passed = runs.filter(s => s.data.verdict && s.data.verdict.success).length;
+          return `<td class="wrapok">${mark(runs[runs.length - 1])}
+            <a class="xref tag count" data-scenario="${esc(sc)}" tabindex="0" role="button"
+              title="open the run list on this scenario">${runs.length} runs · ${passed} pass</a></td>`;
         }).join("")}</tr>`;
     }).join("")}</tbody></table></div>
     <p class="note">A verdict is the benchmark's own write-action check: the
@@ -1013,7 +1018,8 @@ function renderRuns(content) {
         ? "the deterministic scripted judge"
         : "Gaia2's official soft judge"} (${esc(majorityJudge)} as checker) by
       default; a mark tagged with a different judge used that judge instead.
-      Two marks in one cell are the same run under both judges.
+      A cell that holds more than one run shows its newest verdict and a count;
+      the count opens the list below, filtered to that scenario.
       ${judgeSentence}
       Verdicts were read under ${majorityParse === STOCK_PARSE
         ? `the benchmark's stock parse, which recorded its checker's
@@ -1023,6 +1029,8 @@ function renderRuns(content) {
       a mark tagged with a different parse used that parse instead.</p>`;
   wrap.querySelectorAll("a[data-i]").forEach(a =>
     a.onclick = () => openDetail(Number(a.dataset.i)));
+  wrap.querySelectorAll("a[data-scenario]").forEach(a =>
+    a.onclick = () => { pendingQuery = shortScenario(a.dataset.scenario); render(); });
   content.appendChild(wrap);
 
   /* -- Table 2: every run, filterable -- */
