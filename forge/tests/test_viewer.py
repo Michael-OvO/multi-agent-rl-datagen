@@ -514,3 +514,38 @@ def test_the_picker_defaults_to_the_embedded_campaign(viewer_html):
     source = viewer_source(viewer_html)
     assert "campaignSel = fullLabel" in source
     assert 'campaignSel === "*"' in source
+
+
+# -- which parse graded each verdict, and success by judge --------------------
+
+
+def test_the_grid_states_the_majority_parse_and_tags_only_departures(viewer_html):
+    source = viewer_source(viewer_html)
+    grid = re.search(
+        r"-- Table 1: the verdict matrix --\s*\*/(.*?)-- Table 2:", source, re.S)
+    assert grid, "the grid-building block moved; update this test's anchors"
+    body = grid.group(1)
+    assert "parseLabel(" in body and "majorityParse" in body
+    assert "badge(" in body and "verdictBadge(" not in body
+    assert "gaia2_v6_judge_parse.json" in body
+    assert "majorityParse === STOCK_PARSE" in body
+
+
+def test_the_parse_helpers_default_to_stock(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'const STOCK_PARSE = "stock";' in source
+    assert "const parseLabel = d => d.judge_parse || STOCK_PARSE;" in source
+
+
+def test_the_grid_note_states_success_by_judge_as_a_sentence(viewer_html):
+    source = viewer_source(viewer_html)
+    assert "judgeSentence" in source
+    assert "of ${c.total} passed" in source
+    assert '=== "scripted" ? 0 : 1' in source
+
+
+def test_rows_index_their_parse_for_the_search_box(viewer_html):
+    source = viewer_source(viewer_html)
+    row = re.search(r'data-text="\$\{esc\(JSON\.stringify\(\[(.*?)\]\)', source, re.S)
+    assert row, "the runs-table row's data-text moved"
+    assert "parseLabel(d)" in row.group(1)

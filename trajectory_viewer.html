@@ -677,6 +677,14 @@ function badge(kind, label) {
 
 /* judge display names: only "scripted" (deterministic) and anything else
    (Gaia2's soft judge, a model-as-checker) exist in practice. */
+/* Which parse read the judge's checker answers. Absent on every trajectory
+   before forge/gaia2/judge_parse.py (commit 0a83ccf); "stock" names the
+   benchmark's own case-sensitive read, which recorded [[true]] as a
+   failure. Stated once as the majority, tagged only where a row departs --
+   the same rule the judge tag follows. */
+const STOCK_PARSE = "stock";
+const parseLabel = d => d.judge_parse || STOCK_PARSE;
+
 function judgeLabel(judge) {
   return judge && judge !== "scripted" ? "soft judge" : "scripted judge";
 }
@@ -835,6 +843,33 @@ function renderRuns(content) {
   const majorityJudge = [...judgeCounts]
     .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
 
+  const parseCounts = new Map();
+  for (const s of eps) {
+    const p = parseLabel(s.data);
+    parseCounts.set(p, (parseCounts.get(p) || 0) + 1);
+  }
+  const majorityParse = [...parseCounts]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0][0];
+
+  /* Success split by judge is the only split that means anything on Gaia2:
+     the graders score disjoint scenario populations. One clause per judge
+     present, scripted first, as prose in the note -- not a tile. */
+  const byJudge = new Map();
+  for (const s of eps) {
+    const j = s.data.judge || "scripted";
+    const c = byJudge.get(j) || {passed: 0, total: 0};
+    c.total++;
+    if (s.data.verdict && s.data.verdict.success) c.passed++;
+    byJudge.set(j, c);
+  }
+  const judgeSentence = [...byJudge]
+    .sort((a, b) => (a[0] === "scripted" ? 0 : 1) - (b[0] === "scripted" ? 0 : 1)
+      || String(a[0]).localeCompare(String(b[0])))
+    .map(([j, c]) => {
+      const name = judgeLabel(j);
+      return `${name.charAt(0).toUpperCase()}${name.slice(1)}: ${c.passed} of ${c.total} passed.`;
+    }).join(" ");
+
   const wrap = document.createElement("div");
   wrap.innerHTML = `<div class="panel-title">Verdicts by scenario and configuration
        <span class="sub">— every mark opens that run's transcript</span></div>
@@ -860,10 +895,12 @@ function renderRuns(content) {
             const judge = s.data.judge || "scripted";
             const tag = judge !== majorityJudge
               ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
+            const ptag = parseLabel(s.data) !== majorityParse
+              ? `<span class="tag">${esc(parseLabel(s.data))}</span>` : "";
             return `<a class="xref" data-i="${sessions.indexOf(s)}"
               tabindex="0" role="button"
               title="${esc(String(s.data.answer ?? ""))}">${
-              badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${tag}${
+              badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${tag}${ptag}${
               runs.length > 1 && s.data.label
                 ? ` <span class="runlab">${esc(s.data.label)}</span>` : ""}</a>`;
           }).join('<span class="dim"> · </span>')}</td>`;
@@ -878,7 +915,14 @@ function renderRuns(content) {
         ? "the deterministic scripted judge"
         : "Gaia2's official soft judge"} (${esc(majorityJudge)} as checker) by
       default; a mark tagged with a different judge used that judge instead.
-      Two marks in one cell are the same run under both judges.</p>`;
+      Two marks in one cell are the same run under both judges.
+      ${judgeSentence}
+      Verdicts were read under ${majorityParse === STOCK_PARSE
+        ? `the benchmark's stock parse, which recorded its checker's
+           <span class="mono">[[true]]</span> as a failure — see
+           <span class="mono">sweep/gaia2_v6_judge_parse.json</span>`
+        : `the <span class="mono">${esc(majorityParse)}</span> parse`};
+      a mark tagged with a different parse used that parse instead.</p>`;
   wrap.querySelectorAll("a[data-i]").forEach(a =>
     a.onclick = () => openDetail(Number(a.dataset.i)));
   content.appendChild(wrap);
@@ -941,14 +985,17 @@ function renderRuns(content) {
       const judge = d.judge || "scripted";
       const jtag = judge !== majorityJudge
         ? `<span class="tag">${judgeLabel(judge)}</span>` : "";
+      const ptag = parseLabel(d) !== majorityParse
+        ? `<span class="tag">${esc(parseLabel(d))}</span>` : "";
       return `<tr class="click" data-i="${sessions.indexOf(s)}" tabindex="0"
         data-verdict="${okr ? "ok" : "bad"}"
         data-ability="${esc(d.ability || "control")}"
         data-judge="${esc(judge)}"
         data-issues="${tags}"
         data-text="${esc(JSON.stringify([d.scenario_id, d.config, d.ability,
-                        d.judge, d.label, d.answer, d.main_model]).toLowerCase())}">
-        <td>${badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${jtag}</td>
+                        d.judge, d.label, d.answer, d.main_model,
+                        parseLabel(d)]).toLowerCase())}">
+        <td>${badge(okr ? "pass" : "fail", okr ? "pass" : "fail")}${jtag}${ptag}</td>
         <td>${fmtWhen(d.started_at)}</td>
         <td>${esc(shortScenario(d.scenario_id))}</td>
         <td>${esc(d.config || "")}</td>
