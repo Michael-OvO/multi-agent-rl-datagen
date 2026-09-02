@@ -630,3 +630,50 @@ def test_a_sweep_file_s_summary_renders_above_its_table(viewer_html):
     assert 'class="note summary"' in fn
     assert "slice(0, 160)" in fn
     assert fn.index('class="note summary"') < fn.index("const draw = () =>")
+
+
+# -- the task pool: every task, and every run of it --------------------------
+
+
+def test_tasks_is_the_second_section(viewer_html):
+    source = viewer_source(viewer_html)
+    secs = re.search(r"const SECTIONS = \[(.*?)\];", source, re.S).group(1)
+    assert '["runs", "Runs"], ["tasks", "Tasks"]' in secs.replace("\n", "").replace("  ", " ")
+    assert 'if (tab === "tasks") return renderTasks(content);' in source
+    assert 'if (s.kind === "task") return renderTaskDetail(content, s);' in source
+
+
+def test_the_tasks_table_names_what_a_task_is_and_who_it_may_use(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderTasks\(content\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderTasks is missing"
+    body = fn.group(1)
+    for col in ("task", "substrate", "configuration", "target", "roster",
+                "difficulty", "contract", "runs"):
+        assert f"<th>{col}</th>" in body, col
+    assert "family" in body and "verdictBadge(" not in body, (
+        "the runs cell is a count, not a badge; a substrate is a word, not a colour")
+    assert 'wireSearch(fbar, trs, "tasks")' in body, (
+        "the tasks table shares the search helper rather than copying the filter block")
+    assert "function wireSearch(fbar, trs, noun)" in source
+
+
+def test_a_task_detail_renders_its_instruction_as_prose_and_its_runs(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderTaskDetail\(content, s\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderTaskDetail is missing"
+    body = fn.group(1)
+    assert "mdLite(" in body
+    assert "family match" in body
+    assert "verdictBadge(" in body, "each run's verdict is a badge"
+    assert "contract" in body and "d.contract_version" in body
+    assert "sessions.findIndex(" in body, "a run row opens its breakdown ledger by path"
+
+
+def test_md_lite_escapes_before_it_marks_up(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function mdLite\(text\) \{(.*?)\n\}", source, re.S)
+    assert fn, "mdLite is missing"
+    body = fn.group(1)
+    assert body.index("esc(") < body.index("<h4>")
+    assert 'class="mono"' in body and "<b>" in body and "<ul>" in body

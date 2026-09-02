@@ -774,8 +774,8 @@ function closeDetail() {
 
 /* ================= top-level render ================= */
 
-const SECTIONS = [["runs", "Runs"], ["breakdowns", "Shipped-task runs"],
-                  ["sweeps", "Evidence files"]];
+const SECTIONS = [["runs", "Runs"], ["tasks", "Tasks"],
+                  ["breakdowns", "Shipped-task runs"], ["sweeps", "Evidence files"]];
 
 function render() {
   $("#draftline").innerHTML = `multi-agent-rl-datagen — ${esc(sourceLine)}`;
@@ -812,9 +812,11 @@ function render() {
     const s = sessions[detail];
     if (s.kind === "episode") return renderEpisode(content, s);
     if (s.kind === "breakdown") return renderBreakdownDetail(content, s);
+    if (s.kind === "task") return renderTaskDetail(content, s);
     return renderRaw(content, s, false);
   }
   if (tab === "runs") return renderRuns(content);
+  if (tab === "tasks") return renderTasks(content);
   if (tab === "breakdowns") return renderBreakdowns(content);
   return renderSweeps(content);
 }
@@ -1139,6 +1141,191 @@ function renderBreakdowns(content) {
 function breakdownLabel(s) {
   const parts = s.path.split("/");
   return parts.length > 3 ? parts.slice(1, -2).join(" / ") : s.name;
+}
+
+/* ================= §2b Tasks ================= */
+
+/* The smallest markdown the instruction files use, as prose: headings,
+   bullets, paragraphs, bold, and inline code as .mono. Escaped first, so
+   nothing in a task's text can become markup. */
+function mdLite(text) {
+  const lines = esc(text).split("\n");
+  const out = [];
+  let list = null, para = [];
+  const flush = () => {
+    if (para.length) { out.push(`<p>${para.join(" ")}</p>`); para = []; }
+    if (list) { out.push(`<ul>${list.join("")}</ul>`); list = null; }
+  };
+  const inline = s => s
+    .replace(/`([^`]+)`/g, '<span class="mono">$1</span>')
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    const h = line.match(/^(#{1,3})\s+(.*)$/);
+    if (h) { flush(); out.push(h[1].length === 1 ? `<h4>${inline(h[2])}</h4>` : `<h5>${inline(h[2])}</h5>`); continue; }
+    const b = line.match(/^-\s+(.*)$/);
+    if (b) { if (para.length) { out.push(`<p>${para.join(" ")}</p>`); para = []; }
+             (list = list || []).push(`<li>${inline(b[1])}</li>`); continue; }
+    if (!line.trim()) { flush(); continue; }
+    if (list) flush();
+    para.push(inline(line));
+  }
+  flush();
+  return out.join("\n");
+}
+
+function renderTasks(content) {
+  const tasks = byKind("task");
+  if (!tasks.length) {
+    content.innerHTML = `<p class="lede">No tasks are loaded. The pool lives
+      under <span class="mono">tasks/</span>; the snapshot carries one record
+      per directory.</p>`;
+    return;
+  }
+  const bySub = new Map();
+  for (const s of tasks) {
+    const k = s.data.substrate || "other";
+    bySub.set(k, (bySub.get(k) || 0) + 1);
+  }
+  const NAMES = {appworld: "AppWorld", gaia2: "Gaia2", "parallel-scheduling": "parallel-scheduling"};
+  content.insertAdjacentHTML("beforeend",
+    `<h2 class="sec">Tasks</h2>
+     <p class="lede"><b>${tasks.length}</b> task${tasks.length === 1 ? "" : "s"}: ${
+       [...bySub].map(([k, n]) => `${n} ${NAMES[k] || k}`).join(", ")}. Each is a
+     directory under <span class="mono">tasks/</span> a container runs; its Harbor
+     runs under <span class="mono">jobs/</span> are linked beneath it.</p>
+     <div class="panel-title">The pool
+       <span class="sub">— click a row for its instruction and runs</span></div>`);
+
+  const fbar = document.createElement("div");
+  fbar.className = "filterline";
+  fbar.innerHTML = `<span>restrict to
+      <input type="search" placeholder="any text" aria-label="filter tasks"></span>
+    <span class="count"></span>`;
+  content.appendChild(fbar);
+
+  const twrap = document.createElement("div");
+  twrap.className = "tabwrap";
+  twrap.innerHTML = `<table class="tab"><thead><tr>
+      <th>task</th><th>substrate</th><th>configuration</th><th>target</th>
+      <th>roster</th><th>difficulty</th><th>contract</th><th>runs</th>
+    </tr></thead><tbody>${
+    tasks.map(s => {
+      const d = s.data;
+      const exact = (d.runs || []).filter(r => r.match === "exact");
+      const fam = (d.runs || []).filter(r => r.match === "family");
+      const runs = exact.length
+        ? `${exact.filter(r => r.success).length} of ${exact.length} passed${
+            fam.length ? ` <span class="tag">+${fam.length} family</span>` : ""}`
+        : fam.length ? `<span class="dim">—</span> <span class="tag">${fam.length} family</span>`
+                     : `<span class="dim">—</span>`;
+      const dash = v => v == null || v === "" ? `<span class="dim">—</span>` : esc(String(v));
+      return `<tr class="click" data-i="${sessions.indexOf(s)}" tabindex="0"
+        data-text="${esc(JSON.stringify([d.name, d.substrate, d.config, d.target,
+                        d.roster, d.contract_version, d.description]).toLowerCase())}">
+        <td title="${esc(d.description || "")}">${esc(d.name)}</td>
+        <td>${dash(NAMES[d.substrate] || d.substrate)}</td>
+        <td>${dash(d.config)}</td>
+        <td>${dash(d.target)}</td>
+        <td class="mono sm">${(d.roster || []).length ? (d.roster || []).map(esc).join(", ") : `<span class="dim">—</span>`}</td>
+        <td>${dash(d.difficulty)}</td>
+        <td class="mono sm">${dash(d.contract_version)}</td>
+        <td>${runs}</td></tr>`;
+    }).join("")}</tbody></table>`;
+  const trs = [...twrap.querySelectorAll("tr.click")];
+  trs.forEach(tr => tr.onclick = () => openDetail(Number(tr.dataset.i)));
+  wireSearch(fbar, trs, "tasks");
+  content.appendChild(twrap);
+}
+
+/* One search box over one table: rows carry data-text, the count line says
+   how many survive. The runs and shipped-task tables predate this helper
+   and keep their inline copies; new tables use it. */
+function wireSearch(fbar, trs, noun) {
+  const apply = () => {
+    const q = $("input", fbar).value.toLowerCase();
+    let shown = 0;
+    for (const tr of trs) {
+      const hit = !q || tr.dataset.text.includes(q);
+      tr.style.display = hit ? "" : "none";
+      shown += hit;
+    }
+    $(".count", fbar).textContent =
+      shown === trs.length ? `all ${trs.length} ${noun}` : `${shown} of ${trs.length} ${noun}`;
+  };
+  fbar.addEventListener("input", apply);
+  apply();
+}
+
+function renderTaskDetail(content, s) {
+  const d = s.data;
+  backline(content, "back to the tasks");
+  const NAMES = {appworld: "AppWorld", gaia2: "Gaia2", "parallel-scheduling": "parallel-scheduling"};
+  const dash = v => v == null || v === "" ? "—" : String(v);
+  const bar = document.createElement("div");
+  bar.className = "runbar";
+  bar.innerHTML = `
+    <h3><span>${esc(d.name)}</span>
+      <span class="tag">${esc(NAMES[d.substrate] || d.substrate || "task")}</span></h3>
+    <div class="facts">
+      <span>configuration <b>${esc(dash(d.config))}</b></span>
+      <span>target <b>${esc(dash(d.target))}</b></span>
+      <span>difficulty <b>${esc(dash(d.difficulty))}</b></span>
+      <span>category <b>${esc(dash(d.category))}</b></span>
+      <span>contract <b class="mono">${esc(dash(d.contract_version))}</b></span>
+      <span>verifier <b>${esc(dash(d.verifier_timeout_sec))}</b> s</span>
+      <span>agent <b>${esc(dash(d.agent_timeout_sec))}</b> s</span>
+      <span>${d.has_scenario ? "carries its scenario" : "no scenario file"}</span>
+    </div>`;
+  content.appendChild(bar);
+
+  if (d.description)
+    content.insertAdjacentHTML("beforeend", `<p class="lede">${esc(d.description)}</p>`);
+
+  const panel = document.createElement("div");
+  panel.className = "verdict-panel";
+  panel.innerHTML = d.instruction
+    ? `<div class="head">Instruction</div>${mdLite(d.instruction)}`
+    : `<div class="head">Instruction</div><div>This task directory has no
+       <span class="mono">instruction.md</span>.</div>`;
+  content.appendChild(panel);
+
+  const runs = d.runs || [];
+  content.insertAdjacentHTML("beforeend",
+    `<div class="panel-title">Harbor runs of this task
+       <span class="sub">— ${runs.length ? "click a row for its verifier ledger" : "none under jobs/"}</span></div>`);
+  if (runs.length) {
+    const twrap = document.createElement("div");
+    twrap.className = "tabwrap";
+    twrap.innerHTML = `<table class="tab wrap"><thead><tr>
+        <th>batch</th><th>when</th><th>verdict</th><th class="n">partial</th>
+        <th class="n">deleg</th><th>answer</th>
+      </tr></thead><tbody>${
+      runs.map(r => `<tr class="click" tabindex="0" data-path="${esc(r.path)}">
+        <td>${esc(r.batch)}</td>
+        <td>${esc(dash(r.when))}</td>
+        <td>${verdictBadge(!!r.success)}${
+          r.match === "family" ? `<span class="tag">family match</span>` : ""}</td>
+        <td class="n">${esc(dash(r.partial))}</td>
+        <td class="n">${esc(dash(r.delegations))}</td>
+        <td title="${esc(r.answer ?? "")}">${esc(String(r.answer ?? "").slice(0, 60))}</td></tr>`).join("")
+      }</tbody></table>`;
+    twrap.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => {
+      const i = sessions.findIndex(x => x.path === tr.dataset.path);
+      if (i >= 0) openDetail(i);
+    });
+    content.appendChild(twrap);
+    if (runs.some(r => r.match === "family"))
+      content.insertAdjacentHTML("beforeend", `<p class="note">A run tagged
+        <i>family match</i> named this task's stem without its numbered
+        suffix in its path, so it is listed under every task of that family.</p>`);
+  }
+
+  content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>`);
+  if ((d.files || []).length)
+    content.insertAdjacentHTML("beforeend",
+      `<details><summary>${d.files.length} file${d.files.length === 1 ? "" : "s"} in the task</summary>
+       <pre>${esc(d.files.join("\n"))}</pre></details>`);
 }
 
 /* ================= §3 Sweep evidence ================= */
