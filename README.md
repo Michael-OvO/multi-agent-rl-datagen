@@ -175,7 +175,11 @@ answer with `"[[True]]" in response`, case-sensitively; no sentinel matches, the
 checker returns None, and `SoftToolJudge.compare` records that None as a
 rejection. The model said pass and the judge wrote fail. Of 30 distinct v6
 rejections replayed, 24 were this; the soft judge's 0 of 492 across five
-campaigns is this. `forge/gaia2/judge_parse.py` reads the sentinel without
+campaigns is this. Replaying the same 30 with nothing changed but the case of
+the match, **3 of 30 pass under the stock parse and 26 of 30 pass under the
+fix** -- 23 abstentions were `[[true]]`, one was `[[false]]`, and the four that
+still fail are four checkers that actually said no
+(`sweep/gaia2_v6_judge_parse.json`). `forge/gaia2/judge_parse.py` reads the sentinel without
 regard to case and changes nothing else -- not the oracle, the matching, the
 hard checks, the checker prompts, or any verdict a checker gave. It is the one
 modification this repo makes to the benchmark's judge; every trajectory stamps
