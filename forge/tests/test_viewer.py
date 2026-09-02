@@ -585,3 +585,36 @@ def test_count_errors_reads_a_precomputed_count_like_count_malformed(viewer_html
     source = viewer_source(viewer_html)
     fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", source, re.S).group(1)
     assert 'if (typeof d.errors === "number") return d.errors;' in fn
+
+
+# -- the episode view: parse, stop line, and a stub for old campaigns ----------
+
+
+def _episode_fn(viewer_html: str) -> str:
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderEpisode\(content, s\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderEpisode moved"
+    return fn.group(1)
+
+
+def test_the_run_bar_names_the_parse_only_when_the_run_carries_one(viewer_html):
+    body = _episode_fn(viewer_html)
+    assert "d.judge_parse ? `<span>judge parse <b>" in body
+
+
+def test_a_stopped_episode_gets_one_credit_style_stop_line(viewer_html):
+    body = _episode_fn(viewer_html)
+    assert "if (wasStopped(d)) {" in body
+    assert 'line.className = "credit";' in body
+    assert "simulated seconds used" in body
+    assert "no clock recorded for this run" in body
+    assert 'line.title = String(st.reason || "");' in body
+
+
+def test_an_index_stub_renders_a_summary_and_no_transcript(viewer_html):
+    body = _episode_fn(viewer_html)
+    stub = re.search(r"if \(d\.index_only\) \{(.*?)\n    return;\n  \}", body, re.S)
+    assert stub, "renderEpisode needs an index_only branch that returns early"
+    assert 'class="abstract"' in stub.group(1)
+    assert "open files" in stub.group(1)
+    assert body.index("if (d.index_only) {") < body.index('list.className = "transcript";')

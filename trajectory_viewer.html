@@ -1262,6 +1262,7 @@ function renderEpisode(content, s) {
       <span><b>${esc(String(d.specialist_turns ?? 0))}</b> specialist turns</span>
       <span><b>${esc(String(d.seconds ?? "—"))}</b> s</span>
       <span>judge <b>${esc(judge)}</b></span>
+      ${d.judge_parse ? `<span>judge parse <b>${esc(d.judge_parse)}</b></span>` : ""}
       ${mal ? `<span class="warn-text">${esc(String(mal))} malformed</span>` : ""}
       ${d.blocked ? `<span class="warn-text">${esc(String(d.blocked))} blocked</span>` : ""}
     </div>`;
@@ -1318,10 +1319,44 @@ function renderEpisode(content, s) {
     content.appendChild(credit);
   }
 
+  /* The world's own account of the ending, beside the verdict like the
+     shaping signals: how much of the horizon was spent, and the state the
+     environment stopped in. Absent when the agent answered. */
+  if (wasStopped(d)) {
+    const st = lastStop(d);
+    const line = document.createElement("div");
+    line.className = "credit";
+    if (st) {
+      line.title = String(st.reason || "");
+      line.innerHTML = `<span class="lab">world stopped</span>
+        <span><b>${esc(String(Math.round(st.time_passed)))}</b>${
+          st.duration != null ? ` of <b>${esc(String(Math.round(st.duration)))}</b>` : ""}
+          simulated seconds used</span>
+        <span>${esc(String(st.env_state || ""))}</span>`;
+    } else {
+      line.innerHTML = `<span class="lab">world stopped</span>
+        <span class="dim">no clock recorded for this run</span>`;
+    }
+    content.appendChild(line);
+  }
+
   if ((d.blocked_reasons || []).length)
     content.insertAdjacentHTML("beforeend",
       `<p class="note">Blocked: ${esc(d.blocked_reasons.join(" · "))}</p>`);
   content.insertAdjacentHTML("beforeend", `<p class="path">${esc(s.path)}</p>`);
+
+  /* An index stub: everything above came from the snapshot's index; the
+     transcript is in the file on disk, which replaces this view when
+     opened or dropped. */
+  if (d.index_only) {
+    content.insertAdjacentHTML("beforeend", `<div class="abstract">
+      <h2>Transcript not in this copy</h2>
+      <p>This page carries transcripts only for the
+      <b>${esc(fullLabel || "current")}</b> campaign. Open
+      <code>${esc(s.path)}</code> with <b>open files</b>, or drop it here,
+      and it replaces this summary.</p></div>`);
+    return;
+  }
 
   const types = [...new Set((d.events || []).map(e => e.type))];
   const fbar = document.createElement("div");
