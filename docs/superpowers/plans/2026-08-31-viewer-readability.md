@@ -610,19 +610,19 @@ New string:
 
 - [ ] **Step 6: DESIGN.md**
 
-Edit `DESIGN.md`. Old string (verbatim):
+Edit `DESIGN.md`. Old string (verbatim — note the line breaks: "Clicking" ends one line and "a chip" starts the next):
 
 ```
-Active chips carry the shared focus outline (`.on`). Clicking a
-chip filters the runs table; clicking the "worst scenario" chip seeds the
+drop the border. Active chips carry the shared focus outline (`.on`). Clicking
+a chip filters the runs table; clicking the "worst scenario" chip seeds the
 search box with that scenario instead.
 ```
 
 New string:
 
 ```
-Active chips carry the shared focus outline (`.on`). Clicking a
-chip filters the runs table; clicking the "worst scenario" chip seeds the
+drop the border. Active chips carry the shared focus outline (`.on`). Clicking
+a chip filters the runs table; clicking the "worst scenario" chip seeds the
 search box with that scenario instead. Every chip counts **runs** -- the unit
 a click filters to -- and the row opens with a `.lab` lead-in naming the
 campaign it describes; the per-call counts live in the runs table's issues
