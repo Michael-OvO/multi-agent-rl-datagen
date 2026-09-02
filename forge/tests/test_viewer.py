@@ -618,3 +618,15 @@ def test_an_index_stub_renders_a_summary_and_no_transcript(viewer_html):
     assert 'class="abstract"' in stub.group(1)
     assert "open files" in stub.group(1)
     assert body.index("if (d.index_only) {") < body.index('list.className = "transcript";')
+
+
+# -- an evidence file's summary, above its rows --------------------------------
+
+
+def test_a_sweep_file_s_summary_renders_above_its_table(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderSweeps\(content\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "s.data.summary" in fn
+    assert 'class="note summary"' in fn
+    assert "slice(0, 160)" in fn
+    assert fn.index('class="note summary"') < fn.index("const draw = () =>")

@@ -1184,6 +1184,18 @@ function renderSweeps(content) {
     `<div class="panel-title">${esc(s.name)}
        <span class="sub">— ${esc(s.path)}</span></div>${
      note ? `<p class="note">${esc(note)}</p>` : ""}`);
+  /* A file's own summary -- the judge-parse file's transitions, a credit
+     file's per-cell means -- is the claim; the rows are its evidence. One
+     line per key, nothing file-specific. */
+  const summary = !Array.isArray(s.data) && s.data.summary
+    && typeof s.data.summary === "object" ? s.data.summary : null;
+  if (summary)
+    content.insertAdjacentHTML("beforeend", `<div class="note summary">${
+      Object.entries(summary).map(([k, v]) => {
+        const text = v !== null && typeof v === "object" ? JSON.stringify(v) : String(v);
+        return `<div title="${esc(text)}"><b>${esc(k)}</b>: ${esc(text.slice(0, 160))}${
+          text.length > 160 ? "…" : ""}</div>`;
+      }).join("")}</div>`);
   const twrap = document.createElement("div");
   twrap.className = "tabwrap";
   content.appendChild(twrap);
