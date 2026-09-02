@@ -72,7 +72,11 @@ def test_the_run_list_is_a_drawer_under_the_grid(viewer_html):
     assert "drawer.open = runsDrawerOpen || !!issueFilter || !!pendingQuery;" in body
     assert "drawer.appendChild(fbar);" in body and "drawer.appendChild(twrap);" in body
     assert "content.appendChild(twrap);" not in body
-    assert 'drawer.addEventListener("toggle"' in body
+    # The reader's preference is read from the summary's click, never from
+    # `toggle`: a programmatic open fires `toggle` too and would latch it.
+    assert 'drawer.querySelector("summary").addEventListener("click"' in body
+    assert "runsDrawerOpen = !drawer.open;" in body
+    assert 'addEventListener("toggle"' not in body
 
 
 def test_the_drawer_summary_hides_the_native_marker_with_the_palette_s_muted(viewer_css):
@@ -193,7 +197,14 @@ New string:
   drawer.open = runsDrawerOpen || !!issueFilter || !!pendingQuery;
   drawer.innerHTML = `<summary><span class="panel-title">every run
        <span class="sub">— newest first, filterable (${eps.length})</span></span></summary>`;
-  drawer.addEventListener("toggle", () => { runsDrawerOpen = drawer.open; });
+  /* Remember only the reader's own choice. A programmatic `.open = true`
+     (a chip, a count tag, a search) fires the same `toggle` event a click
+     does, so listening to `toggle` would latch the preference from an
+     auto-open; the summary's click fires before the default action flips
+     `open`, so `!drawer.open` is the state the reader just asked for. */
+  drawer.querySelector("summary").addEventListener("click", () => {
+    runsDrawerOpen = !drawer.open;
+  });
   content.appendChild(drawer);
   const fbar = document.createElement("div");
   fbar.className = "filterline";
