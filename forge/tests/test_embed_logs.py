@@ -98,7 +98,7 @@ def episode(label, started, *, success=False, stopped=False, events=None,
         "answer": "(environment stopped)" if stopped else "booked it",
         "verdict": {"success": success, "rationale": "R" * 2000},
         "credit": {"partial_reward": 0.5, "coverage": 1.0, "fidelity": 0.0,
-                   "pivot": 3, "pivot_kind": "wrong-arguments"},
+                   "gold_total": 7, "pivot": 3, "pivot_kind": "wrong-arguments"},
         "events": events if events is not None else [
             {"type": "call", "tool": "A__b", "status": "ok"},
             {"type": "call", "tool": "A__c", "status": "error"},
@@ -169,6 +169,9 @@ def test_an_index_record_is_the_runs_view_s_fields_and_no_events(tree):
     assert "events" not in r
     assert r["stop"] == {"time_passed": 313.0, "duration": 1000, "env_state": "STOPPED"}
     assert r["credit"]["pivot_kind"] == "wrong-arguments"
+    assert r["credit"]["gold_total"] == 7, (
+        "the viewer reads d.credit.gold_total unconditionally; a stub that "
+        "drops it prints 'of undefined gold writes' (C2)")
     assert r["verdict"]["success"] is False
     assert len(r["verdict"]["rationale"]) == 1200
     # Faulted calls are counted the way the viewer's countErrors counts them:
@@ -226,6 +229,18 @@ def test_a_scheduling_task_reads_its_roster_from_the_bullets(tmp_path):
     assert r["roster"] == ["w0", "w1"]
 
 
+def test_a_task_with_unparseable_toml_is_recorded_with_a_null_description(tmp_path):
+    """`tomllib.TOMLDecodeError` is caught the same way a missing file is:
+    the record still exists, with nulls where the broken file would have
+    supplied fields (I7 -- this branch was untested)."""
+    d = tmp_path / "tasks" / "gaia2-star-docs-binf-badtoml"
+    d.mkdir(parents=True)
+    (d / "task.toml").write_text("this is not [valid toml")
+    r = task_record(d, tmp_path, [])
+    assert r["description"] is None
+    assert r["verifier_timeout_sec"] is None and r["agent_timeout_sec"] is None
+
+
 def test_a_task_missing_its_files_is_recorded_not_skipped(tmp_path):
     d = tmp_path / "tasks" / "gaia2-star-docs-binf-broken"
     d.mkdir(parents=True)
@@ -275,6 +290,16 @@ def test_the_snapshot_indexes_every_episode_lists_every_task_and_embeds_one_labe
     assert "sweep/gaia2_thing.json" in others
     assert sum(1 for p in others if p.endswith("breakdown.json")) == 3
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", snap["generated"])
+
+
+def test_a_non_json_evidence_file_is_skipped_and_reported(tree, capsys):
+    """The index loop and `link_runs` both catch `JSONDecodeError` and skip
+    with a message; the `files` loop read `json.loads` bare (I6)."""
+    (tree / "sweep" / "not_json.json").write_text("not json at all")
+    snap = snapshot(root=tree)
+    paths = {f["path"] for f in snap["files"]}
+    assert "sweep/not_json.json" not in paths
+    assert "skipping" in capsys.readouterr().out
 
 
 def test_an_explicit_label_selects_that_campaign_s_transcripts(tree):

@@ -97,7 +97,7 @@ runs view reads, plus what a stub detail view needs:
     answer (first 160 chars), verdict {success, rationale (first 1,200
     chars)}, stop {time_passed, duration, env_state} from the last
     instrumented stop event or null, credit {partial_reward, coverage,
-    fidelity, pivot, pivot_kind} or null
+    fidelity, gold_total, pivot, pivot_kind} or null
 
 **`tasks`** -- one record per directory under `tasks/`, sorted by name:
 
@@ -151,8 +151,15 @@ model.
 `files`, all through `addSession(name, path, data)`. Index records carry
 `kind: "gaia2-episode"`, so `byKind("episode")` returns stubs and full
 trajectories alike; `addSession` de-duplicates by `path` and keeps the later
-entry, so a full trajectory embedded for the current label, or a file dropped
-or picked later, **replaces its stub with no further logic**. Task records
+entry, so a full trajectory embedded for the current label **replaces its
+stub with no further logic** -- it carries the same `output/rollouts/<name>`
+path. A file dropped or picked, though, arrives with `File.webkitRelativePath`
+empty (a plain multi-file pick and a folder drop both leave it blank), so
+`addFiles` resolves the bare basename against the known sessions first --
+`hits = sessions.filter(s => s.path.endsWith("/" + base))` -- and reuses that
+stub's full path only when exactly one stub matches; every breakdown shares
+the basename `breakdown.json`, so an ambiguous basename keeps its bare name
+instead of collapsing every candidate onto one session. Task records
 carry `kind: "forge-task"`; `detect()` gains one line mapping that to the
 session kind `"task"`, and `sortSessions` gains it to its order. `sourceLine`
 becomes *"snapshot of 2026-08-31 14:10 · 613 episodes across 6 campaigns ·
@@ -170,6 +177,15 @@ labelled *campaign*, listing every label in the index newest first plus
 chips, the judge sentence and the runs table all compute from the selected
 set. It is a filter in the filter line, not a header action: the header's two
 actions are pinned by test and stay two.
+
+Flat, the list is unreadable once most labels are one-run probes (measured:
+13 labels + *"(unlabelled)"* + *"all campaigns"* = 15 entries, 8 of them
+one-off). The `<select>` groups its options with native `<optgroup>`
+instead of hiding any of them: a label with at least `CAMPAIGN_MIN_EPISODES`
+(10) episodes falls under a *"campaigns"* group, everything under that
+count -- including *"(unlabelled)"* when it appears -- falls under a
+*"probes"* group, and *"all campaigns"* sits outside both groups, last.
+Every label stays selectable; nothing is hidden or removed.
 
 With *"all campaigns"* selected, the grid's cells hold one mark per run as
 today, and the existing rule -- a `.runlab` label beside a mark only when its
@@ -307,8 +323,13 @@ fixing it is a separate re-render, not a display change.
 
 ### Edge cases
 
-- **A picked or dropped file for an episode already embedded in full**: the
-  later `addSession` wins, as today.
+- **A picked or dropped file for an episode already embedded in full, or
+  already an index stub**: `addFiles` resolves the incoming basename against
+  the known sessions (`s.path.endsWith("/" + base)`) and reuses that
+  session's path only when exactly one stub matches; once resolved to the
+  same `path`, the later `addSession` wins as before. An ambiguous basename
+  (several stubs ending in the same name) falls back to the bare name and
+  arrives as a new session instead of colliding with the wrong stub.
 - **An index record and no matching file on disk** (a rollout deleted after
   the snapshot): the stub renders and its `.abstract` block names a path the
   picker will not find; the reader sees the record, not an error.

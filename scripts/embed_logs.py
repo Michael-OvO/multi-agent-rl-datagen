@@ -103,7 +103,8 @@ def index_record(path: Path, data: dict, root: Path) -> dict:
         "stop": ({k: stop.get(k) for k in ("time_passed", "duration", "env_state")}
                  if stop else None),
         "credit": ({k: credit.get(k) for k in
-                    ("partial_reward", "coverage", "fidelity", "pivot", "pivot_kind")}
+                    ("partial_reward", "coverage", "fidelity", "gold_total",
+                     "pivot", "pivot_kind")}
                    if credit else None),
     }
 
@@ -279,7 +280,11 @@ def snapshot(root: Path = ROOT, label: str | None = None) -> dict:
                 print(f"  skipping {p.relative_to(root)} "
                       f"({p.stat().st_size / 1e6:.1f} MB)")
                 continue
-            data = json.loads(p.read_text())
+            try:
+                data = json.loads(p.read_text())
+            except json.JSONDecodeError:
+                print(f"  skipping {p.relative_to(root)} (not JSON)")
+                continue
             if pattern.startswith("output/rollouts") and (
                     not isinstance(data, dict) or data.get("label") != full_label):
                 continue
