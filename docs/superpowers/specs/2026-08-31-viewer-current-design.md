@@ -1,7 +1,7 @@
-# The viewer tracks every result itself: index, auto-refresh, and the truth about Gaia2
+# The viewer tracks every result itself: index, tasks, auto-refresh, and the truth about Gaia2
 
 Date: 2026-08-31
-Status: approved design (revised once), pending spec review
+Status: approved design (revised twice), pending spec review
 
 ## Context
 
@@ -12,7 +12,10 @@ plus drag-and-drop and a file picker. That snapshot was last generated on
 `scripts.embed_logs`. It carries 239 files: the `full` campaign's 173
 episodes, 20 probe episodes, and seven Gaia2 evidence files. Nothing from v3,
 v4, v5 or v6 is in it. No embedded episode carries a `judge_parse` stamp or an
-instrumented `stop` row, because both were added after it was generated.
+instrumented `stop` row, because both were added after it was generated. The
+page has no view of the task pool at all: the ten directories under `tasks/`
+that the Harbor runs in `jobs/` were run against appear only as a path
+fragment in the shipped-task table.
 
 Since then the repository learned three things the page cannot currently say:
 
@@ -39,6 +42,11 @@ auto-refresh, embed everything in full, or a live local server -- he chose the
 first, which keeps the no-server, single-file loading model that `DESIGN.md`
 and `PRODUCT.md` require.
 
+He then added a second requirement: **the page must also contain all the tasks
+and view them live.** Offered a tasks section current as of the last run, a
+polling local server, or both, he chose the first: *live* means always
+current, not updating while watched, and the no-server rule stands.
+
 ## Goals
 
 1. **Every episode ever run is on the page**, with its verdict, judge, parse,
@@ -54,6 +62,9 @@ and `PRODUCT.md` require.
 6. An evidence file's **summary** is visible above its rows.
 7. **Easy to read across campaigns**: one campaign at a time by default, all at
    once on request.
+8. **Every task in the pool is on the page** -- the ten directories under
+   `tasks/` today -- with what it is, what it asks, who the Main may delegate
+   to, which contract it shipped with, and every Harbor run of it, linked.
 
 ## Non-goals
 
@@ -62,14 +73,16 @@ and `PRODUCT.md` require.
   embedded snapshot, drag-and-drop and the file picker remain the whole of it.
 - **No new colours, tokens, tiles, cards, hero figures, or motion.** Every
   rule in `DESIGN.md` stands; the contrast validator is untouched.
-- **No change to what the judge decides.** Display only; it reads fields that
-  already exist on disk.
+- **No change to what the judge decides**, and **no change to any task**.
+  Display only; it reads what is on disk.
+- **The Shipped-task runs view is not removed.** The Tasks section adds the
+  task-side reading of the same runs; the run-side reading stays.
 
 ## Design
 
-### 1. The snapshot: an index of everything, transcripts for the current campaign
+### 1. The snapshot: an index of everything, the task pool, transcripts for the current campaign
 
-`scripts/embed_logs.py` builds the snapshot in two parts.
+`scripts/embed_logs.py` builds the snapshot in three parts.
 
 **`index`** -- one compact record per episode under `output/rollouts/`, every
 label, every campaign, in `started_at` order. Measured today: 613 records,
@@ -79,10 +92,43 @@ runs view reads, plus what a stub detail view needs:
     kind ("gaia2-episode"), index_only (true), path, scenario_id, config,
     ability, label, judge, judge_parse, started_at, seconds, main_model,
     sub_model, delegations, specialist_turns, malformed, blocked,
-    false_outages, answer (first 160 chars), verdict {success, rationale
-    (first 1,200 chars)}, stop {time_passed, duration, env_state} from the last
+    false_outages, errors (faulted tool calls, counted by the rule
+    countErrors uses, so a stub's issues column is not falsely "clean"),
+    answer (first 160 chars), verdict {success, rationale (first 1,200
+    chars)}, stop {time_passed, duration, env_state} from the last
     instrumented stop event or null, credit {partial_reward, coverage,
     fidelity, pivot, pivot_kind} or null
+
+**`tasks`** -- one record per directory under `tasks/`, sorted by name:
+
+    kind ("forge-task"), name (the directory), path ("tasks/<name>"),
+    substrate (the name's first segment: appworld | gaia2 |
+    parallel-scheduling), config (the knob label between substrate and
+    target, e.g. star-docs-binf, or null), target (the task id, scenario id
+    or number that ends the name), description, difficulty, category, tags,
+    verifier_timeout_sec, agent_timeout_sec (from task.toml),
+    roster (the backticked names on the instruction's "You may delegate to:"
+    line, or the bullet names under "## Team roster"), contract_version (the
+    backticked value after "Contract version:" in the instruction, or null),
+    instruction (the whole instruction.md, capped at 12,000 chars),
+    files (relative paths present, sorted, capped at 60), has_scenario
+    (environment/scenario.json exists), runs (below)
+
+`runs` links the Harbor runs under `jobs/` to the task. Measured over the 22
+breakdowns on disk: 16 name their task directory as a path segment and link
+**exactly**; 6 -- the `oracle-*` and `resweep` batches -- carry the task stem
+with its `_1`/`_2`/`_3` suffix stripped and resolve to a **family** of three
+candidates; none are unmatched. The rule, in that order: a path segment equal
+to a task directory name is an exact link; otherwise the segment before
+`verifier`, split on `__`, is a stem, and every task whose name is the stem or
+the stem plus `_<n>` receives the run as a family link. Each run entry is
+`{path, batch (first segment under jobs/), when (the YYYY-MM-DD__HH-MM-SS
+segment), success, partial, delegations, answer (first 160 chars), match
+("exact" | "family")}`.
+
+A task directory missing `task.toml` or `instruction.md` still gets a record
+with those fields null; it is never skipped, because a broken task is
+something the page should show.
 
 **`files`** -- as today: every `sweep/*.json`, every
 `jobs/**/verifier/breakdown.json`, and the **full trajectories of one label**:
@@ -92,22 +138,25 @@ snapshot's top-level object gains `labels` (every label in the index) and
 `full_label` (the one whose transcripts are embedded). Page size today:
 about 7 MB, down from 8.9 MB.
 
-The `MAX_BYTES` per-file guard stays for `files`; index records are never
-near it. `--label` naming a label with no rollouts exits non-zero listing the
-labels present. The module docstring's opening -- "reads the live repository
-through a remembered browser directory handle" -- describes the retired File
-System Access layer and is replaced with the actual loading model.
+The `MAX_BYTES` per-file guard stays for `files`; index and task records are
+never near it. `--label` naming a label with no rollouts exits non-zero
+listing the labels present. The module docstring's opening -- "reads the live
+repository through a remembered browser directory handle" -- describes the
+retired File System Access layer and is replaced with the actual loading
+model.
 
 ### 2. Loading the index: stubs that a real file replaces
 
-`loadSnapshot` adds every `index` record through `addSession(name, path,
-data)` before adding `files`. Each record already carries `kind:
-"gaia2-episode"`, so `detect()` is untouched and `byKind("episode")` returns
-stubs and full trajectories alike. `addSession` de-duplicates by `path` and
-keeps the later entry, so a full trajectory embedded for the current label, or
-a file dropped or picked later, **replaces its stub with no further logic**.
-`sourceLine` becomes *"snapshot of 2026-08-31 14:10 · 613 episodes across 6
-campaigns · transcripts for v6 · 54 evidence files"*.
+`loadSnapshot` adds every `index` record, then every `tasks` record, then
+`files`, all through `addSession(name, path, data)`. Index records carry
+`kind: "gaia2-episode"`, so `byKind("episode")` returns stubs and full
+trajectories alike; `addSession` de-duplicates by `path` and keeps the later
+entry, so a full trajectory embedded for the current label, or a file dropped
+or picked later, **replaces its stub with no further logic**. Task records
+carry `kind: "forge-task"`; `detect()` gains one line mapping that to the
+session kind `"task"`, and `sortSessions` gains it to its order. `sourceLine`
+becomes *"snapshot of 2026-08-31 14:10 · 613 episodes across 6 campaigns ·
+10 tasks · transcripts for v6 · 54 evidence files"*.
 
 Every consumer of episode sessions is accounted for: `runStats` and
 `renderRuns` read only index fields; `renderEpisode` is the one place that
@@ -222,6 +271,40 @@ the page is a view of them.
 by hand and says the campaign, summary and credit commands refresh the page
 themselves; the manual command stays documented for refreshing without a run.
 
+### 8. The Tasks section
+
+`SECTIONS` gains `["tasks", "Tasks"]` second, between Runs and Shipped-task
+runs. `render()` dispatches `tab === "tasks"` to `renderTasks` and a session of
+kind `"task"` to `renderTaskDetail`.
+
+**`renderTasks`** -- a lede (*"10 tasks: 6 AppWorld, 3 Gaia2, 1
+parallel-scheduling"*, computed), the existing `.filterline` search, and one
+table: task, substrate, configuration, target, roster, difficulty, contract,
+runs. The runs cell reads *"7 of 10 passed"* from the task's exact-match runs,
+followed by a `.tag` *"+6 family"* when family-linked runs exist and nothing
+when they do not; *"--"* when the task has no runs. Every row opens its
+detail. A substrate is a word in a cell, never a colour: substrate is a fact,
+not a status.
+
+**`renderTaskDetail`** -- a run bar with the task name and a `.tag` for its
+substrate, and a facts line: configuration, target, difficulty, category,
+contract version, verifier and agent timeouts, and whether a scenario file is
+present. Then the instruction, rendered as prose through a minimal
+markdown-to-HTML step that handles `#`/`##`/`###` headings, `-` bullets,
+blank-line paragraphs, `**bold**` and `` `code` `` (as `.mono`), everything
+escaped first -- monospace is for code spans, never for the prose. Then a
+table of the task's Harbor runs: batch, when, verdict badge, partial,
+delegations, answer, and a `.tag` *"family match"* on family-linked rows;
+clicking a row opens that run's breakdown ledger (the session whose `path`
+equals the run's `path`, found at click time). Then a `.path` line and the
+`files` list behind a disclosure.
+
+The section surfaces one fact deliberately: the contract version is shown
+verbatim from the shipped `instruction.md`. Today every Gaia2 task says
+`objective-actions-v1` while the runtime is at v3 -- the tasks were not
+re-rendered after commits `c6ac10e` and `4cc8e14`. The page shows that drift;
+fixing it is a separate re-render, not a display change.
+
 ### Edge cases
 
 - **A picked or dropped file for an episode already embedded in full**: the
@@ -234,44 +317,68 @@ themselves; the manual command stays documented for refreshing without a run.
 - **`--label` omitted with no rollouts on disk**: `index` and `labels` are
   empty, `full_label` is null, the runs view's existing empty state applies.
 - **The campaign picker with one label in the index**: rendered anyway, with
-  its one label and *"all campaigns"*; a control that behaves the same at
-  every scale is easier to read than one that appears at a threshold.
+  its one label and *"all campaigns"*.
 - **`hasLabels` column in the runs table**: unchanged; the parse tag is on the
   verdict cell.
+- **A family-linked run** appears under each candidate task, tagged, and once
+  in the Shipped-task runs view as today; the Tasks lede counts tasks, never
+  runs, so nothing is double-counted.
+- **A task directory without `task.toml` or `instruction.md`**: its record has
+  null fields, its row reads *"--"* where the field would be, and its detail
+  says which file is missing.
+- **A run whose breakdown path matches no task at all**: appears only in the
+  Shipped-task runs view, as today; the snapshot builder prints its path.
 
 ## Verification
 
 Tests first, watched failing, in `forge/tests/test_viewer.py` and a new
 `forge/tests/test_embed_logs.py`:
 
-- `snapshot()` returns `index`, `files`, `labels`, `full_label`; every rollout
-  on disk yields exactly one index record with the fields listed in §1 and no
-  `events`; only `full_label`'s rollouts appear in `files`; every sweep and
-  breakdown file appears in `files`; an unknown `--label` raises `SystemExit`;
-  `refresh()` is importable and idempotent on an unchanged tree;
-- `loadSnapshot` adds `index` records before `files` (source order), and the
-  runs-view source contains `index_only`;
-- the filter line contains a `campaign` select and the header still has
-  exactly two actions;
+- `snapshot()` returns `index`, `tasks`, `files`, `labels`, `full_label`; every
+  rollout on disk yields exactly one index record with the fields listed in §1
+  and no `events`; only `full_label`'s rollouts appear in `files`; every sweep
+  and breakdown file appears in `files`; an unknown `--label` raises
+  `SystemExit`; `refresh()` is importable and idempotent on an unchanged tree;
+- `task_record` reads `task.toml` and `instruction.md` for the AppWorld and
+  scheduling shapes (roster from either form, contract version present or
+  null) and survives a directory missing either file;
+- `link_runs` links a path carrying the task directory name exactly, links a
+  suffix-stripped stem to every `_<n>` candidate as family, and leaves an
+  unknown stem unlinked;
+- `loadSnapshot` adds `index`, then `tasks`, then `files` (source order); the
+  runs-view source contains `index_only`; `detect` maps `forge-task` and
+  `sortSessions` orders `task`;
+- `SECTIONS` contains `["tasks", "Tasks"]`; the filter line contains a
+  `campaign` select and the header still has exactly two actions;
 - the grid block contains `parseLabel(` and `majorityParse`, still calls
   `badge(` directly, and its note names the sweep file when the majority is
   `"stock"`;
 - the runs table header contains `<th>ended</th>`; `stopped` is set on
-  `data-issues`; `countErrors` and `countMalformed` are unchanged;
+  `data-issues`; `countErrors` reads a precomputed `errors` before scanning
+  events, as `countMalformed` already reads `malformed`; `countMalformed` is
+  unchanged;
 - `renderSignals` emits a chip with key `stopped` and kind `warn`;
 - `renderEpisode` has an `index_only` branch that renders `.abstract` and no
   `.transcript`, shows `judge parse` only when the field is present, and the
   `.credit` stop line only when the answer is the sentinel;
 - `renderSweeps` renders a `summary` block when present and nothing when
   absent;
-- each of the three producers calls `refresh(` after its output is written,
-  and `gaia2_campaign`'s call is unreachable from `--dry-run`.
+- `renderTasks` has `<th>roster</th>` and `<th>contract</th>`;
+  `renderTaskDetail` renders the instruction through `mdLite(` and a runs
+  table with a `family match` tag; `mdLite` escapes before it marks up;
+- each of the three producers calls `try_refresh(args.label)` after its
+  output is written, and `gaia2_campaign`'s call is unreachable from
+  `--dry-run`.
 
 Then: full suite green; `ruff check forge scripts` clean; contrast validator
 untouched and passing; `uv run python -m scripts.embed_logs` producing a page
-under 8 MB whose `sourceLine` names 613 episodes and v6; the page opened from
-`file://`, showing v6 by default with the stock-parse note and the two-judge
-sentence, *"all campaigns"* showing every label, an `ended` cell, the stop
-chip filtering, a v6 episode's stop line, a `full`-campaign stub with its
-`.abstract` block, that stub replaced by picking its file, and the judge-parse
-file's transitions above its rows.
+under 8 MB whose `sourceLine` names 613 episodes, 10 tasks and v6; the page
+opened from `file://`, showing v6 by default with the stock-parse note and the
+two-judge sentence, *"all campaigns"* showing every label, an `ended` cell,
+the stop chip filtering, a v6 episode's stop line, a `full`-campaign stub with
+its `.abstract` block, that stub replaced by picking its file, the judge-parse
+file's transitions above its rows, the Tasks tab listing ten tasks with
+`objective-actions-v1` in every Gaia2 row's contract cell, a Gaia2 task's
+detail showing its roster and instruction as prose, and an `oracle-1` run
+appearing under all three `2a163ab_<n>` tasks tagged *family match* and
+opening its ledger.
