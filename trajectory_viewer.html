@@ -590,6 +590,10 @@ function countMalformed(d) {
 /* A malformed line is a protocol fault and has its own counter; counting it
    here too would make the two signal chips overlap while reading as disjoint. */
 function countErrors(d) {
+  /* An index stub carries no events; the snapshot builder counted its
+     faulted calls by this same rule, so read that first -- as countMalformed
+     already reads d.malformed. */
+  if (typeof d.errors === "number") return d.errors;
   const faulted = s => s && s !== "ok" && s !== "malformed";
   let n = 0;
   for (const e of d.events || []) {
@@ -600,12 +604,39 @@ function countErrors(d) {
   return n;
 }
 
+/* The harness returns this sentinel when the world announced the episode's
+   end before the Main did (forge/gaia2/runtime.py ENV_STOP). Not a
+   surrender: the agent did not give up, the world moved on. */
+const ENV_STOP = "(environment stopped)";
+const wasStopped = d => String(d.answer ?? "").trim() === ENV_STOP;
+
+/* The instrumented stop row: reason, duration, time_passed, remaining,
+   env_state (commit a59d9bb). Pre-instrumentation runs have a bare stop
+   event; index stubs carry the facts as d.stop. The last one wins. */
+function lastStop(d) {
+  const ev = d.events || [];
+  for (let i = ev.length - 1; i >= 0; i--)
+    if (ev[i].type === "stop" && "time_passed" in ev[i]) return ev[i];
+  return d.stop || null;
+}
+
+function endedCell(d) {
+  if (d.answer == null) return `<span class="dim">—</span>`;
+  if (!wasStopped(d)) return "answered";
+  const st = lastStop(d);
+  if (!st) return `<span class="warn-text">world stopped</span>`;
+  const t = Math.round(st.time_passed);
+  const horizon = st.duration != null ? `/${Math.round(st.duration)}` : "";
+  return `<span class="warn-text">world stopped at ${t}${horizon} s</span>`;
+}
+
 function runStats(eps) {
-  let malformed = 0, blocked = 0, errors = 0;
+  let malformed = 0, blocked = 0, errors = 0, stopped = 0;
   for (const s of eps) {
     malformed += countMalformed(s.data);
     blocked += s.data.blocked || 0;
     errors += countErrors(s.data);
+    if (wasStopped(s.data)) stopped++;
   }
 
   /* The worst scenario is the one with the lowest pass rate; ties break to
@@ -621,7 +652,7 @@ function runStats(eps) {
   const worst = [...byScenario.values()].sort((a, b) =>
     (a.passed / a.total) - (b.passed / b.total) || b.total - a.total)[0] || null;
 
-  return {malformed, blocked, errors, worst};
+  return {malformed, blocked, errors, stopped, worst};
 }
 
 function renderSignals(content, stats) {
@@ -637,6 +668,9 @@ function renderSignals(content, stats) {
   if (stats.errors)
     signals.push({key: "errors", kind: "warn",
                   label: `${stats.errors} faulted tool call${stats.errors === 1 ? "" : "s"}`});
+  if (stats.stopped)
+    signals.push({key: "stopped", kind: "warn",
+                  label: `${stats.stopped} stopped by the world`});
   if (stats.worst && stats.worst.passed < stats.worst.total)
     signals.push({key: "worst", kind: "fail",
                   label: `worst scenario ${shortScenario(stats.worst.scenario)} — ${
@@ -966,7 +1000,7 @@ function renderRuns(content) {
   twrap.innerHTML = `<table class="tab"><thead><tr>
       <th>verdict</th><th>when</th><th>scenario</th><th>configuration</th>
       <th>ability</th><th>models</th>${hasLabels ? "<th>run</th>" : ""}
-      <th>issues</th><th>answer</th><th class="n">wall&nbsp;s</th>
+      <th>issues</th><th>ended</th><th>answer</th><th class="n">wall&nbsp;s</th>
     </tr></thead><tbody>${
     newestFirst.map(s => {
       const d = s.data, okr = !!(d.verdict && d.verdict.success);
@@ -977,7 +1011,8 @@ function renderRuns(content) {
         err ? `${err} faulted` : "",
       ].filter(Boolean).join(" · ");
       const tags = [mal ? "malformed" : "", blk ? "blocked" : "",
-                    err ? "errors" : ""].filter(Boolean).join(" ");
+                    err ? "errors" : "", wasStopped(d) ? "stopped" : ""]
+                   .filter(Boolean).join(" ");
       const models = d.main_model === d.sub_model
         ? esc(String(d.main_model ?? "—"))
         : `${esc(String(d.main_model ?? "?"))} <span class="dim">/</span> ${
@@ -1004,6 +1039,7 @@ function renderRuns(content) {
         hasLabels ? `<td>${d.label ? esc(d.label) : "—"}</td>` : ""}
         <td>${issues ? `<span class="warn-text">${esc(issues)}</span>`
                      : `<span class="dim">clean</span>`}</td>
+        <td>${endedCell(d)}</td>
         <td title="${esc(d.answer ?? "")}">${esc(String(d.answer ?? "").slice(0, 44))}</td>
         <td class="n">${esc(String(d.seconds ?? ""))}</td></tr>`;
     }).join("")}</tbody></table>`;

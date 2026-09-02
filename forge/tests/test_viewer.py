@@ -549,3 +549,39 @@ def test_rows_index_their_parse_for_the_search_box(viewer_html):
     row = re.search(r'data-text="\$\{esc\(JSON\.stringify\(\[(.*?)\]\)', source, re.S)
     assert row, "the runs-table row's data-text moved"
     assert "parseLabel(d)" in row.group(1)
+
+
+# -- whether the world ended the episode --------------------------------------
+
+
+def test_the_stop_helpers_read_the_instrumented_stop_row(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'const ENV_STOP = "(environment stopped)";' in source
+    assert "const wasStopped = d =>" in source
+    assert "function lastStop(d)" in source and '"time_passed" in ev[i]' in source
+    assert "return d.stop || null;" in source
+    assert "function endedCell(d)" in source
+    assert "world stopped at ${t}" in source
+
+
+def test_the_runs_table_has_an_ended_column_between_issues_and_answer(viewer_html):
+    source = viewer_source(viewer_html)
+    head = re.search(r"<th>issues</th>(.*?)<th>answer</th>", source, re.S)
+    assert head and "<th>ended</th>" in head.group(1)
+    assert "${endedCell(d)}" in source
+
+
+def test_stopped_is_a_disjoint_signal_with_its_own_chip(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'wasStopped(d) ? "stopped" : ""' in source
+    assert "let malformed = 0, blocked = 0, errors = 0, stopped = 0;" in source
+    assert 'key: "stopped", kind: "warn"' in source
+    assert "stopped by the world" in source
+    fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "answer" not in fn and "ENV_STOP" not in fn
+
+
+def test_count_errors_reads_a_precomputed_count_like_count_malformed(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", source, re.S).group(1)
+    assert 'if (typeof d.errors === "number") return d.errors;' in fn
