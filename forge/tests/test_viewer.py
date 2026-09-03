@@ -725,9 +725,9 @@ def test_the_tasks_table_names_what_a_task_is_and_who_it_may_use(viewer_html):
         assert f"<th>{col}</th>" in body, col
     assert "family" in body and "verdictBadge(" not in body, (
         "the runs cell is a count, not a badge; a substrate is a word, not a colour")
-    assert 'wireSearch(fbar, trs, "tasks")' in body, (
+    assert 'wireSearch(fbar, trs, "tasks", tr =>' in body, (
         "the tasks table shares the search helper rather than copying the filter block")
-    assert "function wireSearch(fbar, trs, noun)" in source
+    assert "function wireSearch(fbar, trs, noun, keep = () => true)" in source
 
 
 def test_a_task_detail_renders_its_instruction_as_prose_and_its_runs(viewer_html):
