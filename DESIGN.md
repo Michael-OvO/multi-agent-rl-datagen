@@ -234,13 +234,13 @@ and panels and are never the sole carrier of anything.
 The warn row is the exception to the first sentence. `--warn` and the
 `.badge.warn` rule are defined so the status set is complete in all three
 theme scopes, but nothing on the shipped page paints a bare warn mark: no rule
-reads `var(--warn)` and nothing calls `badge("warn", …)`. Warning reaches the
-reader as fill plus text instead — `--warn-tint` behind `--warn-ink` on the
-signal chips, and `--warn-ink` alone on the `.warn-text` counts (blocked,
-malformed, faulted, the pivot flag, the shipped-task failure count, the
-runs table's `ended` cell). That is
-deliberate: the light value is sub-3:1, so warning is never asked to carry
-meaning as a mark on its own.
+reads `var(--warn)`, and the one caller of `badge("warn", …)` is the Tasks
+view's *stale* badge, which is fill plus ink plus a word, never a bare mark.
+Warning reaches the reader as fill plus text instead — `--warn-tint` behind
+`--warn-ink` on the signal chips, and `--warn-ink` alone on the `.warn-text`
+counts (blocked, malformed, faulted, the pivot flag, the shipped-task failure
+count, the runs table's `ended` cell). That is deliberate: the light value is
+sub-3:1, so warning is never asked to carry meaning as a mark on its own.
 
 ### Named rules
 
@@ -264,8 +264,9 @@ otherwise be incomplete; a test pins the hex so nobody quietly "fixes" it. But
 the value is why nothing on the page uses it as a dot, rail, or border. Warning
 reaches the screen as `--warn-tint` fill under `--warn-ink` text on the signal
 chips, and as `--warn-ink` on `.warn-text` counts — both of which clear 4.5:1
-and both of which always sit beside a word. `.badge.warn` is defined for the
-same completeness reason and currently has no caller.
+and both of which always sit beside a word. `.badge.warn` has one caller: the
+Tasks view's *stale* badge (a Gaia2 task whose provenance lags the runtime),
+which, like every badge, is fill plus ink plus a word.
 
 **`--muted` is for de-emphasized labels only.** It is 3.41:1 in light mode —
 enough for a table header, a timestamp, a file path, or a note, and not enough

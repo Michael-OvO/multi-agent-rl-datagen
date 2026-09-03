@@ -492,6 +492,7 @@ let pendingQuery = null;   // a search string the next runs-table render adopts
 let savedScroll = 0;
 let fullLabel = null;      // the campaign whose transcripts the snapshot embeds
 let campaignSel = null;    // null until first render, then a label or "*" for all
+let taskSubstrate = "*";   // the Tasks view's substrate filter; "*" is all
 let runsDrawerOpen = false; // the reader's own toggle of the run list, kept across re-renders
 
 function detect(data) {
@@ -1269,27 +1270,38 @@ function renderTasks(content) {
     const k = s.data.substrate || "other";
     bySub.set(k, (bySub.get(k) || 0) + 1);
   }
+  const stale = tasks.filter(s => s.data.current === false).length;
   content.insertAdjacentHTML("beforeend",
     `<h2 class="sec">Tasks</h2>
      <p class="lede"><b>${tasks.length}</b> task${tasks.length === 1 ? "" : "s"}: ${
        [...bySub].map(([k, n]) => `${n} ${SUBSTRATE_NAMES[k] || k}`).join(", ")}. Each is a
-     directory under <span class="mono">tasks/</span> a container runs; its Harbor
-     runs under <span class="mono">jobs/</span> are linked beneath it.</p>
+     directory under <span class="mono">tasks/</span> a container runs. A Gaia2 task is one
+     cell of the campaign grid, rendered by the campaign itself; its campaign episodes are
+     counted beside it, and its Harbor runs under <span class="mono">jobs/</span>, if any,
+     are linked beneath it.${stale ? ` <b>${stale}</b> ${stale === 1 ? "is" : "are"} stale:
+     the shipped runtime, contract or judge parse lags the source; re-render with
+     <span class="mono">python -m forge.gaia2.cli render --all</span>.` : ""}</p>
      <div class="panel-title">The pool
-       <span class="sub">— click a row for its instruction and runs</span></div>`);
+       <span class="sub">— click a row for its instruction, campaigns and runs</span></div>`);
 
   const fbar = document.createElement("div");
   fbar.className = "filterline";
-  fbar.innerHTML = `<span>restrict to
+  fbar.innerHTML = `<span>substrate
+      <select aria-label="substrate">${
+        [["*", "all"], ...[...bySub.keys()].sort().map(k => [k, SUBSTRATE_NAMES[k] || k])]
+          .map(([v, l]) => `<option value="${esc(v)}"${v === taskSubstrate ? " selected" : ""}>${esc(l)}</option>`).join("")
+      }</select></span>
+    <span>restrict to
       <input type="search" placeholder="any text" aria-label="filter tasks"></span>
     <span class="count"></span>`;
+  $("select", fbar).addEventListener("change", e => { taskSubstrate = e.target.value; });
   content.appendChild(fbar);
 
   const twrap = document.createElement("div");
   twrap.className = "tabwrap";
   twrap.innerHTML = `<table class="tab"><thead><tr>
       <th>task</th><th>substrate</th><th>configuration</th><th>target</th>
-      <th>roster</th><th>difficulty</th><th>contract</th><th>runs</th>
+      <th>roster</th><th>difficulty</th><th>contract</th><th>campaigns</th><th>runs</th>
     </tr></thead><tbody>${
     tasks.map(s => {
       const d = s.data;
@@ -1300,8 +1312,14 @@ function renderTasks(content) {
             fam.length ? ` <span class="tag">+${fam.length} family</span>` : ""}`
         : fam.length ? `<span class="dim">—</span> <span class="tag">${fam.length} family</span>`
                      : `<span class="dim">—</span>`;
+      const cs = d.campaigns || [];
+      const camp = cs.length
+        ? `${esc(cs[0].label)} · ${cs[0].passes} of ${cs[0].episodes} passed${
+            cs.length > 1 ? ` <span class="tag">+${cs.length - 1} more</span>` : ""}`
+        : `<span class="dim">—</span>`;
       const dash = v => v == null || v === "" ? `<span class="dim">—</span>` : esc(String(v));
       return `<tr class="click" data-i="${sessions.indexOf(s)}" tabindex="0"
+        data-sub="${esc(d.substrate || "other")}"
         data-text="${esc(JSON.stringify([d.name, d.substrate, d.config, d.target,
                         d.roster, d.contract_version, d.description]).toLowerCase())}">
         <td title="${esc(d.description || "")}">${esc(d.name)}</td>
@@ -1310,12 +1328,13 @@ function renderTasks(content) {
         <td>${dash(d.target)}</td>
         <td class="mono sm">${(d.roster || []).length ? (d.roster || []).map(esc).join(", ") : `<span class="dim">—</span>`}</td>
         <td>${dash(d.difficulty)}</td>
-        <td class="mono sm">${dash(d.contract_version)}</td>
+        <td class="mono sm">${dash(d.contract_version)}${d.current === false ? " " + badge("warn", "stale") : ""}</td>
+        <td>${camp}</td>
         <td>${runs}</td></tr>`;
     }).join("")}</tbody></table>`;
   const trs = [...twrap.querySelectorAll("tr.click")];
   trs.forEach(tr => tr.onclick = () => openDetail(Number(tr.dataset.i)));
-  wireSearch(fbar, trs, "tasks");
+  wireSearch(fbar, trs, "tasks", tr => taskSubstrate === "*" || tr.dataset.sub === taskSubstrate);
   content.appendChild(twrap);
 }
 
@@ -1323,12 +1342,12 @@ function renderTasks(content) {
    how many survive. The runs table keeps its own filter (it also drives
    the dropdowns and the issue chips), as does the transcript (checkbox
    type filters); every other table uses this. */
-function wireSearch(fbar, trs, noun) {
+function wireSearch(fbar, trs, noun, keep = () => true) {
   const apply = () => {
     const q = $("input", fbar).value.toLowerCase();
     let shown = 0;
     for (const tr of trs) {
-      const hit = !q || tr.dataset.text.includes(q);
+      const hit = (!q || tr.dataset.text.includes(q)) && keep(tr);
       tr.style.display = hit ? "" : "none";
       shown += hit;
     }
@@ -1336,6 +1355,7 @@ function wireSearch(fbar, trs, noun) {
       shown === trs.length ? `all ${trs.length} ${noun}` : `${shown} of ${trs.length} ${noun}`;
   };
   fbar.addEventListener("input", apply);
+  fbar.addEventListener("change", apply);
   apply();
 }
 
@@ -1354,6 +1374,8 @@ function renderTaskDetail(content, s) {
       <span>difficulty <b>${esc(dash(d.difficulty))}</b></span>
       <span>category <b>${esc(dash(d.category))}</b></span>
       <span>contract <b class="mono">${esc(dash(d.contract_version))}</b></span>
+      <span>parse <b class="mono">${esc(dash(d.judge_parse))}</b></span>
+      ${d.current === false ? `<span>${badge("warn", "stale")}</span>` : ""}
       <span>verifier <b>${esc(dash(d.verifier_timeout_sec))}</b> s</span>
       <span>agent <b>${esc(dash(d.agent_timeout_sec))}</b> s</span>
       <span>${d.has_scenario ? "carries its scenario" : "no scenario file"}</span>
@@ -1363,10 +1385,36 @@ function renderTaskDetail(content, s) {
   if (d.description)
     content.insertAdjacentHTML("beforeend", `<p class="lede">${esc(d.description)}</p>`);
 
+  const cs = d.campaigns || [];
+  if (d.substrate === "gaia2") {
+    content.insertAdjacentHTML("beforeend",
+      `<div class="panel-title">Campaign episodes of this cell
+         <span class="sub">— ${cs.length ? "click a campaign to open its runs" : "none yet"}</span></div>`);
+    if (cs.length) {
+      const twrap = document.createElement("div");
+      twrap.className = "tabwrap";
+      twrap.innerHTML = `<table class="tab"><thead><tr>
+          <th>campaign</th><th class="n">episodes</th><th class="n">passed</th><th>parse</th>
+        </tr></thead><tbody>${
+        cs.map(c => `<tr class="click" tabindex="0" data-label="${esc(c.label)}">
+          <td>${esc(c.label)}</td>
+          <td class="n">${c.episodes}</td>
+          <td class="n">${c.passes}</td>
+          <td class="mono sm">${esc(c.judge_parse || STOCK_PARSE)}</td></tr>`).join("")
+        }</tbody></table>`;
+      twrap.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => {
+        tab = "runs"; detail = null; campaignSel = tr.dataset.label;
+        issueFilter = null; pendingQuery = shortScenario(d.target); render();
+      });
+      content.appendChild(twrap);
+    }
+  }
+
   const runs = d.runs || [];
   content.insertAdjacentHTML("beforeend",
     `<div class="panel-title">Harbor runs of this task
-       <span class="sub">— ${runs.length ? "click a row for its verifier ledger" : "none under jobs/"}</span></div>`);
+       <span class="sub">— ${runs.length ? "click a row for its verifier ledger"
+         : d.substrate === "gaia2" ? "no Harbor run yet" : "none under jobs/"}</span></div>`);
   if (runs.length) {
     const twrap = document.createElement("div");
     twrap.className = "tabwrap";
