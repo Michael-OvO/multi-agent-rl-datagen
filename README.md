@@ -231,7 +231,7 @@ yet cleared the floor. The next run is a control that succeeds, not more cells.
 | `forge/models.py` | model classes and the parity rule: a specialist below the Main's model class refuses to run, in the sweep and in the shipped sidecar alike; overridable only by an explicit flag (`--allow-sub-downgrade`, or `MAF_ALLOW_SUB_DOWNGRADE=1` in a task's compose) so a downgrade is always a labelled experiment |
 | `trajectory_viewer.html` | single-page viewer — one file, no server; carries an index of every episode, every task with its campaign episodes and Harbor runs, every evidence file, and the current campaign's transcripts; files can be dropped on it or picked; the producers refresh it |
 | `forge/maf/` | the earlier from-scratch forge; `parallel-scheduling` ships, two dimensions are quarantined (below) |
-| `tasks/` | rendered Harbor tasks; for Gaia2, the whole campaign grid — one task per cell, written by the campaign before it runs and by `python -m forge.gaia2.cli render --all`; `tasks/MANIFEST.json` lists it, and a task whose shipped runtime, contract or judge parse lags the source fails `forge/tests/test_gaia2_tasks_current.py` |
+| `tasks/` | rendered Harbor tasks; for Gaia2, the whole campaign grid — one task per cell, written by the campaign before it runs and by `python -m forge.gaia2.cli render --all`; `tasks/MANIFEST.json` lists it, and a task whose shipped runtime, renderer, contract or judge parse lags the source fails `forge/tests/test_gaia2_tasks_current.py` |
 | `sweep/` | measurement evidence — one file per claim |
 | `scripts/` | the probes that produced it |
 | `skills/` | **the method** — canonical, substrate-independent, and the failure modes it was built from |
@@ -399,7 +399,7 @@ uv run python -m json.tool jobs/mine/*/gaia2-*/verifier/breakdown.json
 
 ### The execution contract
 
-Every Gaia2 agent follows the versioned `objective-actions-v1` execution
+Every Gaia2 agent follows the versioned `objective-actions-v3` execution
 contract: conditional writes wait for an observed trigger, creation establishes
 the monitoring baseline, later transitions are updates, and each distinct
 obligation or trigger receives exactly one successful side effect. Compatible

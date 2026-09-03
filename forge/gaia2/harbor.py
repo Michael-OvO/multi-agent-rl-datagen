@@ -192,17 +192,45 @@ def derive_token(scenario_id: str, label: str) -> str:
     return hashlib.sha256(seed.encode()).hexdigest()[:32]
 
 
-def runtime_digest() -> str:
-    """Content digest of everything a task ships verbatim, in manifest order.
+#: The renderer itself: this module, whose templates (_TASK_TOML, _COMPOSE,
+#: _MAIN_DOCKERFILE, _SOLVE_NO_REFERENCE, render_instruction) decide a
+#: task's bytes as much as any VERBATIM_COPIES source does, and the AppWorld
+#: renderer module that supplies _difficulty, the difficulty ladder Gaia2
+#: tasks inherit. Named once so runtime_digest's default and its tests agree
+#: on what "the renderer" means.
+_RENDERER_SOURCES = (Path(__file__), Path(__file__).parents[1] / "appworld" / "harbor.py")
 
-    Changes when and only when a shipped source changes; the drift test and
-    the viewer read it against each task's provenance.json.
+
+def runtime_digest(renderer_sources: tuple[Path, ...] | None = None) -> str:
+    """Content digest of everything that decides a rendered task's bytes:
+    every verbatim-copied source, this renderer module, and the AppWorld
+    renderer module that supplies the difficulty ladder.
+
+    Changes whenever anything that decides a rendered task's bytes changes,
+    except the scenario world (checked separately, byte-for-byte against the
+    dataset) and the two version strings (the objective-action contract and
+    the judge-parse version), which travel in the token and the provenance
+    file on their own and are not re-hashed here. The drift test and the
+    viewer read this against each task's provenance.json.
     """
     h = hashlib.sha256()
     for dest, src in VERBATIM_COPIES.items():
         h.update(dest.encode())
         h.update(b"\0")
         h.update(Path(src).read_bytes())
+        h.update(b"\0")
+    repo = Path(__file__).parents[2]
+    for src in (renderer_sources or _RENDERER_SOURCES):
+        src = Path(src)
+        try:
+            name = src.relative_to(repo).as_posix()
+        except ValueError:
+            # A test's stand-in copy lives outside the repo (tmp_path); its
+            # own path still identifies it uniquely for the digest's purposes.
+            name = str(src)
+        h.update(name.encode())
+        h.update(b"\0")
+        h.update(src.read_bytes())
         h.update(b"\0")
     return h.hexdigest()
 

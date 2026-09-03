@@ -243,6 +243,29 @@ def test_the_runtime_digest_covers_every_verbatim_source(monkeypatch, tmp_path):
     assert runtime_digest() != before
 
 
+def test_the_runtime_digest_covers_the_renderer_itself(tmp_path):
+    real_self = REPO / "forge" / "gaia2" / "harbor.py"
+    real_appworld_harbor = REPO / "forge" / "appworld" / "harbor.py"
+    assert real_self.exists() and real_appworld_harbor.exists()
+
+    # Neither source changed: same as the real default.
+    assert runtime_digest(renderer_sources=(real_self, real_appworld_harbor)) \
+        == runtime_digest()
+
+    # A stand-in for this renderer module, with one byte flipped, moves the
+    # digest even though every VERBATIM_COPIES source is untouched.
+    changed_self = tmp_path / "harbor_changed.py"
+    changed_self.write_text(real_self.read_text() + "\n# changed\n")
+    assert runtime_digest(
+        renderer_sources=(changed_self, real_appworld_harbor)) != runtime_digest()
+
+    # Same for a stand-in of the AppWorld renderer that supplies _difficulty.
+    changed_appworld = tmp_path / "appworld_harbor_changed.py"
+    changed_appworld.write_text(real_appworld_harbor.read_text() + "\n# changed\n")
+    assert runtime_digest(
+        renderer_sources=(real_self, changed_appworld)) != runtime_digest()
+
+
 def test_put_writes_only_when_bytes_differ(tmp_path):
     p = tmp_path / "sub" / "f.txt"
     assert _put(p, "one\n") is True
