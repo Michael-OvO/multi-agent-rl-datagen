@@ -246,10 +246,10 @@ existing `malformed` / `blocked` / `errors` keys.
 
 **Signal chip.** `runStats` counts episodes whose answer is the sentinel;
 `renderSignals` adds a `warn` chip *"N stopped by the world"* that sets
-`issueFilter = "stopped"` exactly as the other chips do. Disjoint from the
-three existing counts by construction -- it is an outcome, and
-`countMalformed`, `countErrors` and `blocked` never read the answer. Appears
-only when non-zero.
+`issueFilter = "stopped"` exactly as the other chips do. Disjoint at the call
+level from `countMalformed`/`countErrors`, which never read the answer; at
+the run level (§9C) one run may appear under several chips, and the chips
+are not meant to sum. Appears only when non-zero.
 
 **Episode view.** The run bar's facts line gains `judge parse <b>…</b>` when
 `judge_parse` is present and nothing when absent. Under the verdict panel,
