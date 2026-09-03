@@ -20,8 +20,7 @@ assert more than their data shows.
 ## Surfaces
 
 - `trajectory_viewer.html` — the one visual surface: a single-file,
-  no-dependency, offline viewer of episode trajectories, shipped-task
-  verifier breakdowns, and sweep evidence. Mode: Operate. Its committed
+  no-dependency, offline viewer of episode trajectories, shipped tasks with their campaign episodes and verifier breakdowns, and sweep evidence. Mode: Operate. Its committed
   visual world is the proceedings/booktabs evidence page (see DESIGN.md).
 - Everything else is CLI and files.
 

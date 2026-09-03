@@ -229,9 +229,9 @@ yet cleared the floor. The next run is a control that succeeds, not more cells.
 | `forge/gaia2/` | the pipeline: `mine` (rosters and seams from gold write actions via state provenance) · `structure` (DAG depth, width, delegation targets) · `render` (constraint cells, one knob each) · `runtime` (Main + specialists with the WAIT verb Gaia2's simulated clock requires) · `credit` (partial credit and pivot annotation) · `are_world` (adapter over the official harness; needs `.venv-gaia2`, see below) · `harbor` + `cli` (packaging) |
 | `forge/abilities.py` | the three trainable abilities (discovery, context transfer, delegation economy), each pinned to one constraint knob; yield per ability |
 | `forge/models.py` | model classes and the parity rule: a specialist below the Main's model class refuses to run, in the sweep and in the shipped sidecar alike; overridable only by an explicit flag (`--allow-sub-downgrade`, or `MAF_ALLOW_SUB_DOWNGRADE=1` in a task's compose) so a downgrade is always a labelled experiment |
-| `trajectory_viewer.html` | single-page viewer — one file, no server; carries an index of every episode, every task with its Harbor runs, every evidence file, and the current campaign's transcripts; files can be dropped on it or picked; the producers refresh it |
+| `trajectory_viewer.html` | single-page viewer — one file, no server; carries an index of every episode, every task with its campaign episodes and Harbor runs, every evidence file, and the current campaign's transcripts; files can be dropped on it or picked; the producers refresh it |
 | `forge/maf/` | the earlier from-scratch forge; `parallel-scheduling` ships, two dimensions are quarantined (below) |
-| `tasks/` | rendered Harbor tasks |
+| `tasks/` | rendered Harbor tasks; for Gaia2, the whole campaign grid — one task per cell, written by the campaign before it runs and by `python -m forge.gaia2.cli render --all`; `tasks/MANIFEST.json` lists it, and a task whose shipped runtime, contract or judge parse lags the source fails `forge/tests/test_gaia2_tasks_current.py` |
 | `sweep/` | measurement evidence — one file per claim |
 | `scripts/` | the probes that produced it |
 | `skills/` | **the method** — canonical, substrate-independent, and the failure modes it was built from |
@@ -347,7 +347,7 @@ Each run writes a full trajectory to `output/rollouts/`, judged by Gaia2's own
 write-action verifier (scripted by default; `--judge-model` runs the official
 soft judge). Open `trajectory_viewer.html`: it carries its own snapshot -- an
 index of every episode ever run, with verdict, judge, parse, stop facts and
-shaping signals; every task under `tasks/` with its Harbor runs linked; and
+shaping signals; every task under `tasks/` with its campaign episodes and Harbor runs linked, and a stale badge on any Gaia2 task rendered from an older runtime; and
 the full transcripts of the current campaign -- and the campaign, summary and
 credit commands below refresh that snapshot themselves when they finish.
 Older campaigns' transcripts open through the page's **open files** picker.
