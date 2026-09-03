@@ -199,3 +199,21 @@ def test_the_summary_and_credit_probes_refresh_after_writing_their_evidence():
         assert "from scripts.embed_logs import try_refresh" in src, name
         assert "try_refresh(args.label)" in src, name
         assert src.index("dest.write_text(") < src.index("try_refresh(args.label)"), name
+
+
+# -- the campaign renders every cell before it runs any -----------------------
+
+
+def test_the_campaign_renders_the_grid_after_the_dry_run_return_and_before_any_job():
+    src = (_SCRIPTS / "gaia2_campaign.py").read_text()
+    assert "from forge.gaia2.harbor import render_grid" in src
+    call = src.index("render_grid(grid, ROOT / \"tasks\")")
+    dry = src.index("if args.dry_run:")
+    assert dry < call, "--dry-run must return before anything is rendered"
+    assert call < src.index("def run_one"), "render before the pool is built"
+    assert "--no-render" not in src, "rendering is not optional"
+
+
+def test_the_campaign_reports_what_it_rendered():
+    src = (_SCRIPTS / "gaia2_campaign.py").read_text()
+    assert 'print(f"rendered {len(rendered)} tasks under tasks/")' in src

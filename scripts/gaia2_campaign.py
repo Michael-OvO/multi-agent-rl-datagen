@@ -12,8 +12,11 @@ deterministic scripted judge.
 
 Resumable by construction: every run writes its own labelled, timestamped
 trajectory, and a cell whose trajectory for this label already exists is
-skipped -- kill the campaign and relaunch it freely. `--dry-run` prints the
-work list and prices nothing.
+skipped -- kill the campaign and relaunch it freely. Before running, the
+campaign renders every cell of the grid as a Harbor task under `tasks/`
+(`forge.gaia2.harbor.render_grid`), so the shipped tasks are always the
+cells that were measured. `--dry-run` prints the work list, renders nothing
+and prices nothing.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from pathlib import Path
 
 from forge.abilities import Ability
 from forge.gaia2.grid import cells
+from forge.gaia2.harbor import render_grid
 from scripts.embed_logs import try_refresh
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,6 +93,12 @@ def main() -> None:
         for sid, label, soft, _ in jobs:
             print(f"  {sid:34} {label:18} judge={'soft' if soft else 'scripted'}")
         return
+
+    # The shipped form follows the measured form: every cell in this grid,
+    # done or not, is rendered from the same scenario and constraints it
+    # runs under, so tasks/ cannot lag what the campaign measured.
+    rendered = render_grid(grid, ROOT / "tasks")
+    print(f"rendered {len(rendered)} tasks under tasks/")
 
     def run_one(job):
         sid, label, soft, cmd = job
