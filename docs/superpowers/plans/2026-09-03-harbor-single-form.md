@@ -1070,9 +1070,12 @@ _ids = [r["name"] for r in _rows]
 
 def test_the_manifest_exists_and_names_the_grid():
     assert MANIFEST.exists(), f"tasks/MANIFEST.json is missing -- {FIX}"
-    assert _rows == sorted(_rows, key=lambda r: r["name"])
-    assert all(set(r) == {"name", "scenario_id", "config", "soft_judge"} for r in _rows)
-    assert len(_rows) >= 100, "the grid is 132 cells; a manifest this short is a partial render"
+    assert _rows == sorted(_rows, key=lambda r: r["name"]), (
+        f"tasks/MANIFEST.json is not sorted by name -- {FIX}")
+    assert all(set(r) == {"name", "scenario_id", "config", "soft_judge"} for r in _rows), (
+        f"a MANIFEST.json row has keys other than name, scenario_id, config, soft_judge -- {FIX}")
+    assert len(_rows) >= 100, (
+        f"the grid is 132 cells; a manifest of {len(_rows)} rows is a partial render -- {FIX}")
 
 
 def test_every_manifest_entry_is_a_task_and_every_gaia2_task_is_an_entry():
