@@ -13,7 +13,7 @@ person holding the full context.
 from pathlib import Path
 from types import SimpleNamespace
 
-from scripts.gaia2_campaign import eligible
+from forge.gaia2.grid import eligible
 from scripts.gaia2_campaign_summary import summarize
 
 _SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"

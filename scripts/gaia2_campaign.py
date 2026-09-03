@@ -19,57 +19,16 @@ work list and prices nothing.
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from forge.abilities import Ability, config_for
-from forge.appworld.partition import control_for
-from forge.gaia2.mine import admit
+from forge.abilities import Ability
+from forge.gaia2.grid import cells
 from scripts.embed_logs import try_refresh
 
 ROOT = Path(__file__).resolve().parents[1]
 GAIA2_PY = ROOT / ".venv-gaia2" / "bin" / "python"
-
-#: None is the OPEN control; the rest are the one-knob ability cells.
-GRID = (None, Ability.DISCOVERY, Ability.CONTEXT_TRANSFER,
-        Ability.DELEGATION_ECONOMY)
-
-
-def eligible(span, scripted_only: bool) -> bool:
-    """Admission, plus the optional judge-uniform restriction.
-
-    `--scripted-only` exists because the grader is welded to the scenario:
-    reply-conditioned scenarios can only run under the soft judge, and in the
-    v3 campaign that judge's column was all zeros -- so every cross-arm
-    comparison rode on the 5 of 37 scenarios the deterministic verifier
-    grades. A seed spent under this flag buys 20 cells that can actually
-    move, instead of 148 of which 128 are structurally pinned to zero.
-    """
-    if not (span.usable and span.seamful):
-        return False
-    if span.roster_blind:
-        # The partition provably omits a fact the gold writes consume (see
-        # mine.BlindFact): every seat is locked out of it, so every episode
-        # is a guaranteed failure. v4 bought four of these on one scenario.
-        return False
-    return not (scripted_only and span.reply_conditioned)
-
-
-def scenario_paths() -> dict[str, Path]:
-    """Every unique seamful scenario with a fetched file, mini first."""
-    seen: dict[str, Path] = {}
-    for cells_file, split in (("sweep/gaia2_cells.json", "mini"),
-                              ("sweep/gaia2_cells_adaptability.json", "adaptability")):
-        for cell in json.loads((ROOT / cells_file).read_text()):
-            sid = cell["scenario_id"]
-            if sid in seen:
-                continue
-            path = ROOT / "gaia2_data" / split / f"{sid}.json"
-            if path.exists():
-                seen[sid] = path
-    return seen
 
 
 def main() -> None:
@@ -104,36 +63,26 @@ def main() -> None:
     if args.economy_target is not None and args.economy_target < 1:
         ap.error("--economy-target must be positive")
 
+    grid = cells(ROOT, scripted_only=args.scripted_only,
+                 economy_target=args.economy_target,
+                 economy_target_offset=args.economy_target_offset)
     jobs = []
     skipped = 0
-    for sid, path in sorted(scenario_paths().items()):
-        span = admit(json.loads(path.read_text()))
-        if not eligible(span, args.scripted_only):
+    for cell in grid:
+        existing = list((ROOT / args.out).glob(
+            f"gaia2__{cell.scenario_id}__{cell.constraints.label}*__{args.label}__*.json"))
+        if existing:
+            skipped += 1
             continue
-        soft = span.reply_conditioned
-        economy_target = (
-            args.economy_target
-            if args.economy_target is not None
-            else max(1, span.delegation_target + args.economy_target_offset)
-        )
-        for ability in GRID:
-            config = (control_for(span.roster) if ability is None
-                      else config_for(ability, span.roster,
-                                      budget_target=economy_target))
-            existing = list((ROOT / args.out).glob(
-                f"gaia2__{sid}__{config.label}*__{args.label}__*.json"))
-            if existing:
-                skipped += 1
-                continue
-            cmd = [str(GAIA2_PY), "-m", "scripts.gaia2_cell_run",
-                   "--scenario", str(path),
-                   "--ability", "control" if ability is None else ability.value,
-                   "--label", args.label, "--out", args.out]
-            if ability is Ability.DELEGATION_ECONOMY:
-                cmd += ["--economy-target", str(economy_target)]
-            if soft:
-                cmd += ["--judge-model", args.judge_model]
-            jobs.append((sid, config.label, soft, cmd))
+        cmd = [str(GAIA2_PY), "-m", "scripts.gaia2_cell_run",
+               "--scenario", str(cell.scenario_path),
+               "--ability", "control" if cell.ability is None else cell.ability.value,
+               "--label", args.label, "--out", args.out]
+        if cell.ability is Ability.DELEGATION_ECONOMY:
+            cmd += ["--economy-target", str(cell.economy_target)]
+        if cell.soft_judge:
+            cmd += ["--judge-model", args.judge_model]
+        jobs.append((cell.scenario_id, cell.constraints.label, cell.soft_judge, cmd))
 
     print(f"{len(jobs)} cells to run ({skipped} already done, resumed past)")
     if args.dry_run:

@@ -10,6 +10,8 @@ harness; import name `are.simulation`). The layers here:
   * `are_world.py` -- the world adapter over the official harness. Needs the
     dedicated environment (`.venv-gaia2` locally, the sidecar image in a
     shipped task); nothing here imports it.
+  * `grid.py` -- the campaign grid (scenarios x configurations), defined once
+    for the campaign, the render command and the drift guard.
   * `harbor.py` + `cli.py` -- render admitted scenarios into Harbor tasks.
 """
 
