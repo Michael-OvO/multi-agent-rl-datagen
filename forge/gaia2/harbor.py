@@ -26,12 +26,14 @@ holds for any substrate whose sidecar speaks the protocol.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 
 from forge.appworld.harbor import _difficulty
 from forge.appworld.partition import Constraints, Topology, Visibility
+from forge.gaia2.judge_parse import JUDGE_PARSE_VERSION
 from forge.gaia2.runtime import (
     OBJECTIVE_ACTION_CONTRACT,
     OBJECTIVE_ACTION_CONTRACT_VERSION,
@@ -175,6 +177,58 @@ exit 1
 """
 
 
+def derive_token(scenario_id: str, label: str) -> str:
+    """The verifier token for one cell, derived rather than drawn.
+
+    It gates only the sidecar's /state endpoint and sits in the task
+    directory in the clear, so randomness bought nothing except a diff on
+    every re-render. Deriving it from the cell and the two versions that
+    define what the task measures makes a re-render of an unchanged cell a
+    no-op and a contract or parse change visible in the token itself.
+    """
+    seed = (f"{scenario_id}|{label}|{OBJECTIVE_ACTION_CONTRACT_VERSION}"
+            f"|{JUDGE_PARSE_VERSION}")
+    return hashlib.sha256(seed.encode()).hexdigest()[:32]
+
+
+def runtime_digest() -> str:
+    """Content digest of everything a task ships verbatim, in manifest order.
+
+    Changes when and only when a shipped source changes; the drift test and
+    the viewer read it against each task's provenance.json.
+    """
+    h = hashlib.sha256()
+    for dest, src in VERBATIM_COPIES.items():
+        h.update(dest.encode())
+        h.update(b"\0")
+        h.update(Path(src).read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _put(path: Path, text: str) -> bool:
+    """Write `text` to `path` only if the bytes differ. Returns True if it
+    wrote. A re-render then produces a git diff of exactly what changed."""
+    data = text.encode()
+    if path.exists() and path.read_bytes() == data:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return True
+
+
+def provenance(scenario_id: str, constraints: Constraints) -> dict:
+    """What a task was rendered from: the cell, and the versions of the
+    three things that decide what it measures."""
+    return {
+        "scenario_id": scenario_id,
+        "config": constraints.label,
+        "objective_action_contract": OBJECTIVE_ACTION_CONTRACT_VERSION,
+        "judge_parse": JUDGE_PARSE_VERSION,
+        "runtime_digest": runtime_digest(),
+    }
+
+
 def write_task(
     scenario_path: str | Path,
     scenario_id: str,
@@ -198,32 +252,33 @@ def write_task(
         "delegation_target": constraints.delegation_budget,
     }
 
-    (task_dir / "task.toml").write_text(_TASK_TOML.format(
+    _put(task_dir / "task.toml", _TASK_TOML.format(
         label=label, scenario_id=scenario_id,
         roster="+".join(constraints.roster),
         difficulty=_difficulty(constraints)))
 
-    (task_dir / "instruction.md").write_text(render_instruction(constraints))
+    _put(task_dir / "instruction.md", render_instruction(constraints))
 
     env = task_dir / "environment"
-    (env / "docker-compose.yaml").write_text(_COMPOSE.format(
+    _put(env / "docker-compose.yaml", _COMPOSE.format(
         config_json=json.dumps(config), token=token))
-    (env / "Dockerfile").write_text(_MAIN_DOCKERFILE)
+    _put(env / "Dockerfile", _MAIN_DOCKERFILE)
 
     # The world itself. Byte-identical to the fetched scenario file, so a
     # reviewer can diff a shipped task against the dataset.
-    (env / "scenario.json").write_text(Path(scenario_path).read_text())
+    _put(env / "scenario.json", Path(scenario_path).read_text())
 
     for dest, src in VERBATIM_COPIES.items():
-        target = task_dir / dest
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(src.read_text())
+        _put(task_dir / dest, Path(src).read_text())
 
-    (task_dir / "tests" / "verifier_token.txt").write_text(token)
-    (task_dir / "tests" / "test.sh").write_text(
-        "#!/bin/bash\nmkdir -p /logs/verifier\npython3 /tests/verify.py\n")
+    _put(task_dir / "tests" / "verifier_token.txt", token)
+    _put(task_dir / "tests" / "test.sh",
+         "#!/bin/bash\nmkdir -p /logs/verifier\npython3 /tests/verify.py\n")
 
-    (task_dir / "solution" / "solve.sh").write_text(_SOLVE_NO_REFERENCE)
+    _put(task_dir / "solution" / "solve.sh", _SOLVE_NO_REFERENCE)
+
+    _put(task_dir / "provenance.json",
+         json.dumps(provenance(scenario_id, constraints), indent=1) + "\n")
 
     os.chmod(task_dir / "tests" / "test.sh", 0o755)
     os.chmod(task_dir / "solution" / "solve.sh", 0o755)
