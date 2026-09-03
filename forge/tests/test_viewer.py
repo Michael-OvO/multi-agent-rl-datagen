@@ -224,6 +224,10 @@ def test_the_signal_counters_do_not_double_report(viewer_html):
     Both counters walk the same events, so without an explicit exclusion the
     same call feeds the "malformed" chip and the "faulted" chip, and two
     chips a reader reads as disjoint silently overlap.
+
+    This guards the call-level exclusion that feeds the runs table's issues
+    column; since §9C the chips count runs, and a run with several kinds of
+    issue rightly appears under several chips.
     """
     fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", viewer_html, re.S)
     assert fn, "countErrors() is missing"
@@ -459,7 +463,458 @@ def test_the_ledger_header_escapes_both_of_its_sums(viewer_html):
             f"this sum reaches innerHTML unescaped: {s}")
 
 
+def test_verdict_panel_headings_and_prose_are_sized_off_the_type_scale(viewer_css):
+    """No rule exists for `h4`/`h5`/`ul`/`li`/`p` in the stylesheet, so
+    browser defaults apply inside `.verdict-panel` and an instruction's
+    `<h5>` renders smaller than its own body text (I4). Scoped so nothing
+    else on the page changes, and using only existing tokens."""
+    assert re.search(r"\.verdict-panel h4\s*\{", viewer_css), (
+        ".verdict-panel needs a sized h4 rule")
+    assert re.search(r"\.verdict-panel h5\s*\{", viewer_css), (
+        ".verdict-panel needs a sized h5 rule")
+
+
 def test_no_status_class_paints_nothing(viewer_css):
     """A colour rule whose every match overrides it is dead weight."""
     assert not re.search(r"^\s*\.bad \{", viewer_css, re.M), (
         ".bad's colour was inert -- every match overrode it")
+
+
+# -- the snapshot carries an index of every episode and the task pool ---------
+
+
+def test_the_snapshot_loader_adds_index_then_tasks_then_files(viewer_html):
+    """A full trajectory in `files` must replace the stub with the same path,
+    and addSession keeps the LATER entry -- so the index goes in first."""
+    source = viewer_source(viewer_html)
+    loader = re.search(r"function loadSnapshot\(\) \{(.*?)\n\}\)\(\);", source, re.S)
+    assert loader, "the loadSnapshot IIFE moved; update this test's anchor"
+    body = loader.group(1)
+    assert "snap.index" in body and "snap.tasks" in body and "snap.files" in body
+    assert body.index("snap.index") < body.index("snap.tasks") < body.index("snap.files")
+    assert "fullLabel = snap.full_label" in body
+
+
+def test_the_source_line_names_episodes_campaigns_tasks_and_the_full_label(viewer_html):
+    """Anchored inside loadSnapshot itself (I7): the embedded snapshot's
+    prose can contain these same substrings, so an unanchored search could
+    pass against transcript text rather than the source-line assembly."""
+    source = viewer_source(viewer_html)
+    loader = re.search(r"function loadSnapshot\(\) \{(.*?)\n\}\)\(\);", source, re.S)
+    assert loader, "the loadSnapshot IIFE moved; update this test's anchor"
+    body = loader.group(1)
+    assert "episodes across" in body
+    assert "} tasks" in body
+    assert "transcripts for" in body
+
+
+def test_index_stubs_and_the_campaign_selection_are_page_state(viewer_html):
+    source = viewer_source(viewer_html)
+    assert "let fullLabel = null;" in source
+    assert "let campaignSel = null;" in source
+
+
+def test_task_records_are_their_own_session_kind(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'if (data && data.kind === "forge-task") return "task";' in source
+    assert "task: 1" in re.search(r"const order = \{(.*?)\};", source).group(1)
+
+
+# -- a picked or dropped file replaces its index stub, not duplicates it -----
+
+
+def test_a_picked_file_resolves_against_a_known_stub_by_basename(viewer_html):
+    """`File.webkitRelativePath` is "" for a plain multi-file pick and for
+    `dataTransfer.files`, so a picked rollout must be resolved against a
+    known stub's path by basename before `addSession` de-duplicates by exact
+    `path` -- otherwise it lands as a second session instead of replacing
+    the stub (C1). Every breakdown shares the basename `breakdown.json`, so
+    the match must require exactly one hit."""
+    source = viewer_source(viewer_html)
+    fn = re.search(r"async function addFiles\(fileList\) \{(.*?)\n\}", source, re.S)
+    assert fn, "addFiles moved; update this test's anchor"
+    body = fn.group(1)
+    assert 's.path.endsWith("/" + base)' in body, (
+        "a picked basename must be resolved against known session paths")
+    assert "hits.length === 1" in body, (
+        "an ambiguous basename (e.g. every breakdown.json) must not resolve")
+
+
+def test_every_credit_field_the_viewer_reads_is_in_the_index_record(viewer_html):
+    """Builder and page must agree on the `credit` shape across languages.
+
+    A key the viewer reads via `d.credit.<key>` but `index_record` does not
+    copy into a stub renders as "undefined" -- exactly C2's bug, for whatever
+    key regresses next. Pins the two languages together by reading the
+    builder's own tuple rather than restating it here."""
+    source = viewer_source(viewer_html)
+    read_keys = set(re.findall(r"d\.credit\.([a-zA-Z_]+)", source))
+    assert read_keys, "no d.credit.<key> reads found; the anchor moved"
+    embed_src = (_ROOT / "scripts" / "embed_logs.py").read_text()
+    tup = re.search(
+        r'"credit":\s*\(\{k: credit\.get\(k\) for k in\s*\((.*?)\)\}',
+        embed_src, re.S)
+    assert tup, "index_record's credit tuple moved; update this test's anchor"
+    builder_keys = set(re.findall(r'"([a-zA-Z_]+)"', tup.group(1)))
+    missing = read_keys - builder_keys
+    assert not missing, (
+        f"the viewer reads d.credit.{missing} but embed_logs.py's "
+        "index_record never copies it into the stub")
+
+
+# -- readable across campaigns: one at a time by default ----------------------
+
+
+def test_the_runs_view_offers_a_campaign_picker_in_the_filter_line(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'id="campaignpick"' in source
+    assert "all campaigns" in source
+    header = re.search(r"<header>(.*?)</header>", viewer_html, re.S).group(1)
+    assert "campaignpick" not in header
+
+
+def test_the_picker_defaults_to_the_embedded_campaign(viewer_html):
+    source = viewer_source(viewer_html)
+    assert "campaignSel = fullLabel" in source
+    assert 'campaignSel === "*"' in source
+
+
+def test_the_picker_groups_campaigns_apart_from_one_run_probes(viewer_html):
+    """13 labels + '(unlabelled)' + 'all campaigns' as 15 flat entries is
+    unreadable when 8 of them are one-run probes; group with native
+    <optgroup> instead of hiding anything (picker ruling, option 1)."""
+    source = viewer_source(viewer_html)
+    assert "const CAMPAIGN_MIN_EPISODES = 10;" in source
+    assert '<optgroup label="campaigns">' in source
+    assert '<optgroup label="probes">' in source
+
+
+# -- which parse graded each verdict, and success by judge --------------------
+
+
+def test_the_grid_states_the_majority_parse_and_tags_only_departures(viewer_html):
+    source = viewer_source(viewer_html)
+    grid = re.search(
+        r"-- Table 1: the verdict matrix --\s*\*/(.*?)-- Table 2:", source, re.S)
+    assert grid, "the grid-building block moved; update this test's anchors"
+    body = grid.group(1)
+    assert "parseLabel(" in body and "majorityParse" in body
+    assert "badge(" in body and "verdictBadge(" not in body
+    assert "gaia2_v6_judge_parse.json" in body
+    assert "majorityParse === STOCK_PARSE" in body
+
+
+def test_the_parse_helpers_default_to_stock(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'const STOCK_PARSE = "stock";' in source
+    assert "const parseLabel = d => d.judge_parse || STOCK_PARSE;" in source
+
+
+def test_the_grid_note_states_success_by_judge_as_a_sentence(viewer_html):
+    source = viewer_source(viewer_html)
+    assert "judgeSentence" in source
+    assert "of ${c.total} passed" in source
+    assert '=== "scripted" ? 0 : 1' in source
+
+
+def test_rows_index_their_parse_for_the_search_box(viewer_html):
+    source = viewer_source(viewer_html)
+    row = re.search(r'data-text="\$\{esc\(JSON\.stringify\(\[(.*?)\]\)', source, re.S)
+    assert row, "the runs-table row's data-text moved"
+    assert "parseLabel(d)" in row.group(1)
+
+
+# -- whether the world ended the episode --------------------------------------
+
+
+def test_the_stop_helpers_read_the_instrumented_stop_row(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'const ENV_STOP = "(environment stopped)";' in source
+    assert "const wasStopped = d =>" in source
+    assert "function lastStop(d)" in source and '"time_passed" in ev[i]' in source
+    assert "return d.stop || null;" in source
+    assert "function endedCell(d)" in source
+    assert "world stopped at ${t}" in source
+
+
+def test_the_runs_table_has_an_ended_column_between_issues_and_answer(viewer_html):
+    source = viewer_source(viewer_html)
+    head = re.search(r"<th>issues</th>(.*?)<th>answer</th>", source, re.S)
+    assert head and "<th>ended</th>" in head.group(1)
+    assert "${endedCell(d)}" in source
+
+
+def test_stopped_is_a_disjoint_signal_with_its_own_chip(viewer_html):
+    source = viewer_source(viewer_html)
+    assert 'wasStopped(d) ? "stopped" : ""' in source
+    assert "let malformed = 0, blocked = 0, errors = 0, stopped = 0;" in source
+    assert 'key: "stopped", kind: "warn"' in source
+    assert "stopped by the world" in source
+    fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "answer" not in fn and "ENV_STOP" not in fn
+
+
+def test_count_errors_reads_a_precomputed_count_like_count_malformed(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", source, re.S).group(1)
+    assert 'if (typeof d.errors === "number") return d.errors;' in fn
+
+
+# -- the episode view: parse, stop line, and a stub for old campaigns ----------
+
+
+def _episode_fn(viewer_html: str) -> str:
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderEpisode\(content, s\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderEpisode moved"
+    return fn.group(1)
+
+
+def test_the_run_bar_names_the_parse_only_when_the_run_carries_one(viewer_html):
+    body = _episode_fn(viewer_html)
+    assert "d.judge_parse ? `<span>judge parse <b>" in body
+
+
+def test_a_stopped_episode_gets_a_world_stopped_group_in_the_signals_row(viewer_html):
+    body = _episode_fn(viewer_html)
+    assert "if (wasStopped(d)) {" in body
+    assert 'class="grp" title="${esc(String(st.reason || ""))}"' in body
+    assert "simulated seconds used" in body
+    assert "no clock recorded for this run" in body
+
+
+def test_an_index_stub_renders_a_summary_and_no_transcript(viewer_html):
+    body = _episode_fn(viewer_html)
+    stub = re.search(r"if \(d\.index_only\) \{(.*?)\n    return;\n  \}", body, re.S)
+    assert stub, "renderEpisode needs an index_only branch that returns early"
+    assert 'class="abstract"' in stub.group(1)
+    assert "open files" in stub.group(1)
+    assert body.index("if (d.index_only) {") < body.index('list.className = "transcript";')
+
+
+# -- an evidence file's summary, above its rows --------------------------------
+
+
+def test_a_sweep_file_s_summary_renders_above_its_table(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderSweeps\(content\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "s.data.summary" in fn
+    assert 'class="note summary"' in fn
+    assert "slice(0, 160)" in fn
+    assert fn.index('class="note summary"') < fn.index("const draw = () =>")
+
+
+# -- the task pool: every task, and every run of it --------------------------
+
+
+def test_tasks_is_the_second_section(viewer_html):
+    source = viewer_source(viewer_html)
+    secs = re.search(r"const SECTIONS = \[(.*?)\];", source, re.S).group(1)
+    assert '["runs", "Runs"], ["tasks", "Tasks"]' in secs.replace("\n", "").replace("  ", " ")
+    assert 'if (tab === "tasks") return renderTasks(content);' in source
+    assert 'if (s.kind === "task") return renderTaskDetail(content, s);' in source
+
+
+def test_the_tasks_table_names_what_a_task_is_and_who_it_may_use(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderTasks\(content\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderTasks is missing"
+    body = fn.group(1)
+    for col in ("task", "substrate", "configuration", "target", "roster",
+                "difficulty", "contract", "runs"):
+        assert f"<th>{col}</th>" in body, col
+    assert "family" in body and "verdictBadge(" not in body, (
+        "the runs cell is a count, not a badge; a substrate is a word, not a colour")
+    assert 'wireSearch(fbar, trs, "tasks")' in body, (
+        "the tasks table shares the search helper rather than copying the filter block")
+    assert "function wireSearch(fbar, trs, noun)" in source
+
+
+def test_a_task_detail_renders_its_instruction_as_prose_and_its_runs(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderTaskDetail\(content, s\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderTaskDetail is missing"
+    body = fn.group(1)
+    assert "mdLite(" in body
+    assert "family match" in body
+    assert "verdictBadge(" in body, "each run's verdict is a badge"
+    assert 'contract <b class="mono">' in body and "d.contract_version" in body, (
+        "the bare word 'contract' also matches prose in a task's own "
+        "instruction text; anchor on the fact-line markup instead (I7)")
+    assert "sessions.findIndex(" in body, "a run row opens its breakdown ledger by path"
+
+
+def test_render_breakdowns_shares_the_search_helper(viewer_html):
+    """renderBreakdowns' inline filter block had become a verbatim copy of
+    wireSearch; sharing it is the fix (Minor). renderRuns keeps its own
+    inline block -- it is genuinely different code and stays untouched."""
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderBreakdowns\(content\) \{(.*?)\n\}", source, re.S)
+    assert fn, "renderBreakdowns is missing"
+    body = fn.group(1)
+    assert 'wireSearch(fbar, trs, "runs")' in body
+    assert "fbar.addEventListener(\"input\", apply)" not in body, (
+        "the inline copy of wireSearch should be gone from renderBreakdowns")
+
+
+def test_substrate_names_is_defined_once_at_module_level(viewer_html):
+    """`NAMES` was defined identically inside both renderTasks and
+    renderTaskDetail; hoisted to one module-level SUBSTRATE_NAMES (Minor)."""
+    source = viewer_source(viewer_html)
+    assert source.count('const SUBSTRATE_NAMES = {appworld: "AppWorld", '
+                         'gaia2: "Gaia2", "parallel-scheduling": '
+                         '"parallel-scheduling"};') == 1
+    tasks_fn = re.search(r"function renderTasks\(content\) \{(.*?)\n\}", source, re.S).group(1)
+    detail_fn = re.search(r"function renderTaskDetail\(content, s\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "const NAMES = " not in tasks_fn
+    assert "const NAMES = " not in detail_fn
+    assert "SUBSTRATE_NAMES[d.substrate]" in tasks_fn
+    assert "SUBSTRATE_NAMES[d.substrate]" in detail_fn
+
+
+def test_md_lite_escapes_before_it_marks_up(viewer_html):
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function mdLite\(text\) \{(.*?)\n\}", source, re.S)
+    assert fn, "mdLite is missing"
+    body = fn.group(1)
+    assert body.index("esc(") < body.index("<h4>")
+    assert 'class="mono"' in body and "<b>" in body and "<ul>" in body
+
+
+def test_md_lite_folds_an_indented_continuation_into_its_bullet(viewer_html):
+    """A bullet's indented continuation line must extend the `<li>`, not
+    close the list and open an orphan paragraph carrying its raw indent
+    (I3) -- checked before `if (list) flush();` runs."""
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function mdLite\(text\) \{(.*?)\n\}", source, re.S)
+    assert fn, "mdLite is missing"
+    body = fn.group(1)
+    assert r"/^\s+\S/.test(raw)" in body, (
+        "mdLite must detect an indented continuation line before flushing "
+        "the open list")
+    assert body.index(r"/^\s+\S/.test(raw)") < body.index("if (list) flush();"), (
+        "the continuation check must run before the list-closing branch")
+
+
+# -- §9A: the Runs tab reads as one thing -------------------------------------
+
+
+def _runs_fn(viewer_html: str) -> str:
+    source = viewer_source(viewer_html)
+    fn = re.search(r"function renderRuns\(content\) \{(.*?)\n\}\n", source, re.S)
+    assert fn, "renderRuns moved"
+    return fn.group(1)
+
+
+def test_the_runs_tab_says_what_its_grid_answers(viewer_html):
+    body = _runs_fn(viewer_html)
+    lede = body.index('<p class="lede">Every verdict for the chosen campaign')
+    assert "whether a knob bit against the control" in body
+    assert lede < body.index('id="campaignpick"') < body.index("-- Table 1: the verdict matrix --"), (
+        "lede, then the picker on its own line, then the grid")
+
+
+def test_the_run_list_is_a_drawer_under_the_grid(viewer_html):
+    source = viewer_source(viewer_html)
+    body = _runs_fn(viewer_html)
+    assert "let runsDrawerOpen = false;" in source
+    assert 'drawer.className = "drawer";' in body
+    assert "drawer.open = runsDrawerOpen || !!issueFilter || !!pendingQuery;" in body
+    assert "drawer.appendChild(fbar);" in body and "drawer.appendChild(twrap);" in body
+    assert "content.appendChild(twrap);" not in body
+    # The reader's preference is read from the summary's click, never from
+    # `toggle`: a programmatic open fires `toggle` too and would latch it.
+    assert 'drawer.querySelector("summary").addEventListener("click"' in body
+    assert "runsDrawerOpen = !drawer.open;" in body
+    assert 'addEventListener("toggle"' not in body
+    # rindex: "pendingQuery = null;" also appears earlier, in the campaign
+    # picker's change handler (a reset, not the consumption this pin covers).
+    assert body.index("drawer.open = runsDrawerOpen") < body.rindex("pendingQuery = null;"), (
+        "the drawer's open state must be read before the pending query is consumed")
+
+
+def test_the_drawer_summary_hides_the_native_marker_with_the_palette_s_muted(viewer_css):
+    assert re.search(r"details\.drawer > summary\s*\{[^}]*list-style: none", viewer_css)
+    assert re.search(r"details\.drawer > summary::-webkit-details-marker\s*\{[^}]*display: none", viewer_css)
+    assert re.search(r"details\.drawer > summary::before\s*\{[^}]*var\(--muted\)", viewer_css)
+    assert "details.drawer[open] > summary::before" in viewer_css
+
+
+# -- §9B: one mark per cell ----------------------------------------------------
+
+
+def test_a_cell_with_many_runs_shows_one_mark_and_a_count(viewer_html):
+    source = viewer_source(viewer_html)
+    grid = re.search(
+        r"-- Table 1: the verdict matrix --\s*\*/(.*?)-- Table 2:", source, re.S).group(1)
+    assert "runs.length === 1" in grid
+    assert 'class="xref tag count"' in grid and "data-scenario=" in grid
+    assert "runs · ${passed} pass" in grid
+    assert "runlab" not in source, "the per-mark run labels are retired"
+    assert "A cell that holds more than one run shows its newest verdict and a count" in grid
+    assert "mark(runs[runs.length - 1])" in grid, "the cell shows the NEWEST run's verdict"
+    assert "runs.filter(s => s.data.verdict && s.data.verdict.success).length" in grid
+
+
+def test_the_count_tag_opens_the_drawer_on_that_scenario(viewer_html):
+    body = _runs_fn(viewer_html)
+    assert 'wrap.querySelectorAll("a[data-scenario]")' in body
+    assert "pendingQuery = shortScenario(a.dataset.scenario)" in body
+    assert "pendingQuery = shortScenario(a.dataset.scenario); render();" in body
+
+
+def test_the_runlab_rule_is_gone(viewer_css):
+    assert ".runlab" not in viewer_css
+
+
+# -- §9C: signal chips count runs and say so ----------------------------------
+
+
+def test_run_stats_counts_runs_not_calls(viewer_html):
+    source = viewer_source(viewer_html)
+    body = re.search(r"function runStats\(eps\) \{(.*?)\n\}", source, re.S).group(1)
+    assert "if (countMalformed(s.data)) malformed++;" in body
+    assert "if (s.data.blocked) blocked++;" in body
+    assert "if (countErrors(s.data)) errors++;" in body
+    assert "if (wasStopped(s.data)) stopped++;" in body
+
+
+def test_the_signal_row_leads_in_and_labels_every_chip_in_runs(viewer_html):
+    source = viewer_source(viewer_html)
+    body = re.search(r"function renderSignals\(content, stats\) \{(.*?)\n\}", source, re.S).group(1)
+    assert '<span class="lab">issues in this campaign</span>' in body
+    assert "with malformed line" in body and "with blocked call" in body
+    assert "with faulted tool call" in body and "stopped by the world" in body
+    assert "const runs = n =>" in body, "one helper pluralises 'run'"
+
+
+def test_the_signal_lead_in_uses_the_credit_label_style(viewer_css):
+    assert re.search(r"\.credit \.lab, \.signals \.lab\s*\{[^}]*var\(--muted\)", viewer_css)
+
+
+# -- §9D: task detail, runs first ---------------------------------------------
+
+
+def test_a_task_detail_leads_with_its_runs_and_folds_the_instruction_open(viewer_html):
+    source = viewer_source(viewer_html)
+    body = re.search(r"function renderTaskDetail\(content, s\) \{(.*?)\n\}", source, re.S).group(1)
+    assert body.index("Harbor runs of this task") < body.index("mdLite("), "runs before the instruction"
+    assert 'inst.className = "drawer";' in body and "inst.open = true;" in body
+    assert "Instruction" in body and "what the Main is told" in body
+    assert 'panel.className = "verdict-panel";' in body
+    assert "inst.appendChild(panel);" in body and "content.appendChild(inst);" in body
+
+
+# -- §9E: one signals row on an episode ---------------------------------------
+
+
+def test_the_episode_header_has_one_signals_row(viewer_html):
+    body = _episode_fn(viewer_html)
+    assert body.count('className = "credit"') == 1, "shaping signals and the stop facts share one row"
+    assert 'sig.className = "credit";' in body
+    assert body.count('<span class="grp"') >= 2
+    assert "if (groups) {" in body
+
+
+def test_signal_groups_lay_out_as_one_row(viewer_css):
+    assert re.search(r"\.credit \.grp\s*\{[^}]*inline-flex", viewer_css)

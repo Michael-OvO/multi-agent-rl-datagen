@@ -10,10 +10,13 @@ pooled numbers in that shape were misread twice in one sitting, by the
 person holding the full context.
 """
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from scripts.gaia2_campaign import eligible
 from scripts.gaia2_campaign_summary import summarize
+
+_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
 
 def span(usable=True, seamful=True, reply_conditioned=False, roster_blind=()):
@@ -175,3 +178,24 @@ def test_the_blind_refusal_names_each_missing_fact_once():
     finally:
         import os
         os.unlink(path)
+
+
+# -- the producers refresh the viewer themselves ---
+
+
+def test_the_campaign_refreshes_the_viewer_after_its_pool_and_never_on_dry_run():
+    src = (_SCRIPTS / "gaia2_campaign.py").read_text()
+    assert "from scripts.embed_logs import try_refresh" in src
+    assert "try_refresh(args.label)" in src
+    assert src.index("campaign complete") < src.index("try_refresh(args.label)")
+    dry = src.index("if args.dry_run:")
+    assert dry < src.index("try_refresh(args.label)")
+    assert "return" in src[dry:src.index("def run_one")], "--dry-run must return early"
+
+
+def test_the_summary_and_credit_probes_refresh_after_writing_their_evidence():
+    for name in ("gaia2_campaign_summary.py", "gaia2_credit_probe.py"):
+        src = (_SCRIPTS / name).read_text()
+        assert "from scripts.embed_logs import try_refresh" in src, name
+        assert "try_refresh(args.label)" in src, name
+        assert src.index("dest.write_text(") < src.index("try_refresh(args.label)"), name

@@ -17,6 +17,8 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from scripts.embed_logs import try_refresh
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -142,6 +144,7 @@ def main() -> None:
     dest = ROOT / "sweep" / f"gaia2_{args.label}_campaign.json"
     dest.write_text(json.dumps(out, indent=1))
     print(f"wrote {dest.relative_to(ROOT)} ({len(rows)} cells)")
+    try_refresh(args.label)
     for t, s in summary.items():
         print(f"  {t}: {s}")
 

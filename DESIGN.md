@@ -178,11 +178,13 @@ nothing in this document should be read as reviving them.
 
 One thing from the earlier redesign survives unchanged and must keep
 surviving: **the loading model.** The page carries its own data. A JSON
-snapshot of every log artifact sits in the `#embedded-logs` block, so opening
-the file *is* the workflow. Files may also be dropped on the page or chosen
-through the "open files" picker. The File System Access folder connection was
-retired and must not come back — no permission prompt stands in front of the
-data.
+snapshot sits in the `#embedded-logs` block -- an index of every episode ever
+run, every task in the pool with its runs linked, every evidence file, and the
+full transcripts of the current campaign -- so opening the file *is* the
+workflow, and the producers refresh it when they finish. Files may also be
+dropped on the page or chosen through the "open files" picker. The File
+System Access folder connection was retired and must not come back — no
+permission prompt stands in front of the data.
 
 **Key characteristics**
 - Status by three channels at once: colour, icon, word.
@@ -235,7 +237,8 @@ theme scopes, but nothing on the shipped page paints a bare warn mark: no rule
 reads `var(--warn)` and nothing calls `badge("warn", …)`. Warning reaches the
 reader as fill plus text instead — `--warn-tint` behind `--warn-ink` on the
 signal chips, and `--warn-ink` alone on the `.warn-text` counts (blocked,
-malformed, faulted, the pivot flag, the shipped-task failure count). That is
+malformed, faulted, the pivot flag, the shipped-task failure count, the
+runs table's `ended` cell). That is
 deliberate: the light value is sub-3:1, so warning is never asked to carry
 meaning as a mark on its own.
 
@@ -295,7 +298,7 @@ model names, tool-call signatures, file paths, extracted calls, and code.
 - **Table** 13.5px body, 12px / 500 `--muted` headers in sentence case.
 - **Transcript** 13px matter, 11.5px / 600 speaker label with a 10.5px
   timestamp beneath it.
-- **Status** 12px / 600 in badges and chips; `.tag` and `.runlab` 11px.
+- **Status** 12px / 600 in badges and chips; `.tag` 11px.
 - **Mono** 11–11.5px everywhere it appears.
 
 `font-variant-numeric: tabular-nums` is set once, on `body`. Every figure the
@@ -312,18 +315,24 @@ A single centred column: `max-width: 1080px`, padding `40px 40px 120px`
 
 The **header** is the page title, two quiet actions ("open files", "theme"),
 and a one-line source statement in `--muted` naming where the loaded data came
-from. Under it, three text tabs on a hairline baseline — Runs, Shipped-task
-runs, Evidence files — the active one bold with a 2px `--ink` underline.
+from. Under it, four text tabs on a hairline baseline — Runs, Tasks,
+Shipped-task runs, Evidence files — the active one bold with a 2px `--ink`
+underline.
 
 The **Runs view**, in order:
 
 1. `Runs` section heading.
-2. The **failure-signal chips** — malformed protocol lines, blocked calls,
+2. The **lede** — one sentence saying what the grid answers: every verdict
+   for the chosen campaign, by scenario and configuration.
+3. The **campaign picker**, on its own line: it governs everything below it.
+4. The **failure-signal chips** — malformed protocol lines, blocked calls,
    faulted tool calls, worst scenario. Each is a button; clicking filters the
-   table below. A chip that would read zero is not rendered at all.
-3. The **verdict grid** — scenarios down, configurations across, a badge per
+   run list below. A chip that would read zero is not rendered at all.
+5. The **verdict grid** — scenarios down, configurations across, a badge per
    run, with its legend above and its explanatory note below.
-4. The **all-runs table** — filter line, then every run newest first.
+6. The **run list** — a `details.drawer`, closed by default, opened by any
+   filter the reader sets and remembering the reader's own toggle; inside it,
+   the filter line, then every run newest first.
 
 **Shipped-task runs** and **Evidence files** follow the same shape: heading,
 lede, panel title, filter line, table.
@@ -349,13 +358,18 @@ legend and the transcript rail.
 
 **Tag** (`.tag`) — a hairline outline pill in `--ink-2`, no fill, no colour. It
 qualifies the thing before it: which judge scored this run, which re-run this
-mark is. Being colourless is the point — a tag is a footnote, not a status.
+mark is — and, on a grid cell holding several runs, how many and how many
+passed, as a link that opens the run list on that scenario. Being colourless
+is the point — a tag is a footnote, not a status.
 
 **Signal chip** (`.signal`) — a button pill. Neutral chips sit on `--surface`
 with a hairline border; `warn` and `fail` chips take their tint and `-ink` and
 drop the border. Active chips carry the shared focus outline (`.on`). Clicking
 a chip filters the runs table; clicking the "worst scenario" chip seeds the
-search box with that scenario instead.
+search box with that scenario instead. Every chip counts **runs** — the unit
+a click filters to — and the row opens with a `.lab` lead-in naming the
+campaign it describes; the per-call counts live in the runs table's issues
+column, where a reader can see which run they belong to.
 
 **Panel title + legend** — a 14px/650 line naming the table and a 12.5px `.sub`
 saying what a click does, then, for the verdict grid, a legend of dot + word
@@ -403,10 +417,22 @@ a hairline border and 7px radius, the running count flush right in `--muted`
 compose: text, verdict, ability,
 judge, and whichever signal chip is active.
 
+**Drawer** (`details.drawer`) — the page's disclosure component wearing a
+panel title. The native marker is hidden and a `▸`/`▾` glyph in `--muted`
+stands before the title; the `.panel-title` inside the summary is inlined
+with no margin. Two sites use it: the run list under the grid (closed by
+default, opened by any active filter) and a task's instruction (open by
+default). Bare `<details>` elsewhere — the matching-attempts log, a task's
+file list — stays undecorated on purpose: those are appendices, not
+sections.
+
 **Empty state** (`.abstract`) — when the snapshot is empty, one 66ch block that
 names the cause and the fix (`uv run python -m scripts.embed_logs`) and offers
 drag-and-drop. Each view has its own version for "loaded, but nothing of this
-kind".
+kind". The same class carries a second role: an index stub's episode view
+renders an `.abstract` block reading *"Transcript not in this copy"*, naming
+the campaign the page carries in full and inviting the reader to open or
+drop the file it names, which replaces the stub.
 
 **Motion** — one authored moment: `#content` settles on every navigation
 (`settle 0.22s cubic-bezier(0.16, 1, 0.3, 1)`, a fade from `translateY(4px)`),

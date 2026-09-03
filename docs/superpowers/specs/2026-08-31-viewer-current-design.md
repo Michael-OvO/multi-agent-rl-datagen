@@ -1,7 +1,7 @@
 # The viewer tracks every result itself: index, tasks, auto-refresh, and the truth about Gaia2
 
 Date: 2026-08-31
-Status: approved design (revised twice), pending spec review
+Status: approved design (revised three times; §9 added on the first use of the page)
 
 ## Context
 
@@ -65,6 +65,12 @@ current, not updating while watched, and the no-server rule stands.
 8. **Every task in the pool is on the page** -- the ten directories under
    `tasks/` today -- with what it is, what it asks, who the Main may delegate
    to, which contract it shipped with, and every Harbor run of it, linked.
+9. **Each tab reads as one thing.** Michael's first use of the built page
+   (2026-08-31) asked why the Runs tab shows the same runs twice; the answer
+   -- the grid is the experiment, the list is the operations view -- was not
+   on the page. §9 makes the relationship visible, and applies the same
+   discipline to the grid at "all campaigns", the signal chips, the task
+   detail and the episode header.
 
 ## Non-goals
 
@@ -97,7 +103,7 @@ runs view reads, plus what a stub detail view needs:
     answer (first 160 chars), verdict {success, rationale (first 1,200
     chars)}, stop {time_passed, duration, env_state} from the last
     instrumented stop event or null, credit {partial_reward, coverage,
-    fidelity, pivot, pivot_kind} or null
+    fidelity, gold_total, pivot, pivot_kind} or null
 
 **`tasks`** -- one record per directory under `tasks/`, sorted by name:
 
@@ -151,8 +157,15 @@ model.
 `files`, all through `addSession(name, path, data)`. Index records carry
 `kind: "gaia2-episode"`, so `byKind("episode")` returns stubs and full
 trajectories alike; `addSession` de-duplicates by `path` and keeps the later
-entry, so a full trajectory embedded for the current label, or a file dropped
-or picked later, **replaces its stub with no further logic**. Task records
+entry, so a full trajectory embedded for the current label **replaces its
+stub with no further logic** -- it carries the same `output/rollouts/<name>`
+path. A file dropped or picked, though, arrives with `File.webkitRelativePath`
+empty (a plain multi-file pick and a folder drop both leave it blank), so
+`addFiles` resolves the bare basename against the known sessions first --
+`hits = sessions.filter(s => s.path.endsWith("/" + base))` -- and reuses that
+stub's full path only when exactly one stub matches; every breakdown shares
+the basename `breakdown.json`, so an ambiguous basename keeps its bare name
+instead of collapsing every candidate onto one session. Task records
 carry `kind: "forge-task"`; `detect()` gains one line mapping that to the
 session kind `"task"`, and `sortSessions` gains it to its order. `sourceLine`
 becomes *"snapshot of 2026-08-31 14:10 · 613 episodes across 6 campaigns ·
@@ -164,16 +177,30 @@ reads `events`, and §5 gives it a stub branch.
 
 ### 3. Readable across campaigns: the campaign picker
 
-The runs view's existing `.filterline` gains a first control, a `<select>`
-labelled *campaign*, listing every label in the index newest first plus
-*"all campaigns"*. It defaults to `full_label`. The verdict grid, the signal
-chips, the judge sentence and the runs table all compute from the selected
-set. It is a filter in the filter line, not a header action: the header's two
-actions are pinned by test and stay two.
+The runs view gains a `<select>` labelled *campaign*, listing every label in
+the index newest first plus *"all campaigns"*. It defaults to `full_label`.
+The verdict grid, the signal chips, the judge sentence and the runs table all
+compute from the selected set. Because it governs the whole tab, it sits on
+its own control line directly under the tab's lede (§9A), above everything
+it changes -- not inside the runs table's filter line, and not in the header,
+whose two actions are pinned by test and stay two.
 
-With *"all campaigns"* selected, the grid's cells hold one mark per run as
-today, and the existing rule -- a `.runlab` label beside a mark only when its
-cell holds more than one run -- is what keeps that readable.
+Flat, the list is unreadable once most labels are one-run probes (measured:
+13 labels + *"(unlabelled)"* + *"all campaigns"* = 15 entries, 8 of them
+one-off). The `<select>` groups its options with native `<optgroup>`
+instead of hiding any of them: a label with at least `CAMPAIGN_MIN_EPISODES`
+(10) episodes falls under a *"campaigns"* group, everything under that
+count -- including *"(unlabelled)"* when it appears -- falls under a
+*"probes"* group, and *"all campaigns"* sits outside both groups, last.
+Every label stays selectable; nothing is hidden or removed.
+
+With *"all campaigns"* selected, a cell may hold many runs (measured: 149 of
+174 occupied cells, up to 11 in one). A cell holding more than one run shows
+**one** mark -- the newest run's verdict badge -- followed by a colourless
+`.tag` reading *"5 runs · 3 pass"*; clicking the badge opens the newest run,
+clicking the tag opens the runs list (§9A) filtered to that scenario. A cell
+with one run is unchanged. The per-mark `.runlab` labels are retired: the
+annotation now lands only where the exception is (§9B).
 
 ### 4. The parse stamp, and success by judge
 
@@ -219,24 +246,25 @@ existing `malformed` / `blocked` / `errors` keys.
 
 **Signal chip.** `runStats` counts episodes whose answer is the sentinel;
 `renderSignals` adds a `warn` chip *"N stopped by the world"* that sets
-`issueFilter = "stopped"` exactly as the other chips do. Disjoint from the
-three existing counts by construction -- it is an outcome, and
-`countMalformed`, `countErrors` and `blocked` never read the answer. Appears
-only when non-zero.
+`issueFilter = "stopped"` exactly as the other chips do. Disjoint at the call
+level from `countMalformed`/`countErrors`, which never read the answer; at
+the run level (§9C) one run may appear under several chips, and the chips
+are not meant to sum. Appears only when non-zero.
 
 **Episode view.** The run bar's facts line gains `judge parse <b>…</b>` when
 `judge_parse` is present and nothing when absent. Under the verdict panel,
-when the answer is the sentinel, one line in the `.credit` component reads
+when the answer is the sentinel, a second labelled group in the episode's
+single signals row (§9E) reads
 
 > world stopped · **956** of **1000** simulated seconds used · STOPPED
 
-with the environment's `reason` in the line's `title`; or *"world stopped ·
+with the environment's `reason` in the group's `title`; or *"world stopped ·
 no clock recorded for this run"* when `stop` is null. Absent when the episode
 answered.
 
 **Stub branch.** When `s.data.index_only` is true, `renderEpisode` renders the
 run bar, the verdict panel (from the index's truncated rationale, through
-`parseRationale` as today), the shaping-signals line, the stop line, and then
+`parseRationale` as today), the signals row, and then
 -- in place of the transcript -- one `.abstract` block: *"This copy of the page
 carries the transcript only for the v6 campaign. Open
 `output/rollouts/<file>` with **open files**, or drop it here, and it replaces
@@ -289,15 +317,17 @@ not a status.
 **`renderTaskDetail`** -- a run bar with the task name and a `.tag` for its
 substrate, and a facts line: configuration, target, difficulty, category,
 contract version, verifier and agent timeouts, and whether a scenario file is
-present. Then the instruction, rendered as prose through a minimal
+present. Then the description as a lede. Then a table of the task's Harbor
+runs: batch, when, verdict badge, partial, delegations, answer, and a `.tag`
+*"family match"* on family-linked rows; clicking a row opens that run's
+breakdown ledger (the session whose `path` equals the run's `path`, found at
+click time). Then the instruction, inside a disclosure that is **open by
+default** (§9D) -- it is the one thing that defines a task, so it folds only
+if the reader folds it -- rendered as prose through a minimal
 markdown-to-HTML step that handles `#`/`##`/`###` headings, `-` bullets,
 blank-line paragraphs, `**bold**` and `` `code` `` (as `.mono`), everything
 escaped first -- monospace is for code spans, never for the prose. Then a
-table of the task's Harbor runs: batch, when, verdict badge, partial,
-delegations, answer, and a `.tag` *"family match"* on family-linked rows;
-clicking a row opens that run's breakdown ledger (the session whose `path`
-equals the run's `path`, found at click time). Then a `.path` line and the
-`files` list behind a disclosure.
+`.path` line and the `files` list behind a disclosure.
 
 The section surfaces one fact deliberately: the contract version is shown
 verbatim from the shipped `instruction.md`. Today every Gaia2 task says
@@ -305,10 +335,64 @@ verbatim from the shipped `instruction.md`. Today every Gaia2 task says
 re-rendered after commits `c6ac10e` and `4cc8e14`. The page shows that drift;
 fixing it is a separate re-render, not a display change.
 
+### 9. The readability pass
+
+Five changes, each inside `DESIGN.md`'s rules -- a status is colour, icon and
+word through `badge()`; a `.tag` is colourless; no tiles, cards or hero
+figures; disclosures are an existing component (transcript calls, matching
+attempts, task files); monospace only for code-like tokens; no new colour
+tokens.
+
+**A. The Runs tab reads as one thing.** Under the *Runs* heading, a `.lede`:
+*"Every verdict for the chosen campaign, by scenario and configuration --
+read across a row to see whether a knob bit against the control. **126**
+runs; each is listed below."* The campaign picker follows on its own
+`.filterline` (§3). Then the signal chips (§9C), then the grid. The *All
+runs* table, with its search and filters, lives inside a `<details
+class="drawer">` whose `<summary>` is styled as a panel title -- *every run --
+newest first, filterable (126)* -- closed by default. Any filter the reader
+sets opens it: a signal chip, a grid count tag, a pending search. A
+module-level `runsDrawerOpen` remembers the reader's own toggle across
+re-renders. The summary hides the browser's marker and paints `▸`/`▾` in
+`--muted` before the title.
+
+**B. One mark per cell.** §3's rule: a cell holding more than one run shows
+the newest run's badge (with its judge/parse tags as today) and a `.tag`
+*"N runs · P pass"* that opens the drawer with that scenario as the search
+query. `.runlab` and its CSS are removed. The grid note's sentence *"Two
+marks in one cell are the same run under both judges"* becomes *"A cell that
+holds more than one run shows its newest verdict and a count; the count opens
+the list below, filtered to that scenario."*
+
+**C. Signal chips count runs.** The row begins with a `.lab` lead-in *"issues
+in this campaign"*, and every chip counts **runs** -- the unit a click
+filters to: *"12 runs with malformed lines"*, *"3 runs with blocked calls"*,
+*"9 runs with faulted tool calls"*, *"31 runs stopped by the world"*, and the
+*worst scenario* chip as today. `runStats` counts episodes that have at
+least one of the issue; `countMalformed`/`countErrors` keep counting calls
+for the runs table's *issues* column and the run bar. Singular/plural
+follows the count.
+
+**D. Task detail, runs first.** Run bar, description lede, the Harbor runs
+table (or *"none under jobs/"*), then the instruction inside a
+`<details class="drawer" open>` whose summary reads *Instruction -- what the
+Main is told*, then the `.path` line and the files disclosure.
+
+**E. One signals row on an episode.** Run bar, verdict panel, then **one**
+`.credit` row made of labelled groups (`<span class="grp">`): the shaping
+signals when `credit` is present, and the world-stopped facts when the answer
+is the sentinel, with `reason` as that group's `title`. The row is absent when
+neither applies. Three blocks before the transcript instead of four.
+
 ### Edge cases
 
-- **A picked or dropped file for an episode already embedded in full**: the
-  later `addSession` wins, as today.
+- **A picked or dropped file for an episode already embedded in full, or
+  already an index stub**: `addFiles` resolves the incoming basename against
+  the known sessions (`s.path.endsWith("/" + base)`) and reuses that
+  session's path only when exactly one stub matches; once resolved to the
+  same `path`, the later `addSession` wins as before. An ambiguous basename
+  (several stubs ending in the same name) falls back to the bare name and
+  arrives as a new session instead of colliding with the wrong stub.
 - **An index record and no matching file on disk** (a rollout deleted after
   the snapshot): the stub renders and its `.abstract` block names a path the
   picker will not find; the reader sees the record, not an error.
@@ -368,7 +452,25 @@ Tests first, watched failing, in `forge/tests/test_viewer.py` and a new
   table with a `family match` tag; `mdLite` escapes before it marks up;
 - each of the three producers calls `try_refresh(args.label)` after its
   output is written, and `gaia2_campaign`'s call is unreachable from
-  `--dry-run`.
+  `--dry-run`;
+- (§9A) the Runs tab's source has the lede before the picker, the picker
+  (`id="campaignpick"`) before the `-- Table 1` block, a `details.drawer`
+  that receives the filter line and the runs table, and a module-level
+  `runsDrawerOpen`; the stylesheet has `details.drawer > summary` rules that
+  hide the native marker and add none of the palette;
+- (§9B) the grid block has a `runs.length === 1` branch and a count `.tag`
+  carrying `data-scenario`; `runlab` appears nowhere in the source or the
+  stylesheet; the note carries the rewritten count sentence;
+- (§9C) `runStats` counts runs (`if (countMalformed(s.data)) malformed++`
+  and likewise for `blocked`, `errors`, `stopped`); `renderSignals` emits the
+  `issues in this campaign` lead-in and labels of the form `N runs with …`;
+  the pre-existing `stopped by the world` and `key: "stopped"` assertions
+  keep passing;
+- (§9D) in `renderTaskDetail` the runs table precedes `mdLite(` in source
+  order and the instruction sits in a `details.drawer` with `open` set;
+- (§9E) `renderEpisode` assigns `className = "credit"` exactly once, and the
+  row's groups carry `class="grp"`, with the stop group's `title` bound to
+  `st.reason`.
 
 Then: full suite green; `ruff check forge scripts` clean; contrast validator
 untouched and passing; `uv run python -m scripts.embed_logs` producing a page

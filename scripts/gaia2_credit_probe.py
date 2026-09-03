@@ -22,6 +22,7 @@ from pathlib import Path
 
 from forge.gaia2.credit import assess, split_for_replay
 from forge.gaia2.runtime import zero_call_census
+from scripts.embed_logs import try_refresh
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -136,6 +137,7 @@ def main() -> None:
     dest = dest_for(args.label)
     dest.write_text(json.dumps(out, indent=1))
     print(f"annotated {len(rows)} trajectories; wrote {dest.relative_to(ROOT)}")
+    try_refresh(args.label)
     for t, s in summary.items():
         if t == "zero_call_reports":
             print(f"  zero-call reports: {s['fabrications_flagged']} flagged "
