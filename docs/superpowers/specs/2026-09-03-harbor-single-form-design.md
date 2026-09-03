@@ -11,10 +11,12 @@ spec and the plan written from it:
    campaign keeps running cells in-process for measurement, and every cell
    it runs is also rendered as a Harbor task from the same runtime, in the
    same run.
-2. **Every cell of the grid is rendered and tracked in git.** 132 tasks,
-   roughly 2.8 MB each, about 370 MB under `tasks/`.
-3. **Only Gaia2. AppWorld is discarded.** Its paid evidence is archived,
-   not deleted.
+2. **Every cell of the Gaia2 grid is rendered and tracked in git.** 132
+   tasks, roughly 2.8 MB each, about 370 MB under `tasks/`.
+3. **AppWorld stays as it is.** Its package, tasks, run logs, sweep files
+   and tests are untouched. An earlier draft of this design removed it; that
+   was withdrawn because it saves almost nothing (9 MB of tasks, 1.2 MB of
+   logs) next to the Gaia2 grid this design adds.
 
 ## Why
 
@@ -50,103 +52,27 @@ and to make a stale task a test failure.
   `sweep/gaia2_cells.json` and `sweep/gaia2_cells_adaptability.json` with a
   fetched file: 33 scenarios × 4 = 132 cells. A cell's task name is
   `gaia2-{config.label}-{scenario_id}`; the control label is
-  `open-docs-binf`.
+  `open-docs-binf`. The grid logic lives only in `scripts/gaia2_campaign.py`
+  (`scenario_paths()`, `eligible()`, and the job-building loop in `main()`).
 - `write_task(scenario_path, scenario_id, constraints, out_dir, token)` in
   `forge/gaia2/harbor.py` is the renderer's only entry. `token` is drawn from
   `secrets.token_hex(16)` per render, lands in
   `environment/docker-compose.yaml` (`MAF_VERIFIER_TOKEN`) and
   `tests/verifier_token.txt`, so two renders of the same cell never match.
-- The Gaia2 runtime imports from the AppWorld package exactly:
-  `forge.appworld.partition` (`Constraints`, `Topology`, `Visibility`,
-  `control_for`), `forge.appworld.runtime` (`chat`, `execution_feedback`,
-  `NO_ANSWER`, `OUT_OF_STEPS`), and, via `forge/abilities.py`,
-  `forge.appworld.validity` (`Cell`, `Yield`, `is_control`). The renderer
-  imports `forge.appworld.harbor._difficulty` and ships
-  `forge/appworld/container/verify.py` as the task verifier. The sidecar
-  `Dockerfile.sidecar` copies `maf_appworld` to `/opt/maf/forge/appworld` so
-  those imports resolve inside the container; `SIDECAR_APPWORLD_MODULES =
-  ("__init__.py", "partition.py", "runtime.py", "sandbox.py")`, where
-  `sandbox.py` (823 lines) is pulled in only because `appworld/runtime.py`
-  imports it at module level. `chat` uses `DEFAULT_MODEL`, `_RETRYABLE`,
-  `_NO_TEMPERATURE` and `require_specialist_parity` from `forge.models`;
-  `execution_feedback` uses nothing but builtins.
-- AppWorld evidence: `jobs/` (288 tracked files, 1.2 MB, eleven Harbor job
-  directories, all AppWorld) and twelve `sweep/appworld_*.json` files.
-  `WRITEUP.md` mentions AppWorld 45 times, mostly in §4 "What is built" and
-  §7; `docs/iteration_three_abilities.md` 11 times. README, PRODUCT and
-  DESIGN mention it zero times.
+  `VERBATIM_COPIES` maps every destination the task receives byte-for-byte to
+  its source; `test_gaia2_harbor.py` guards that map on one fixture render.
+- `python -m forge.gaia2.cli render --scenario <path>` renders one scenario's
+  three ability cells (not the control cell) with random tokens.
+- A trajectory record carries `scenario_id`, `label` (the campaign), and
+  `config` (the constraint label, e.g. `open-docs-binf`, `star-docs-b6`).
 - The viewer's task index (`scripts/embed_logs.py: task_record`) reads
   `task.toml` and `instruction.md` and attaches Harbor runs found under
   `jobs/**/verifier/breakdown.json` through `link_runs`. All 22 linked runs
-  are AppWorld.
+  are AppWorld; no Gaia2 task has a Harbor run.
 
 ## Design
 
-### 1. `forge/team/`: what both the campaign and a shipped task need
-
-A new substrate-neutral package. Every file is a move, not a rewrite; the
-plan verifies by diff that moved code is byte-identical except for import
-lines.
-
-| New file | Provenance | Contents |
-|---|---|---|
-| `forge/team/partition.py` | `forge/appworld/partition.py`, verbatim, plus `difficulty()` | `Constraints`, `Topology`, `Visibility`, `control_for`, `Constraints.label`; `difficulty(c)` is `_difficulty` from `forge/appworld/harbor.py`, renamed public |
-| `forge/team/validity.py` | `forge/appworld/validity.py`, verbatim | `Cell`, `Yield`, `is_control` and whatever else the module holds |
-| `forge/team/chat.py` | extracted from `forge/appworld/runtime.py` | `DEFAULT_MODEL`, `_RETRYABLE`, `_NO_TEMPERATURE`, `chat`, `execution_feedback`, `NO_ANSWER`, `OUT_OF_STEPS`; imports `require_specialist_parity` from `forge.models` and nothing from any sandbox |
-| `forge/team/verify.py` | `forge/appworld/container/verify.py`, verbatim | the Harbor verifier that computes nothing and reads the sidecar's `/state` |
-| `forge/team/__init__.py` | new, docstring only | names the package's purpose: the team protocol shared by every substrate |
-
-Import sites that change: `forge/gaia2/runtime.py`, `forge/gaia2/render.py`,
-`forge/abilities.py`, `forge/gaia2/harbor.py`, `scripts/gaia2_campaign.py`,
-`scripts/gaia2_cell_run.py`, and every surviving test that imports from
-`forge.appworld`. After this step `grep -rn "forge.appworld" forge scripts`
-returns nothing.
-
-### 2. AppWorld is removed
-
-Deleted outright:
-
-- `forge/appworld/` (the whole package, including `container/`).
-- `tasks/appworld-star-docs-binf-2a163ab_{1,2,3}` and
-  `tasks/appworld-star-names-binf-2a163ab_{1,2,3}`.
-- `scripts/appworld_knob_sweep.py`, `scripts/appworld_injection_probe.py`,
-  `scripts/watch_episode.py` (bound to the AppWorld runtime).
-- Test files whose every `forge.*` import is from `forge.appworld` or from a
-  deleted script: `test_appworld_harbor.py`, `test_appworld_partition.py`,
-  `test_appworld_reference.py`, `test_appworld_runtime.py`,
-  `test_appworld_sandbox.py`, `test_appworld_select.py`,
-  `test_appworld_sidecar.py`, `test_appworld_team_client.py`,
-  `test_seams.py`, `test_knob_sweep.py`.
-
-Rule for the remaining test files that mention AppWorld
-(`test_abilities.py`, `test_environment.py`, `test_docs_honesty.py`,
-`test_honest_failure.py`, `test_validity.py`, `test_embed_logs.py`,
-`test_gaia2_harbor.py`, `test_gaia2_runtime.py`): a file is deleted only if
-every `forge.*` import it takes is from `forge.appworld` or a deleted script;
-otherwise its imports are repointed at `forge.team` and any test that
-exercised AppWorld-only behaviour is removed from it. `test_validity.py`
-moves with its module and becomes `test_team_validity.py`.
-
-Archived, content untouched, with `git mv`:
-
-- `jobs/` → `archive/appworld/jobs/`.
-- `sweep/appworld_*.json` (twelve files) → `archive/appworld/sweep/`.
-- `archive/appworld/README.md`, new: what these are, that they are paid
-  rollouts and the only record of what those Harbor runs did, and the date
-  of the move.
-
-`WRITEUP.md` and `docs/iteration_three_abilities.md` keep their AppWorld
-history. Each section that cites an archived path gets one sentence at its
-top: "AppWorld artifacts were archived under `archive/appworld/` on
-2026-09-03; the paths below resolve there." Every path either document cites
-must still resolve after the move; the plan checks this with a script over
-backticked paths, and the docs-honesty test if it already does so.
-
-`.gitignore` loses its `appworld_data/` entry and comment. `forge/maf/`, the
-`forge gen` command, `forge/factory/` and `tasks/parallel-scheduling-0003`
-are out of scope and untouched.
-
-### 3. Rendering is deterministic and folded into the campaign
+### 1. Rendering is deterministic
 
 **Token.** `forge/gaia2/harbor.py` gains
 `derive_token(scenario_id: str, label: str) -> str` returning
@@ -162,7 +88,7 @@ that reads the existing bytes first and writes only when they differ. A
 re-render of an unchanged cell touches nothing; a re-render after a runtime
 change produces a git diff of exactly the files whose content changed.
 
-**Provenance.** Each task gets `provenance.json` at its root:
+**Provenance.** Each Gaia2 task gets `provenance.json` at its root:
 
 ```json
 {
@@ -170,31 +96,48 @@ change produces a git diff of exactly the files whose content changed.
   "config": "star-docs-binf",
   "objective_action_contract": "objective-actions-v3",
   "judge_parse": "case-insensitive-v1",
-  "runtime_digest": "<sha256 over the bytes of every VERBATIM_COPIES source, in manifest order>"
+  "runtime_digest": "3f1c…"
 }
 ```
 
-`runtime_digest` is content-addressed, so it changes when and only when the
-shipped runtime changes. `runtime_digest()` is a public function in
-`forge/gaia2/harbor.py` so the drift test and the viewer compute the same
-value.
+`runtime_digest` is `runtime_digest()`, a public function in
+`forge/gaia2/harbor.py`: the sha256 over the bytes of every
+`VERBATIM_COPIES` source, concatenated in manifest order. It is
+content-addressed, so it changes when and only when the shipped runtime
+changes. The drift test and the viewer call the same function.
 
-**Sidecar manifest.** `SIDECAR_APPWORLD_MODULES` becomes
-`SIDECAR_TEAM_MODULES = ("__init__.py", "partition.py", "chat.py")`, shipped
-to `environment/maf_team/`; `Dockerfile.sidecar` line 41 becomes
-`COPY maf_team /opt/maf/forge/team`; `tests/verify.py` is copied from
-`forge/team/verify.py`. `validity.py` is not shipped: nothing in the sidecar
-imports it. The sandbox stops travelling.
+### 2. The grid lives in one place
 
-**Grid in one place.** `forge/gaia2/grid.py` gains
-`cells(root: Path, scripted_only: bool = False, economy_target: int | None = None, economy_target_offset: int = 0) -> list[Cell]`
-where `Cell` is a dataclass `(scenario_id, scenario_path, constraints, soft)`.
-It is the current body of `scripts/gaia2_campaign.py`'s `scenario_paths()`,
-`eligible()` and the job-building loop, moved. The campaign and the render
-command both call it, so they cannot disagree about what the grid is.
+`forge/gaia2/grid.py`, new, provides
 
-**Manifest.** Rendering the grid also writes `tasks/MANIFEST.json`, tracked:
-a list of `{"name", "scenario_id", "config", "soft_judge"}` for every cell,
+```python
+@dataclass(frozen=True)
+class Cell:
+    scenario_id: str
+    scenario_path: Path
+    constraints: Constraints
+    soft_judge: bool
+
+    @property
+    def task_name(self) -> str:  # "gaia2-{constraints.label}-{scenario_id}"
+
+def cells(root: Path, *, scripted_only: bool = False,
+          economy_target: int | None = None,
+          economy_target_offset: int = 0) -> list[Cell]
+```
+
+Its body is the current `scenario_paths()`, `eligible()` and job-building
+loop of `scripts/gaia2_campaign.py`, moved without change of behaviour: the
+same two cell files, the same admission, the same `GRID`, the same economy
+target arithmetic. The campaign, the render command and the drift test all
+call it, so they cannot disagree about what the grid is. The campaign's
+`--dry-run` listing and its "already done" skip keep working on the `Cell`
+objects.
+
+### 3. Rendering is folded into the campaign
+
+**Manifest.** Rendering the grid writes `tasks/MANIFEST.json`, tracked: a
+list of `{"name", "scenario_id", "config", "soft_judge"}` for every cell,
 sorted by name. It is the grid as rendered, readable on a clone that has no
 `gaia2_data`.
 
@@ -202,14 +145,14 @@ sorted by name. It is the grid as rendered, readable on a clone that has no
 for every cell returned by `cells()`, including cells skipped as already
 done, the campaign calls `write_task` with the derived token into
 `ROOT / "tasks"` before submitting any job, then writes the manifest. There
-is no flag to skip rendering. `--dry-run` still lists cells and renders
-nothing.
+is no flag to skip rendering. `--dry-run` lists cells and renders nothing.
 
 **The render command.** `python -m forge.gaia2.cli render --all` renders the
-whole grid and the manifest without running anything, with the same
+whole grid and the manifest without running anything, taking the same
 `--scripted-only`, `--economy-target` and `--economy-target-offset` options
-the campaign takes. The existing single-scenario `render --scenario` form
-stays and uses the derived token.
+the campaign takes. The existing `render --scenario <path>` form stays,
+renders the four grid cells for that scenario (it renders three today; the
+control cell is added so the two forms agree), and uses the derived token.
 
 **Re-render of the three stale tasks.** The first `render --all` on this
 branch replaces `tasks/gaia2-*-scenario_universe_30_68r6vs` with current
@@ -223,62 +166,65 @@ is a symlink to the main checkout's directory, which is an ignored path.
 
 - `tasks/MANIFEST.json` exists; every entry names a directory under
   `tasks/`; every `tasks/gaia2-*` directory is an entry.
-- For every task: each `VERBATIM_COPIES` destination equals its source
+- For every Gaia2 task: each `VERBATIM_COPIES` destination equals its source
   byte-for-byte (the guard that exists today, applied to every shipped task
   rather than one fixture render).
-- For every task: `instruction.md` contains `OBJECTIVE_ACTION_CONTRACT` and
-  `OBJECTIVE_ACTION_CONTRACT_VERSION`; `provenance.json` carries the current
-  contract version, the current `JUDGE_PARSE_VERSION`, and a
+- For every Gaia2 task: `instruction.md` contains `OBJECTIVE_ACTION_CONTRACT`
+  and `OBJECTIVE_ACTION_CONTRACT_VERSION`; `provenance.json` carries the
+  current contract version, the current `JUDGE_PARSE_VERSION`, and a
   `runtime_digest` equal to `runtime_digest()`.
-- For every task, only when `gaia2_data` is present: `environment/scenario.json`
-  is byte-identical to the dataset file.
-- `tests/verifier_token.txt` equals `derive_token(scenario_id, config)`.
+- For every Gaia2 task: `tests/verifier_token.txt` equals
+  `derive_token(scenario_id, config)`.
+- For every Gaia2 task, only when `gaia2_data` is present:
+  `environment/scenario.json` is byte-identical to the dataset file.
 
-Change the runtime without re-rendering and the suite goes red; the message
-names the command that fixes it. `test_gaia2_harbor.py` keeps its
-fixture-based tests, repointed at `forge.team` where needed.
+Change the runtime without re-rendering and the suite goes red; the
+assertion message names `python -m forge.gaia2.cli render --all` as the fix.
+`test_gaia2_harbor.py` keeps its fixture-based tests. AppWorld tasks are not
+covered by this test; they keep the tests they have.
 
 ### 5. The viewer follows the tasks
 
 In `scripts/embed_logs.py`:
 
-- `link_runs` and the `jobs/` walk are removed.
-- `task_record` reads `provenance.json` when present and records
-  `judge_parse`, `runtime_digest`, and `current: bool` (digest equals
-  `runtime_digest()` computed at snapshot time); a task without a provenance
-  file records nulls and `current: false`.
+- `link_runs` stays for Harbor runs under `jobs/`.
 - New `link_trajectories(index_rows, tasks)`: a trajectory belongs to a task
-  when its `scenario_id` equals the task's and its `config` field, which the
-  cell runner stamps with the constraint label (`open-docs-binf`,
-  `star-docs-b6`, ...), equals the task's config.
-  Each task's `runs` becomes a list grouped by campaign label:
-  `{"label", "episodes", "passes", "judge_parse"}`.
+  when its `scenario_id` equals the task's and its `config` field equals the
+  task's config. Each Gaia2 task's `campaigns` field becomes a list grouped by
+  campaign label: `{"label", "episodes", "passes", "judge_parse"}`, newest
+  label first.
+- `task_record` reads `provenance.json` when present and records
+  `judge_parse`, `runtime_digest`, and `current` (true when the digest equals
+  `runtime_digest()` computed at snapshot time, false when it differs, null
+  when there is no provenance file, as for AppWorld tasks).
 
 In `trajectory_viewer.html`, under the existing DESIGN.md rules:
 
-- The Tasks tab lists the Gaia2 tasks with their per-campaign episode and
-  pass counts, linking each count to the runs it stands for.
+- A Gaia2 task shows its per-campaign episode and pass counts, each count
+  linking to the runs it stands for. The existing Harbor-runs list stays for
+  tasks that have runs.
 - A task whose `current` is false carries a badge, colour plus icon plus the
-  word "stale", and the lede states how many tasks are stale and the command
-  that re-renders them.
-- `SUBSTRATE_NAMES` drops AppWorld; the Harbor-runs drawer that showed
-  `jobs/` breakdowns is removed.
+  word "stale"; a task whose `current` is null carries nothing. The Tasks
+  lede states how many tasks are stale and names the render command.
+- The task list gains a substrate filter with the values already in
+  `SUBSTRATE_NAMES`, so the 132 Gaia2 tasks and the AppWorld tasks can be
+  viewed apart. Default: all.
 
-`README.md` and `PRODUCT.md`: the `tasks/` row reads "the rendered grid, one
-Harbor task per campaign cell, written by the campaign and by
-`forge.gaia2.cli render --all`; a stale task fails the suite"; the AppWorld
-archive gets one line. `DESIGN.md` is unchanged unless the stale badge needs
-a token it does not have; the existing badge vocabulary is expected to
-suffice.
+`README.md` and `PRODUCT.md`: the `tasks/` row reads "rendered Harbor tasks;
+for Gaia2, the whole campaign grid, one task per cell, written by the
+campaign and by `forge.gaia2.cli render --all`; a stale task fails the
+suite". `DESIGN.md` is unchanged unless the stale badge needs a token it
+does not have; the existing badge vocabulary is expected to suffice.
 
 ### 6. Order of work and constraints
 
-1. `forge/team/` and the import repoint, suite green.
-2. AppWorld deletion and archive, suite green, docs paths resolve.
-3. Deterministic renderer, provenance, manifest, `grid.py`, render command.
-4. Campaign fold-in.
-5. Drift test; then `render --all` producing the 132 tasks, committed.
-6. Viewer and docs.
+1. Deterministic renderer: `derive_token`, write-if-changed, `provenance.json`,
+   `runtime_digest()`.
+2. `forge/gaia2/grid.py`; campaign and render command call it; manifest;
+   `render --all`.
+3. Campaign fold-in.
+4. Drift test; then `render --all` producing the 132 tasks, committed.
+5. Viewer and docs.
 
 Constraints that bind every task:
 
@@ -292,15 +238,17 @@ Constraints that bind every task:
   from the worktree. Gaia2 runtime code that touches `are.*` is never
   imported under that interpreter. Ruff must stay clean. The viewer's script
   must parse under `osascript -l JavaScript`.
-- Moved code is moved, not rewritten: the plan checks each move with a diff
-  that ignores import lines.
+- Moved code is moved, not rewritten: the plan checks the grid move with a
+  diff that ignores import lines and names.
 - No new `--` design tokens in the viewer; badges are colour plus icon plus
   word; the page stays one self-contained file.
+- Nothing under `forge/appworld/`, `tasks/appworld-*`, `jobs/` or
+  `sweep/appworld_*` changes.
 
 ### 7. Out of scope
 
 - Running the rendered tasks with the Harbor tool.
 - A gate that decides which cells are worth training on.
+- Removing or relocating anything AppWorld.
 - `forge/maf/`, `forge/factory/`, the `forge gen` command and the
   `parallel-scheduling-0003` task.
-- Rewriting the AppWorld history in `WRITEUP.md` beyond the archive note.
