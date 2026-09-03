@@ -292,3 +292,40 @@ def test_a_render_after_a_runtime_change_touches_only_what_changed(tmp_path, mon
     changed = {p.relative_to(task).as_posix()
                for p, t in stamps.items() if p.stat().st_mtime_ns != t}
     assert changed == {"environment/server.py", "provenance.json"}
+
+
+# -- the grid as rendered -----------------------------------------------------
+
+from forge.gaia2.grid import Cell  # noqa: E402
+from forge.gaia2.harbor import render_grid, write_manifest  # noqa: E402
+
+
+def _cell(tmp_path, sid, constraints, soft):
+    p = tmp_path / f"{sid}.json"
+    p.write_text(json.dumps({"scenario_id": sid}))
+    return Cell(sid, p, None, constraints, soft, 4)
+
+
+def test_the_manifest_lists_every_cell_sorted_by_name(tmp_path):
+    names = Constraints(roster=("Cabs", "Calendar"), topology=Topology.STAR,
+                        visibility=Visibility.NAMES)
+    grid = [_cell(tmp_path, "scenario_b", C, True), _cell(tmp_path, "scenario_a", names, False)]
+    p = write_manifest(grid, tmp_path / "out")
+    assert p == tmp_path / "out" / "MANIFEST.json"
+    rows = json.loads(p.read_text())
+    assert rows == [
+        {"name": "gaia2-star-docs-binf-scenario_b", "scenario_id": "scenario_b",
+         "config": "star-docs-binf", "soft_judge": True},
+        {"name": "gaia2-star-names-binf-scenario_a", "scenario_id": "scenario_a",
+         "config": "star-names-binf", "soft_judge": False},
+    ]
+    assert p.read_text().endswith("\n")
+
+
+def test_render_grid_renders_each_cell_with_its_derived_token_and_the_manifest(tmp_path):
+    grid = [_cell(tmp_path, "scenario_a", C, True)]
+    dirs = render_grid(grid, tmp_path / "out")
+    assert dirs == [tmp_path / "out" / "gaia2-star-docs-binf-scenario_a"]
+    token = (dirs[0] / "tests" / "verifier_token.txt").read_text()
+    assert token == derive_token("scenario_a", "star-docs-binf")
+    assert (tmp_path / "out" / "MANIFEST.json").exists()

@@ -33,6 +33,7 @@ from pathlib import Path
 
 from forge.appworld.harbor import _difficulty
 from forge.appworld.partition import Constraints, Topology, Visibility
+from forge.gaia2.grid import Cell
 from forge.gaia2.judge_parse import JUDGE_PARSE_VERSION
 from forge.gaia2.runtime import (
     OBJECTIVE_ACTION_CONTRACT,
@@ -284,6 +285,28 @@ def write_task(
     os.chmod(task_dir / "solution" / "solve.sh", 0o755)
     os.chmod(env / "team", 0o755)
     return task_dir
+
+
+def write_manifest(grid: list[Cell], out_dir: str | Path) -> Path:
+    """`tasks/MANIFEST.json`: the grid as rendered, readable on a clone that
+    has no gaia2_data. One row per cell, sorted by task name."""
+    rows = sorted(
+        ({"name": c.task_name, "scenario_id": c.scenario_id,
+          "config": c.constraints.label, "soft_judge": c.soft_judge}
+         for c in grid),
+        key=lambda r: r["name"])
+    path = Path(out_dir) / "MANIFEST.json"
+    _put(path, json.dumps(rows, indent=1) + "\n")
+    return path
+
+
+def render_grid(grid: list[Cell], out_dir: str | Path) -> list[Path]:
+    """Render every cell with its derived token, then the manifest."""
+    dirs = [write_task(c.scenario_path, c.scenario_id, c.constraints, out_dir,
+                       token=derive_token(c.scenario_id, c.constraints.label))
+            for c in grid]
+    write_manifest(grid, out_dir)
+    return dirs
 
 
 def render_instruction(c: Constraints) -> str:
