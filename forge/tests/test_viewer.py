@@ -224,6 +224,10 @@ def test_the_signal_counters_do_not_double_report(viewer_html):
     Both counters walk the same events, so without an explicit exclusion the
     same call feeds the "malformed" chip and the "faulted" chip, and two
     chips a reader reads as disjoint silently overlap.
+
+    This guards the call-level exclusion that feeds the runs table's issues
+    column; since §9C the chips count runs, and a run with several kinds of
+    issue rightly appears under several chips.
     """
     fn = re.search(r"function countErrors\(d\) \{(.*?)\n\}", viewer_html, re.S)
     assert fn, "countErrors() is missing"
@@ -823,6 +827,10 @@ def test_the_run_list_is_a_drawer_under_the_grid(viewer_html):
     assert 'drawer.querySelector("summary").addEventListener("click"' in body
     assert "runsDrawerOpen = !drawer.open;" in body
     assert 'addEventListener("toggle"' not in body
+    # rindex: "pendingQuery = null;" also appears earlier, in the campaign
+    # picker's change handler (a reset, not the consumption this pin covers).
+    assert body.index("drawer.open = runsDrawerOpen") < body.rindex("pendingQuery = null;"), (
+        "the drawer's open state must be read before the pending query is consumed")
 
 
 def test_the_drawer_summary_hides_the_native_marker_with_the_palette_s_muted(viewer_css):
@@ -844,12 +852,15 @@ def test_a_cell_with_many_runs_shows_one_mark_and_a_count(viewer_html):
     assert "runs · ${passed} pass" in grid
     assert "runlab" not in source, "the per-mark run labels are retired"
     assert "A cell that holds more than one run shows its newest verdict and a count" in grid
+    assert "mark(runs[runs.length - 1])" in grid, "the cell shows the NEWEST run's verdict"
+    assert "runs.filter(s => s.data.verdict && s.data.verdict.success).length" in grid
 
 
 def test_the_count_tag_opens_the_drawer_on_that_scenario(viewer_html):
     body = _runs_fn(viewer_html)
     assert 'wrap.querySelectorAll("a[data-scenario]")' in body
     assert "pendingQuery = shortScenario(a.dataset.scenario)" in body
+    assert "pendingQuery = shortScenario(a.dataset.scenario); render();" in body
 
 
 def test_the_runlab_rule_is_gone(viewer_css):
@@ -878,7 +889,7 @@ def test_the_signal_row_leads_in_and_labels_every_chip_in_runs(viewer_html):
 
 
 def test_the_signal_lead_in_uses_the_credit_label_style(viewer_css):
-    assert re.search(r"\.signals \.lab\s*\{[^}]*var\(--muted\)", viewer_css)
+    assert re.search(r"\.credit \.lab, \.signals \.lab\s*\{[^}]*var\(--muted\)", viewer_css)
 
 
 # -- §9D: task detail, runs first ---------------------------------------------
@@ -891,6 +902,7 @@ def test_a_task_detail_leads_with_its_runs_and_folds_the_instruction_open(viewer
     assert 'inst.className = "drawer";' in body and "inst.open = true;" in body
     assert "Instruction" in body and "what the Main is told" in body
     assert 'panel.className = "verdict-panel";' in body
+    assert "inst.appendChild(panel);" in body and "content.appendChild(inst);" in body
 
 
 # -- §9E: one signals row on an episode ---------------------------------------

@@ -17,7 +17,8 @@ about a run could not be found at a glance. Of the three replacements
 weighed (a run-card grid, a master-detail split, an overview over tables),
 the overview-over-tables option was chosen.
 FIRST VIEWPORT: title, source line, four tabs (Runs, Tasks, Shipped-task
-runs, Evidence files), the failure-signal chips, then the verdict grid.
+runs, Evidence files), the Runs lede and the campaign picker line, the
+failure-signal chips, then the verdict grid.
 Primary action: any verdict badge or table row opens that run.
 NOT HERE, BY DECISION: stat tiles and a hero figure were built on
 2026-07-28 and removed the same day — they restated the tables. The
@@ -193,12 +194,9 @@ sweep row files, forge tasks.
     border-radius: 999px; border: 1px solid var(--hair);
     font-size: 11px; color: var(--ink-2); white-space: nowrap;
   }
+  a.tag:hover { border-color: var(--ink); }
 
   .signals { display: flex; flex-wrap: wrap; gap: 9px; margin: 14px 0 0; align-items: center; }
-  .signals .lab {
-    font-size: 11px; font-weight: 600; color: var(--muted);
-    letter-spacing: 0.02em;
-  }
   .signal {
     font: inherit; font-size: 12px; cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
@@ -352,7 +350,7 @@ sweep row files, forge tasks.
     display: flex; flex-wrap: wrap; gap: 5px 18px; align-items: baseline;
     margin: 11px 0 0; font-size: 12px; color: var(--ink-2);
   }
-  .credit .lab {
+  .credit .lab, .signals .lab {
     font-size: 11px; font-weight: 600; color: var(--muted);
     letter-spacing: 0.02em;
   }
@@ -904,7 +902,9 @@ function renderRuns(content) {
   const scenarios = [...new Set(eps.map(s => s.data.scenario_id))];
 
   content.insertAdjacentHTML("beforeend", `<h2 class="sec">Runs</h2>
-    <p class="lede">Every verdict for the chosen campaign, by scenario and configuration — read across a row to see whether a knob bit against the control. <b>${eps.length}</b> run${eps.length === 1 ? "" : "s"}; each is listed below.</p>`);
+    <p class="lede">Every verdict for the chosen campaign, by scenario and configuration —
+      read across a row to see whether a knob bit against the control.
+      <b>${eps.length}</b> run${eps.length === 1 ? "" : "s"}; each is listed below.</p>`);
 
   /* The picker governs the whole tab, so it sits on its own line above
      everything it changes. 13 labels + "(unlabelled)" + "all campaigns"
@@ -1320,8 +1320,9 @@ function renderTasks(content) {
 }
 
 /* One search box over one table: rows carry data-text, the count line says
-   how many survive. The runs and shipped-task tables predate this helper
-   and keep their inline copies; new tables use it. */
+   how many survive. The runs table keeps its own filter (it also drives
+   the dropdowns and the issue chips), as does the transcript (checkbox
+   type filters); every other table uses this. */
 function wireSearch(fbar, trs, noun) {
   const apply = () => {
     const q = $("input", fbar).value.toLowerCase();
