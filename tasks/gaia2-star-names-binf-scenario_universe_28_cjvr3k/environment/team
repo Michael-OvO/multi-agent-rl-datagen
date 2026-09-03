@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""The Main's entire interface to the world.
+
+This is everything the model under test can reach: a stdlib HTTP client with
+six verbs. There is no simulation harness in this container, no specialist
+code, no scenario ground truth, and no scorer -- "the Main has no API access"
+is a fact about what is on disk, not a rule it is asked to follow.
+
+The one addition over the AppWorld client is `wait`: Gaia2 scenarios run on a
+simulated clock, and replies, confirmations and follow-ups arrive at later
+simulated times. Waiting jumps the clock to the next event or the timeout,
+and whatever arrived is printed. `ask` and `done` also report anything that
+arrived while they ran.
+
+    team roster
+    team docs <specialist>
+    team ask <specialist> "<request in plain English>"
+    team wait <seconds>
+    team done "<answer>"
+    team fail "<reason>"
+"""
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+BASE = os.environ.get("MAF_ENV_URL", "http://maf-env:8080")
+
+#: The Main's whole vocabulary. The instruction promises a subset of these and
+#: a test holds the two together.
+COMMANDS = ("roster", "docs", "ask", "wait", "done", "fail")
+
+
+def _call(method, path, payload=None):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(
+        BASE + path, data=data, method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}", "detail": e.read().decode()[:200]}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.split("    team roster")[0].strip())
+        print("\n  team roster")
+        print("  team docs <specialist>")
+        print('  team ask <specialist> "<request>"')
+        print("  team wait <seconds>")
+        print('  team done "<answer>"')
+        print('  team fail "<reason>"')
+        return 0
+
+    cmd = argv[0]
+
+    if cmd == "roster":
+        print(json.dumps(_call("GET", "/roster"), indent=1))
+        return 0
+
+    if cmd == "docs":
+        if len(argv) < 2:
+            print("usage: team docs <specialist>", file=sys.stderr)
+            return 2
+        who = argv[1]
+        info = _call("GET", "/roster")
+        docs = info.get("docs")
+        if not docs:
+            # NAMES visibility. This is the knob doing its job, and the Main
+            # needs to tell that apart from a broken command.
+            print("documentation is not available for this team -- you know your "
+                  "specialists' names only. Ask them what they can do.",
+                  file=sys.stderr)
+            return 2
+        if who not in docs:
+            print(f"no specialist named {who!r}. Try: "
+                  f"{', '.join(info.get('roster', []))}", file=sys.stderr)
+            return 2
+        print(docs[who])
+        return 0
+
+    if cmd == "ask":
+        if len(argv) < 3:
+            print('usage: team ask <specialist> "<request>"', file=sys.stderr)
+            return 2
+        who, brief = argv[1], " ".join(argv[2:])
+        print(json.dumps(_call("POST", "/ask",
+                               {"specialist": who, "brief": brief}), indent=1))
+        return 0
+
+    if cmd == "wait":
+        if len(argv) < 2 or not argv[1].isdigit():
+            print("usage: team wait <seconds>", file=sys.stderr)
+            return 2
+        print(json.dumps(_call("POST", "/wait", {"seconds": int(argv[1])}),
+                         indent=1))
+        return 0
+
+    if cmd == "done":
+        answer = " ".join(argv[1:]) if len(argv) > 1 else "completed"
+        print(json.dumps(_call("POST", "/done", {"answer": answer}), indent=1))
+        return 0
+
+    if cmd == "fail":
+        reason = " ".join(argv[1:]) if len(argv) > 1 else "no reason given"
+        print(json.dumps(_call("POST", "/done",
+                               {"answer": f"FAIL :: {reason}"}), indent=1))
+        return 0
+
+    print(f"unknown command {cmd!r}. Try: {' | '.join(COMMANDS)}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
