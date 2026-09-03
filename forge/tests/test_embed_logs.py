@@ -88,10 +88,11 @@ SCHED_MD = '''# parallel-scheduling
 
 
 def episode(label, started, *, success=False, stopped=False, events=None,
-            judge="gpt-5.6-sol", parse=None):
+            judge="gpt-5.6-sol", parse=None,
+            scenario_id="scenario_universe_21_x", config="star-docs-binf"):
     d = {
-        "kind": "gaia2-episode", "scenario_id": "scenario_universe_21_x",
-        "config": "star-docs-binf", "ability": "context-transfer",
+        "kind": "gaia2-episode", "scenario_id": scenario_id,
+        "config": config, "ability": "context-transfer",
         "label": label, "judge": judge, "started_at": started, "seconds": 61.0,
         "main_model": "m", "sub_model": "m", "delegations": 2,
         "specialist_turns": 5, "malformed": 0, "blocked": 0, "false_outages": 0,
@@ -133,8 +134,12 @@ def tree(tmp_path: Path) -> Path:
     (tmp_path / "output" / "rollouts").mkdir(parents=True)
     (tmp_path / "sweep").mkdir()
     roll = tmp_path / "output" / "rollouts"
-    (roll / "a__v6__1.json").write_text(json.dumps(episode("v6", "2026-08-30 17:00:00", stopped=True)))
-    (roll / "b__v6__2.json").write_text(json.dumps(episode("v6", "2026-08-30 18:00:00", success=True, parse="case-insensitive-v1")))
+    (roll / "a__v6__1.json").write_text(json.dumps(episode(
+        "v6", "2026-08-30 17:00:00", stopped=True,
+        scenario_id="scenario_universe_30_x", config="star-docs-b4")))
+    (roll / "b__v6__2.json").write_text(json.dumps(episode(
+        "v6", "2026-08-30 18:00:00", success=True, parse="case-insensitive-v1",
+        scenario_id="scenario_universe_30_x", config="star-docs-b4")))
     (roll / "c__full__1.json").write_text(json.dumps(episode("full", "2026-07-28 13:00:00")))
     (roll / "d__probe.json").write_text(json.dumps(episode(None, "2026-07-20 09:00:00")))
     (tmp_path / "sweep" / "gaia2_thing.json").write_text(json.dumps({"note": "n", "summary": {"k": 1}, "rows": [{"a": 1}]}))
@@ -143,6 +148,10 @@ def tree(tmp_path: Path) -> Path:
     make_task(tmp_path, "appworld-star-docs-binf-2a163ab_2", APPWORLD_MD)
     make_task(tmp_path, "gaia2-star-docs-b4-scenario_universe_30_x", GAIA2_MD)
     (tmp_path / "tasks" / "gaia2-star-docs-b4-scenario_universe_30_x" / "environment" / "scenario.json").write_text("{}")
+    (tmp_path / "tasks" / "gaia2-star-docs-b4-scenario_universe_30_x" / "provenance.json").write_text(json.dumps({
+        "scenario_id": "scenario_universe_30_x", "config": "star-docs-b4",
+        "objective_action_contract": "objective-actions-v3",
+        "judge_parse": "case-insensitive-v1", "runtime_digest": "abc123"}))
     # Harbor runs in both path shapes seen under jobs/: the task directory
     # named as a segment (exact), and the stem with its suffix stripped
     # (family); plus one stem no task has.
@@ -334,3 +343,51 @@ def test_try_refresh_reports_a_failure_and_never_raises(tmp_path, capsys):
     (tmp_path / "output" / "rollouts").mkdir(parents=True)
     try_refresh(root=tmp_path)
     assert "viewer refresh failed" in capsys.readouterr().out
+
+
+# -- provenance and campaign links --------------------------------------------
+
+from scripts.embed_logs import link_trajectories  # noqa: E402
+
+
+def test_a_task_record_reads_provenance_and_judges_currency(tree):
+    d = tree / "tasks" / "gaia2-star-docs-b4-scenario_universe_30_x"
+    r = task_record(d, tree, [], current_digest="abc123")
+    assert (r["judge_parse"], r["runtime_digest"], r["current"]) == ("case-insensitive-v1", "abc123", True)
+    r = task_record(d, tree, [], current_digest="zzz")
+    assert r["current"] is False
+    a = task_record(tree / "tasks" / "appworld-star-docs-binf-2a163ab_1", tree, [], current_digest="abc123")
+    assert (a["judge_parse"], a["runtime_digest"], a["current"]) == (None, None, None)
+
+
+def test_trajectories_link_by_scenario_and_config_grouped_by_campaign(tree):
+    snap = snapshot(root=tree)
+    gaia = next(t for t in snap["tasks"] if t["substrate"] == "gaia2")
+    assert gaia["campaigns"] == [
+        {"label": "v6", "episodes": 2, "passes": 1, "judge_parse": "case-insensitive-v1"},
+    ]
+    app = next(t for t in snap["tasks"] if t["substrate"] == "appworld")
+    assert app["campaigns"] == []
+
+
+def test_link_trajectories_puts_the_newest_campaign_first_and_ignores_probes():
+    index = [
+        {"scenario_id": "s", "config": "c", "label": "old", "started_at": "2026-01-01 00:00:00",
+         "judge_parse": None, "verdict": {"success": True}},
+        {"scenario_id": "s", "config": "c", "label": "new", "started_at": "2026-02-01 00:00:00",
+         "judge_parse": "case-insensitive-v1", "verdict": {"success": False}},
+        {"scenario_id": "s", "config": "c", "label": None, "started_at": "2026-03-01 00:00:00",
+         "judge_parse": None, "verdict": {"success": True}},
+        {"scenario_id": "s", "config": "other", "label": "new", "started_at": "2026-02-02 00:00:00",
+         "judge_parse": None, "verdict": {"success": True}},
+    ]
+    tasks = [{"name": "gaia2-c-s", "substrate": "gaia2", "config": "c", "target": "s"},
+             {"name": "appworld-c-t", "substrate": "appworld", "config": "c", "target": "t"}]
+    links = link_trajectories(index, tasks)
+    assert links == {
+        "gaia2-c-s": [
+            {"label": "new", "episodes": 1, "passes": 0, "judge_parse": "case-insensitive-v1"},
+            {"label": "old", "episodes": 1, "passes": 1, "judge_parse": None},
+        ],
+        "appworld-c-t": [],
+    }
