@@ -2,6 +2,9 @@
 now. Runnable on a clone without gaia2_data: everything but the world
 byte-identity check reads only tracked files.
 
+One test asks the grid itself whether the manifest is still the grid; it
+needs the dataset and skips without it.
+
 Fix for every failure here: `python -m forge.gaia2.cli render --all`."""
 
 import json
@@ -10,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from forge.gaia2.grid import cells
 from forge.gaia2.harbor import VERBATIM_COPIES, derive_token, runtime_digest
 from forge.gaia2.judge_parse import JUDGE_PARSE_VERSION
 from forge.gaia2.runtime import (
@@ -91,3 +95,12 @@ def test_each_task_s_world_is_the_dataset_file(row):
 def test_the_fix_named_here_is_a_command_that_exists():
     src = (REPO / "forge" / "gaia2" / "cli.py").read_text()
     assert re.search(r'"--all"', src), "the render command lost --all"
+
+
+def test_the_manifest_is_the_grid_the_runtime_computes_now():
+    if not (REPO / "gaia2_data").exists():
+        pytest.skip("gaia2_data is not fetched (gitignored); computing the grid needs it")
+    live = {c.task_name for c in cells(REPO)}
+    assert live == set(_ids), (
+        f"the grid changed under the manifest: only live {sorted(live - set(_ids))}, "
+        f"only in manifest {sorted(set(_ids) - live)} -- {FIX}")
