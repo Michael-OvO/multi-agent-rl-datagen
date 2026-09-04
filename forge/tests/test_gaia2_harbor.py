@@ -9,6 +9,7 @@ scenario.json that differs from the fetched dataset file is a different
 experiment wearing the same task name.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -197,3 +198,157 @@ def test_committed_tasks_carry_a_world_and_a_token(task):
     token = (task / "tests" / "verifier_token.txt").read_text().strip()
     assert re.fullmatch(r"[0-9a-f]{32}", token), (
         f"{task.name} has a malformed verifier token")
+
+
+# -- deterministic renders --------------------------------------------------
+
+from forge.gaia2.harbor import (  # noqa: E402
+    _put,
+    derive_token,
+    provenance,
+    runtime_digest,
+)
+from forge.gaia2.judge_parse import JUDGE_PARSE_VERSION  # noqa: E402
+
+FAKE_SCENARIO = '{"scenario_id": "scenario_fake_1", "events": []}\n'
+
+
+def _fake_scenario(tmp_path):
+    p = tmp_path / "scenario_fake_1.json"
+    p.write_text(FAKE_SCENARIO)
+    return p
+
+
+def test_the_token_is_a_function_of_cell_and_versions_only():
+    a = derive_token("scenario_x", "star-docs-binf")
+    assert a == derive_token("scenario_x", "star-docs-binf")
+    assert re.fullmatch(r"[0-9a-f]{32}", a)
+    assert a != derive_token("scenario_y", "star-docs-binf")
+    assert a != derive_token("scenario_x", "star-names-binf")
+    seed = (f"scenario_x|star-docs-binf|{OBJECTIVE_ACTION_CONTRACT_VERSION}"
+            f"|{JUDGE_PARSE_VERSION}")
+    import hashlib
+    assert a == hashlib.sha256(seed.encode()).hexdigest()[:32]
+
+
+def test_the_runtime_digest_covers_every_verbatim_source(monkeypatch, tmp_path):
+    before = runtime_digest()
+    assert re.fullmatch(r"[0-9a-f]{64}", before)
+    assert before == runtime_digest()
+    # Change one shipped source and the digest moves.
+    dest, src = next(iter(VERBATIM_COPIES.items()))
+    fake = tmp_path / "changed.txt"
+    fake.write_text(src.read_text() + "\n# changed\n")
+    monkeypatch.setitem(VERBATIM_COPIES, dest, fake)
+    assert runtime_digest() != before
+
+
+def test_the_runtime_digest_covers_the_renderer_itself(tmp_path):
+    real_self = REPO / "forge" / "gaia2" / "harbor.py"
+    real_appworld_harbor = REPO / "forge" / "appworld" / "harbor.py"
+    assert real_self.exists() and real_appworld_harbor.exists()
+
+    # Neither source changed: same as the real default.
+    assert runtime_digest(renderer_sources=(real_self, real_appworld_harbor)) \
+        == runtime_digest()
+
+    # A stand-in for this renderer module, with one byte flipped, moves the
+    # digest even though every VERBATIM_COPIES source is untouched.
+    changed_self = tmp_path / "harbor_changed.py"
+    changed_self.write_text(real_self.read_text() + "\n# changed\n")
+    assert runtime_digest(
+        renderer_sources=(changed_self, real_appworld_harbor)) != runtime_digest()
+
+    # Same for a stand-in of the AppWorld renderer that supplies _difficulty.
+    changed_appworld = tmp_path / "appworld_harbor_changed.py"
+    changed_appworld.write_text(real_appworld_harbor.read_text() + "\n# changed\n")
+    assert runtime_digest(
+        renderer_sources=(real_self, changed_appworld)) != runtime_digest()
+
+
+def test_put_writes_only_when_bytes_differ(tmp_path):
+    p = tmp_path / "sub" / "f.txt"
+    assert _put(p, "one\n") is True
+    stamp = p.stat().st_mtime_ns
+    assert _put(p, "one\n") is False
+    assert p.stat().st_mtime_ns == stamp
+    assert _put(p, "two\n") is True
+    assert p.read_text() == "two\n"
+
+
+def test_a_render_writes_provenance_with_exactly_the_five_keys(tmp_path):
+    scen = _fake_scenario(tmp_path)
+    task = write_task(scen, "scenario_fake_1", C, tmp_path / "out",
+                      token=derive_token("scenario_fake_1", C.label))
+    prov = json.loads((task / "provenance.json").read_text())
+    assert prov == {
+        "scenario_id": "scenario_fake_1",
+        "config": C.label,
+        "objective_action_contract": OBJECTIVE_ACTION_CONTRACT_VERSION,
+        "judge_parse": JUDGE_PARSE_VERSION,
+        "runtime_digest": runtime_digest(),
+    }
+    assert prov == provenance("scenario_fake_1", C)
+
+
+def test_a_second_render_of_the_same_cell_rewrites_nothing(tmp_path):
+    scen = _fake_scenario(tmp_path)
+    token = derive_token("scenario_fake_1", C.label)
+    task = write_task(scen, "scenario_fake_1", C, tmp_path / "out", token=token)
+    stamps = {p: p.stat().st_mtime_ns for p in task.rglob("*") if p.is_file()}
+    assert len(stamps) > 10
+    write_task(scen, "scenario_fake_1", C, tmp_path / "out", token=token)
+    after = {p: p.stat().st_mtime_ns for p in task.rglob("*") if p.is_file()}
+    assert after == stamps
+
+
+def test_a_render_after_a_runtime_change_touches_only_what_changed(tmp_path, monkeypatch):
+    scen = _fake_scenario(tmp_path)
+    token = derive_token("scenario_fake_1", C.label)
+    task = write_task(scen, "scenario_fake_1", C, tmp_path / "out", token=token)
+    stamps = {p: p.stat().st_mtime_ns for p in task.rglob("*") if p.is_file()}
+    dest = "environment/server.py"
+    fake = tmp_path / "server_changed.py"
+    fake.write_text(VERBATIM_COPIES[dest].read_text() + "\n# changed\n")
+    monkeypatch.setitem(VERBATIM_COPIES, dest, fake)
+    write_task(scen, "scenario_fake_1", C, tmp_path / "out", token=token)
+    changed = {p.relative_to(task).as_posix()
+               for p, t in stamps.items() if p.stat().st_mtime_ns != t}
+    assert changed == {"environment/server.py", "provenance.json"}
+
+
+# -- the grid as rendered -----------------------------------------------------
+
+from forge.gaia2.grid import Cell  # noqa: E402
+from forge.gaia2.harbor import render_grid, write_manifest  # noqa: E402
+
+
+def _cell(tmp_path, sid, constraints, soft):
+    p = tmp_path / f"{sid}.json"
+    p.write_text(json.dumps({"scenario_id": sid}))
+    return Cell(sid, p, None, constraints, soft, 4)
+
+
+def test_the_manifest_lists_every_cell_sorted_by_name(tmp_path):
+    names = Constraints(roster=("Cabs", "Calendar"), topology=Topology.STAR,
+                        visibility=Visibility.NAMES)
+    grid = [_cell(tmp_path, "scenario_b", C, True), _cell(tmp_path, "scenario_a", names, False)]
+    p = write_manifest(grid, tmp_path / "out")
+    assert p == tmp_path / "out" / "MANIFEST.json"
+    rows = json.loads(p.read_text())
+    assert rows == [
+        {"name": "gaia2-star-docs-binf-scenario_b", "scenario_id": "scenario_b",
+         "config": "star-docs-binf", "soft_judge": True},
+        {"name": "gaia2-star-names-binf-scenario_a", "scenario_id": "scenario_a",
+         "config": "star-names-binf", "soft_judge": False},
+    ]
+    assert p.read_text().endswith("\n")
+
+
+def test_render_grid_renders_each_cell_with_its_derived_token_and_the_manifest(tmp_path):
+    grid = [_cell(tmp_path, "scenario_a", C, True)]
+    dirs = render_grid(grid, tmp_path / "out")
+    assert dirs == [tmp_path / "out" / "gaia2-star-docs-binf-scenario_a"]
+    token = (dirs[0] / "tests" / "verifier_token.txt").read_text()
+    assert token == derive_token("scenario_a", "star-docs-binf")
+    assert (tmp_path / "out" / "MANIFEST.json").exists()

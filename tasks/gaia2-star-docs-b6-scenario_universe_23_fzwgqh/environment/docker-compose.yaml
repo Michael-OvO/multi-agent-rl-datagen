@@ -1,0 +1,40 @@
+services:
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sleep infinity
+    depends_on:
+      maf-env:
+        # Wait for the sidecar to be READY, not merely started: importing the
+        # simulation harness and running the scenario's oracle pass takes
+        # seconds, and a verifier that fires first reports "cannot reach the
+        # sidecar" on a task that was fine.
+        condition: service_healthy
+
+  maf-env:
+    build:
+      context: .
+      dockerfile: Dockerfile.sidecar
+    environment:
+      MAF_CONFIG: '{"roster": ["Calendar", "Contacts", "Emails", "Shopping"], "topology": "star", "visibility": "docs", "delegation_target": 6}'
+      MAF_VERIFIER_TOKEN: "6c7e7feeeb85989d7f2c4fe266ac71da"
+      # Both roles default to the frontier series. The sidecar refuses to
+      # start a specialist below the Main's model class (forge/models.py), so
+      # overriding MAF_SUB_MODEL downward is a startup error, not a silent
+      # downgrade of what the task measures -- unless the operator also sets
+      # MAF_ALLOW_SUB_DOWNGRADE=1, which makes it a deliberate, labelled one.
+      MAF_MAIN_MODEL: "${MAF_MAIN_MODEL:-gpt-5.6-sol}"
+      MAF_SUB_MODEL: "${MAF_SUB_MODEL:-gpt-5.6-sol}"
+      MAF_ALLOW_SUB_DOWNGRADE: "${MAF_ALLOW_SUB_DOWNGRADE:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    expose:
+      - "8080"
+    healthcheck:
+      # /health, not /roster: /roster reaches the live world, and this fires
+      # every 3s for the life of the episode.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 60s

@@ -32,6 +32,8 @@ import re
 import tomllib
 from pathlib import Path
 
+from forge.gaia2.harbor import runtime_digest
+
 ROOT = Path(__file__).resolve().parents[1]
 VIEWER = ROOT / "trajectory_viewer.html"
 
@@ -162,7 +164,9 @@ def _roster(md: str) -> list[str]:
     return []
 
 
-def task_record(task_dir: Path, root: Path, runs: list[dict]) -> dict:
+def task_record(task_dir: Path, root: Path, runs: list[dict],
+                campaigns: list[dict] | None = None,
+                current_digest: str | None = None) -> dict:
     """One task in the pool, read from its own files. A directory missing
     task.toml or instruction.md is recorded with nulls, never skipped."""
     name = task_dir.name
@@ -180,6 +184,15 @@ def task_record(task_dir: Path, root: Path, runs: list[dict]) -> dict:
                    if p.is_file())[:60]
     task = meta.get("task") or {}
     md_meta = meta.get("metadata") or {}
+    prov_path = task_dir / "provenance.json"
+    prov: dict = {}
+    if prov_path.exists():
+        try:
+            prov = json.loads(prov_path.read_text())
+        except json.JSONDecodeError:
+            prov = {}
+    digest = prov.get("runtime_digest")
+    current = None if not prov else (digest == current_digest)
     return {
         "kind": "forge-task",
         "name": name,
@@ -200,6 +213,10 @@ def task_record(task_dir: Path, root: Path, runs: list[dict]) -> dict:
         "files": files,
         "has_scenario": (task_dir / "environment" / "scenario.json").exists(),
         "runs": runs,
+        "judge_parse": prov.get("judge_parse"),
+        "runtime_digest": digest,
+        "current": current,
+        "campaigns": campaigns or [],
     }
 
 
@@ -246,6 +263,34 @@ def link_runs(root: Path, task_names: list[str]) -> dict[str, list[dict]]:
     return links
 
 
+def link_trajectories(index: list[dict], tasks: list[dict]) -> dict[str, list[dict]]:
+    """Which campaign episodes belong to which Gaia2 task: same scenario, same
+    configuration. Grouped by campaign label, newest label first (by its
+    latest start); unlabelled probes are not campaigns and are left out."""
+    links: dict[str, list[dict]] = {t["name"]: [] for t in tasks}
+    for t in tasks:
+        if t.get("substrate") != "gaia2":
+            continue
+        groups: dict[str, dict] = {}
+        for r in index:
+            if r.get("scenario_id") != t.get("target") or r.get("config") != t.get("config"):
+                continue
+            label = r.get("label")
+            if label is None:
+                continue
+            g = groups.setdefault(label, {"label": label, "episodes": 0, "passes": 0,
+                                          "judge_parse": None, "_latest": ""})
+            g["episodes"] += 1
+            g["passes"] += int(bool((r.get("verdict") or {}).get("success")))
+            started = str(r.get("started_at") or "")
+            if started >= g["_latest"]:
+                g["_latest"] = started
+                g["judge_parse"] = r.get("judge_parse")
+        ordered = sorted(groups.values(), key=lambda g: g["_latest"], reverse=True)
+        links[t["name"]] = [{k: v for k, v in g.items() if k != "_latest"} for g in ordered]
+    return links
+
+
 # -- the snapshot -------------------------------------------------------------
 
 
@@ -270,7 +315,10 @@ def snapshot(root: Path = ROOT, label: str | None = None) -> dict:
     task_dirs = sorted(p for p in (root / "tasks").glob("*") if p.is_dir()) \
         if (root / "tasks").exists() else []
     links = link_runs(root, [d.name for d in task_dirs])
-    tasks = [task_record(d, root, links[d.name]) for d in task_dirs]
+    current = runtime_digest()
+    tasks = [task_record(d, root, links[d.name], current_digest=current) for d in task_dirs]
+    for name, campaigns in link_trajectories(index, tasks).items():
+        next(t for t in tasks if t["name"] == name)["campaigns"] = campaigns
 
     files = []
     patterns = ("output/rollouts/*.json",) + _EVIDENCE
